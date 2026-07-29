@@ -10,7 +10,7 @@ export interface LoginInput {
 }
 
 export type LoginResult =
-  | { ok: true; token: string; role: string; schoolId: string }
+  | { ok: true; token: string; role: string; schoolId: string | null }
   | { ok: false; reason: "invalid_identifier_format" | "invalid_credentials" };
 
 export async function login({ identifier, password, schoolId }: LoginInput): Promise<LoginResult> {

@@ -4,7 +4,7 @@ import type { IdentifierKind } from "./identifier.js";
 
 export interface AuthUserRecord {
   id: string;
-  school_id: string;
+  school_id: string | null;
   system_id: string | null;
   email: string | null;
   phone_number: string | null;

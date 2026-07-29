@@ -1,9 +1,10 @@
-export type Role = "student" | "teacher" | "parent" | "admin";
+export type Role = "student" | "teacher" | "parent" | "admin" | "super_admin";
 
 export interface JwtPayload {
   user_id: string;
   role: Role;
-  school_id: string;
+  // null for super_admin — a platform-level account not scoped to any school.
+  school_id: string | null;
 }
 
 declare module "fastify" {

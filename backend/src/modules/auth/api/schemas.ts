@@ -13,7 +13,7 @@ export const loginResponseSchema = {
     type: "object",
     properties: {
       role: { type: "string" },
-      school_id: { type: "string" },
+      school_id: { type: ["string", "null"] },
     },
   },
   401: {

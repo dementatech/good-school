@@ -14,6 +14,17 @@ export async function authRoutes(fastify: FastifyInstance) {
       const result = await login({ identifier, password });
 
       if (!result.ok) {
+        // TEMP DEBUG — never log actual credentials, just shape/length, to
+        // catch stray whitespace/encoding without exposing the password.
+        fastify.log.warn(
+          {
+            reason: result.reason,
+            identifierLength: identifier.length,
+            identifierJson: JSON.stringify(identifier),
+            passwordLength: password.length,
+          },
+          "login failed",
+        );
         return reply.status(401).send({ error: result.reason });
       }
 
