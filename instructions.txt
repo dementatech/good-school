@@ -1,0 +1,114 @@
+SCHOOL-OS DEPLOYMENT — BACKEND ON DIGITALOCEAN, FRONTEND ON VERCEL
+====================================================================
+
+ARCHITECTURE
+------------
+- Backend + Postgres + Redis run on the DigitalOcean droplet via
+  docker-compose.prod.yml.
+- The droplet's existing system Nginx (already serving other projects)
+  gets one more vhost for sos.dementa.space, proxying to the backend
+  container over localhost. Nginx keeps handling your other sites
+  untouched.
+- Frontend (Next.js) deploys to Vercel. It talks to the backend through
+  Next.js rewrites (next.config.ts), so the browser only ever calls the
+  Vercel domain — no CORS setup needed, and the backend's auth cookie
+  rides back through the proxy onto the Vercel domain.
+
+
+STEP 1 — DROPLET: SWAP (fixes slow/hanging docker builds on 1-2GB RAM)
+------------------------------------------------------------------
+    sudo fallocate -l 2G /swapfile
+    sudo chmod 600 /swapfile
+    sudo mkswap /swapfile
+    sudo swapon /swapfile
+    echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
+
+Build images one at a time to avoid both Node builds competing for RAM
+at once:
+    docker compose -f docker-compose.prod.yml build backend
+
+
+STEP 2 — DNS
+------------
+Subdomain sos.dementa.space already created, pointing an A record at
+the droplet's public IP. (Done.)
+
+
+STEP 3 — NGINX VHOST FOR THE SUBDOMAIN (does not touch other sites)
+------------------------------------------------------------------
+The repo includes deploy/nginx/sos.dementa.space.conf — a plain HTTP
+vhost that proxies to the backend container on 127.0.0.1:4000.
+
+On the droplet:
+    sudo cp deploy/nginx/sos.dementa.space.conf /etc/nginx/sites-available/
+    sudo ln -s /etc/nginx/sites-available/sos.dementa.space.conf /etc/nginx/sites-enabled/
+    sudo nginx -t && sudo systemctl reload nginx
+
+Get a TLS cert for just this subdomain (certbot edits only this vhost
+file, leaves your other sites' certs alone):
+    sudo apt install certbot python3-certbot-nginx   # if not already installed
+    sudo certbot --nginx -d sos.dementa.space
+
+
+STEP 4 — ENV FILE ON THE DROPLET
+---------------------------------
+Copy .env.example to .env in the repo root and fill in real values:
+    JWT_SECRET=<openssl rand -hex 32>
+    COOKIE_SECRET=<openssl rand -hex 32>
+    POSTGRES_PASSWORD=<openssl rand -hex 32>
+    COOKIE_SECURE=true
+
+Do NOT reuse the dev-only fallback values from docker-compose.yml.
+
+
+STEP 5 — START THE BACKEND STACK
+----------------------------------
+    docker compose -f docker-compose.prod.yml up -d --build
+
+This starts postgres, redis, and backend. Only the backend is exposed,
+and only to 127.0.0.1:4000 (loopback) — Nginx on the host is the only
+thing internet-facing, same as before.
+
+Verify:
+    docker compose -f docker-compose.prod.yml logs -f backend
+    curl https://sos.dementa.space   # should get a response from the API
+
+
+STEP 6 — FRONTEND ON VERCEL
+------------------------------
+1. Import the repo into Vercel, set the project root directory to
+   "frontend/" (the Dockerfile there is ignored by Vercel — Vercel
+   builds Next.js natively).
+2. Set environment variables in the Vercel project:
+     BACKEND_URL=https://sos.dementa.space
+     JWT_SECRET=<same value as on the droplet — must match exactly,
+                 since the frontend verifies the same JWT the backend
+                 signs>
+3. Deploy.
+
+
+STEP 7 — VERIFY END TO END
+-----------------------------
+1. Open the Vercel URL, log in.
+2. Confirm the auth cookie gets set (check devtools > Application >
+   Cookies — should show on the Vercel domain, HttpOnly, Secure).
+3. Confirm subsequent API calls succeed (Network tab, /api/v1/* calls
+   returning 200s, not CORS errors).
+
+If you ever add a direct client-side fetch straight to
+sos.dementa.space instead of going through /api/v1/* on the frontend's
+own origin, you will need CORS + sameSite:"none" on the backend cookie
+— avoid that; keep everything routed through the Next.js rewrite.
+
+
+FILES INVOLVED
+----------------
+docker-compose.yml           — local dev (unchanged)
+docker-compose.prod.yml      — droplet production stack (postgres,
+                                redis, backend only — no frontend, no
+                                Caddy; Nginx on the host handles TLS)
+deploy/nginx/sos.dementa.space.conf — Nginx vhost config, reference
+                                       copy to install on the droplet
+.env.example                 — template for .env, includes
+                                POSTGRES_PASSWORD needed by
+                                docker-compose.prod.yml
