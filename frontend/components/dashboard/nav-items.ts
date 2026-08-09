@@ -17,7 +17,10 @@ export interface NavItem {
 // spirit. Thin today (most roles have exactly one page); the point is that
 // adding a page later is a one-line addition here, not new markup.
 export const NAV_ITEMS: Record<Role, NavItem[]> = {
-  super_admin: [{ label: "Schools", href: "/super-admin", icon: Building2Icon }],
+  super_admin: [
+    { label: "Dashboard", href: "/super-admin", icon: LayoutDashboardIcon },
+    { label: "Schools", href: "/super-admin/schools", icon: Building2Icon },
+  ],
   admin: [
     { label: "Dashboard", href: "/admin", icon: LayoutDashboardIcon },
     { label: "Academic structure", href: "/admin/academic-structure", icon: GraduationCapIcon },
