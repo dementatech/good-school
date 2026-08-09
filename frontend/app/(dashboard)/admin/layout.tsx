@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import { getSession } from "@/lib/auth/session";
-import { TopBar } from "@/components/TopBar";
+import { DashboardShell } from "@/components/dashboard/dashboard-shell";
 
 export default async function AdminLayout({
   children,
@@ -12,10 +12,5 @@ export default async function AdminLayout({
     redirect("/login");
   }
 
-  return (
-    <>
-      <TopBar />
-      {children}
-    </>
-  );
+  return <DashboardShell role={session.role}>{children}</DashboardShell>;
 }

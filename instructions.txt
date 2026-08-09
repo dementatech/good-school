@@ -112,3 +112,36 @@ deploy/nginx/sos.dementa.space.conf — Nginx vhost config, reference
 .env.example                 — template for .env, includes
                                 POSTGRES_PASSWORD needed by
                                 docker-compose.prod.yml
+
+
+TROUBLESHOOTING — DROPLET UNREACHABLE VIA SSH AFTER POWER-OFF/PAYMENT ISSUE
+----------------------------------------------------------------------------
+If the droplet was powered off (e.g. billing hold) and comes back with
+SSH key auth failing ("Permission denied (publickey)"), the disk usually
+survives but authorized_keys / sshd state can be reset.
+
+1. Use the DigitalOcean dashboard's web-based Droplet Console (Droplet >
+   Access > Launch Droplet Console) to get a shell without SSH.
+
+2. Authorize this machine's deploy key:
+    mkdir -p ~/.ssh && chmod 700 ~/.ssh && echo 'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAICbMB/PX7RyiW6tafX6gSsDSVTEilgNPYwRLZKf82kws school-os-deploy' >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys && echo DONE
+
+3. If SSH still refuses the key afterward, diagnose in the console with:
+    whoami && echo "--- authorized_keys ---" && cat ~/.ssh/authorized_keys && echo "--- sshd config ---" && grep -Ei "PermitRootLogin|PubkeyAuthentication|AuthorizedKeysFile" /etc/ssh/sshd_config
+
+   Checks:
+   - whoami must be root (key was appended to the right home dir)
+   - authorized_keys must contain the exact ssh-ed25519 key above
+   - sshd_config must have PermitRootLogin yes (or prohibit-password)
+     and PubkeyAuthentication yes
+   - If AuthorizedKeysFile points somewhere non-default, put the key
+     there instead, then: sudo systemctl restart sshd
+
+4. Once SSH access is restored, confirm the stack survived the outage:
+    docker ps -a
+    docker compose -f docker-compose.prod.yml ps
+
+   If containers are gone (not just stopped), re-run STEP 5 above to
+   rebuild and start the stack — the postgres-data named volume should
+   still be intact on disk even if the containers themselves were
+   removed, so data is not necessarily lost.

@@ -1,7 +1,6 @@
 import { pool } from "../../../shared/db/index.js";
-import { hashPassword } from "../../auth/index.js";
+import { generateTempPassword, hashPassword } from "../../auth/index.js";
 import { nextSystemId } from "./system-id.js";
-import { generateTempPassword } from "./temp-password.js";
 
 export interface StudentRecord {
   userId: string;
@@ -12,6 +11,7 @@ export interface StudentRecord {
   email: string | null;
   phoneNumber: string | null;
   enrolledAt: string;
+  isActive: boolean;
 }
 
 export interface StudentInput {
@@ -31,11 +31,12 @@ interface StudentRow {
   email: string | null;
   phone_number: string | null;
   enrolled_at: string;
+  is_active: boolean;
 }
 
 const SELECT_STUDENT = `
   select u.id as user_id, u.system_id, u.email, u.phone_number,
-         s.full_name, s.date_of_birth, s.class_name, s.enrolled_at
+         s.full_name, s.date_of_birth, s.class_name, s.enrolled_at, s.is_active
   from students s
   join users u on u.id = s.user_id
 `;
@@ -50,6 +51,7 @@ function mapRow(row: StudentRow): StudentRecord {
     email: row.email,
     phoneNumber: row.phone_number,
     enrolledAt: row.enrolled_at,
+    isActive: row.is_active,
   };
 }
 
@@ -93,7 +95,7 @@ export async function createStudent(
       `insert into students (user_id, full_name, date_of_birth, class_name)
        values ($1, $2, $3, $4)
        returning user_id, $5::text as system_id, $6::text as email, $7::text as phone_number,
-                 full_name, date_of_birth, class_name, enrolled_at`,
+                 full_name, date_of_birth, class_name, enrolled_at, is_active`,
       [
         userId,
         input.fullName,
@@ -163,4 +165,73 @@ export async function deleteStudent(schoolId: string, userId: string): Promise<b
     [userId, schoolId],
   );
   return (result.rowCount ?? 0) > 0;
+}
+
+async function setStudentActive(
+  schoolId: string,
+  userId: string,
+  isActive: boolean,
+): Promise<StudentRecord | null> {
+  const owns = await pool.query(
+    `select 1 from users where id = $1 and school_id = $2 and role = 'student'`,
+    [userId, schoolId],
+  );
+  if (owns.rowCount === 0) return null;
+
+  await pool.query(`update students set is_active = $1, updated_at = now() where user_id = $2`, [
+    isActive,
+    userId,
+  ]);
+
+  return getStudent(schoolId, userId);
+}
+
+// Soft delete — keeps academic history, just stops showing up as an active
+// enrollment. Separate from deleteStudent, which is a hard, permanent delete.
+export async function archiveStudent(schoolId: string, userId: string): Promise<StudentRecord | null> {
+  return setStudentActive(schoolId, userId, false);
+}
+
+export async function restoreStudent(schoolId: string, userId: string): Promise<StudentRecord | null> {
+  return setStudentActive(schoolId, userId, true);
+}
+
+// Bulk reset for the "include passwords" export option — generates a fresh
+// temp password per id and returns userId -> password. Silently skips any id
+// that isn't actually a student in this school (no error for a stale/foreign
+// id slipping into a batch), same spirit as the single-row helpers above.
+export async function resetStudentPasswords(
+  schoolId: string,
+  userIds: string[],
+): Promise<Record<string, string>> {
+  if (userIds.length === 0) return {};
+
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+
+    const owned = await client.query<{ id: string }>(
+      `select id from users where school_id = $1 and role = 'student' and id = any($2::uuid[])`,
+      [schoolId, userIds],
+    );
+
+    const passwords: Record<string, string> = {};
+    for (const row of owned.rows) {
+      const tempPassword = generateTempPassword();
+      const passwordHash = await hashPassword(tempPassword);
+      await client.query(`update users set password_hash = $1, updated_at = now() where id = $2`, [
+        passwordHash,
+        row.id,
+      ]);
+      passwords[row.id] = tempPassword;
+    }
+
+    await client.query("COMMIT");
+    return passwords;
+  } catch (err) {
+    await client.query("ROLLBACK");
+    throw err;
+  } finally {
+    client.release();
+  }
 }

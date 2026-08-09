@@ -44,3 +44,14 @@ export async function findUserByIdentifier(
 
   return result.rows[0] ?? null;
 }
+
+export async function findUserById(id: string): Promise<AuthUserRecord | null> {
+  const result = await pool.query<AuthUserRecord>(
+    `select id, school_id, system_id, email, phone_number, password_hash, role
+     from users
+     where id = $1`,
+    [id],
+  );
+
+  return result.rows[0] ?? null;
+}

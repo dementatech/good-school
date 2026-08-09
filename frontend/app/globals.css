@@ -105,7 +105,10 @@ a {
   --destructive-foreground: #ffffff;
   --border: #e8d9c4;
   --input: #e8d9c4;
-  --ring: #990000;
+  /* Neutral on purpose, not tied to --primary — a school's brand color
+     belongs on their buttons/badges/logo, not flashing red (or whatever
+     their brand color is) around every focused input/select/button. */
+  --ring: oklch(0.708 0 0);
   --chart-1: oklch(0.87 0 0);
   --chart-2: oklch(0.556 0 0);
   --chart-3: oklch(0.439 0 0);
@@ -141,7 +144,7 @@ a {
   --destructive-foreground: #ffffff;
   --border: #3a2a20;
   --input: #3a2a20;
-  --ring: #c23b3b;
+  --ring: oklch(0.556 0 0);
   --chart-1: oklch(0.87 0 0);
   --chart-2: oklch(0.556 0 0);
   --chart-3: oklch(0.439 0 0);

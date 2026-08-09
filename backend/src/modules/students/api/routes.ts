@@ -1,16 +1,21 @@
 import type { FastifyInstance } from "fastify";
 import { requireAuth } from "../../auth/index.js";
 import {
+  archiveStudent,
   createStudent,
   deleteStudent,
   getStudent,
   listStudents,
+  resetStudentPasswords,
+  restoreStudent,
   updateStudent,
   type StudentInput,
 } from "../domain/students.repository.js";
 import {
   createStudentResponseSchema,
   listStudentsResponseSchema,
+  resetPasswordsBodySchema,
+  resetPasswordsResponseSchema,
   studentBodySchema,
   studentResponseSchema,
 } from "./schemas.js";
@@ -75,6 +80,41 @@ export async function studentsRoutes(fastify: FastifyInstance) {
       const deleted = await deleteStudent(request.authUser!.school_id!, request.params.id);
       if (!deleted) return reply.status(404).send({ error: "not_found" });
       return reply.status(204).send();
+    },
+  );
+
+  // Soft delete — keeps the student's record, just stops them showing as
+  // active. Separate from the hard DELETE above.
+  fastify.post<{ Params: { id: string } }>(
+    "/:id/archive",
+    { preHandler: requireAuth(["admin"]), schema: { response: studentResponseSchema } },
+    async (request, reply) => {
+      const student = await archiveStudent(request.authUser!.school_id!, request.params.id);
+      if (!student) return reply.status(404).send({ error: "not_found" });
+      return student;
+    },
+  );
+
+  fastify.post<{ Params: { id: string } }>(
+    "/:id/restore",
+    { preHandler: requireAuth(["admin"]), schema: { response: studentResponseSchema } },
+    async (request, reply) => {
+      const student = await restoreStudent(request.authUser!.school_id!, request.params.id);
+      if (!student) return reply.status(404).send({ error: "not_found" });
+      return student;
+    },
+  );
+
+  // Backs the "include passwords" export option — bulk-resets and returns
+  // fresh temp passwords for a filtered set of students in one request.
+  fastify.post<{ Body: { userIds: string[] } }>(
+    "/reset-passwords",
+    {
+      preHandler: requireAuth(["admin"]),
+      schema: { body: resetPasswordsBodySchema, response: resetPasswordsResponseSchema },
+    },
+    async (request) => {
+      return resetStudentPasswords(request.authUser!.school_id!, request.body.userIds);
     },
   );
 }

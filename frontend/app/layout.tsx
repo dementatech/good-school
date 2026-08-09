@@ -3,6 +3,7 @@ import { Poppins, Geist_Mono } from "next/font/google";
 import { RegisterServiceWorker } from "@/components/RegisterServiceWorker";
 import { resolveTheme } from "@/lib/theme/resolve-theme";
 import { themeStyleTag } from "@/lib/theme/css-vars";
+import { TooltipProvider } from "@/components/ui/tooltip";
 import "./globals.css";
 
 // Named --font-sans (not --font-poppins) to match shadcn's globals.css
@@ -40,7 +41,7 @@ export default async function RootLayout({
         <style dangerouslySetInnerHTML={{ __html: themeStyleTag(theme) }} />
       </head>
       <body style={{ fontFamily: theme.fontFamily }}>
-        {children}
+        <TooltipProvider>{children}</TooltipProvider>
         <RegisterServiceWorker />
       </body>
     </html>

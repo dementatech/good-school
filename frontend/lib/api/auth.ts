@@ -3,7 +3,7 @@ import type { Role } from "../auth/roles";
 
 export interface LoginResponse {
   role: Role;
-  school_id: string;
+  school_id: string | null;
 }
 
 export async function login(identifier: string, password: string): Promise<LoginResponse> {

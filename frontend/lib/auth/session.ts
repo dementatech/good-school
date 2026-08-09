@@ -8,7 +8,7 @@ export const SESSION_COOKIE = "school_os_token";
 export interface SessionPayload {
   user_id: string;
   role: Role;
-  school_id: string;
+  school_id: string | null;
 }
 
 // Verifies the same JWT the backend sets as an HttpOnly cookie on login —

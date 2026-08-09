@@ -22,6 +22,7 @@ const studentSchema = {
     email: { type: ["string", "null"] },
     phoneNumber: { type: ["string", "null"] },
     enrolledAt: { type: "string" },
+    isActive: { type: "boolean" },
   },
 } as const;
 
@@ -41,5 +42,21 @@ export const createStudentResponseSchema = {
       student: studentSchema,
       tempPassword: { type: "string" },
     },
+  },
+} as const;
+
+export const resetPasswordsBodySchema = {
+  type: "object",
+  required: ["userIds"],
+  properties: {
+    userIds: { type: "array", items: { type: "string" } },
+  },
+  additionalProperties: false,
+} as const;
+
+export const resetPasswordsResponseSchema = {
+  200: {
+    type: "object",
+    additionalProperties: { type: "string" },
   },
 } as const;

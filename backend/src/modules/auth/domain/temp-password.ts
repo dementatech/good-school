@@ -1,7 +1,7 @@
 import { randomInt } from "node:crypto";
 
 // No ambiguous chars (0/O, 1/I/L) — this gets read off a screen and typed
-// by hand by an admin handing it to a student.
+// by hand by whoever is handing it to the new account holder.
 const ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 
 export function generateTempPassword(length = 10): string {

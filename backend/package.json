@@ -12,7 +12,8 @@
     "migrate": "node-pg-migrate",
     "migrate:up": "node-pg-migrate up --no-single-transaction",
     "migrate:down": "node-pg-migrate down --no-single-transaction",
-    "create-super-admin": "tsx scripts/create-super-admin.ts"
+    "create-super-admin": "tsx scripts/create-super-admin.ts",
+    "reset-password": "tsx scripts/reset-password.ts"
   },
   "dependencies": {
     "@fastify/cookie": "^11.0.2",

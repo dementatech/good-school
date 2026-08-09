@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { Eye, EyeOff } from "lucide-react";
 import { login } from "@/lib/api/auth";
 import { ApiError } from "@/lib/api/client";
 import { ROLE_HOME } from "@/lib/auth/roles";
@@ -19,6 +20,7 @@ export function LoginForm() {
   const router = useRouter();
   const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
+  const [passwordVisible, setPasswordVisible] = useState(false);
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
   const [toast, setToast] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
@@ -84,15 +86,27 @@ export function LoginForm() {
 
           <div className="space-y-1.5">
             <Label htmlFor="password">Password</Label>
-            <Input
-              id="password"
-              name="password"
-              type="password"
-              value={password}
-              onChange={(event) => setPassword(event.target.value)}
-              autoComplete="current-password"
-              aria-invalid={Boolean(fieldErrors.password)}
-            />
+            <div className="relative">
+              <Input
+                id="password"
+                name="password"
+                type={passwordVisible ? "text" : "password"}
+                value={password}
+                onChange={(event) => setPassword(event.target.value)}
+                autoComplete="current-password"
+                aria-invalid={Boolean(fieldErrors.password)}
+                className="pr-8"
+              />
+              <button
+                type="button"
+                onClick={() => setPasswordVisible((visible) => !visible)}
+                aria-label={passwordVisible ? "Hide password" : "Show password"}
+                aria-pressed={passwordVisible}
+                className="absolute inset-y-0 right-0 flex w-8 items-center justify-center text-muted-foreground hover:text-foreground"
+              >
+                {passwordVisible ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+              </button>
+            </div>
             {fieldErrors.password && (
               <p className="text-sm text-destructive">{fieldErrors.password}</p>
             )}

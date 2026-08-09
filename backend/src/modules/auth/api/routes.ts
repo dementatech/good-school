@@ -1,10 +1,32 @@
 import type { FastifyInstance } from "fastify";
 import { login } from "../domain/login.js";
-import { loginBodySchema, loginResponseSchema } from "./schemas.js";
+import { findUserById } from "../domain/users.repository.js";
+import { requireAuth } from "./verify.js";
+import { loginBodySchema, loginResponseSchema, meResponseSchema } from "./schemas.js";
 
 const COOKIE_NAME = "school_os_token";
 
 export async function authRoutes(fastify: FastifyInstance) {
+  // Any authenticated role — this is how the UI (e.g. the topbar user menu)
+  // finds out who's actually logged in beyond the bare user_id/role/school_id
+  // already in the JWT.
+  fastify.get(
+    "/me",
+    { preHandler: requireAuth(), schema: { response: meResponseSchema } },
+    async (request, reply) => {
+      const user = await findUserById(request.authUser!.user_id);
+      if (!user) return reply.status(404).send({ error: "not_found" });
+
+      return {
+        email: user.email,
+        phoneNumber: user.phone_number,
+        systemId: user.system_id,
+        role: user.role,
+        schoolId: user.school_id,
+      };
+    },
+  );
+
   fastify.post<{ Body: { identifier: string; password: string } }>(
     "/login",
     { schema: { body: loginBodySchema, response: loginResponseSchema } },

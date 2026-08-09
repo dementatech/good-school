@@ -23,3 +23,20 @@ export const loginResponseSchema = {
     },
   },
 } as const;
+
+export const meResponseSchema = {
+  200: {
+    type: "object",
+    properties: {
+      email: { type: ["string", "null"] },
+      phoneNumber: { type: ["string", "null"] },
+      systemId: { type: ["string", "null"] },
+      role: { type: "string" },
+      schoolId: { type: ["string", "null"] },
+    },
+  },
+  404: {
+    type: "object",
+    properties: { error: { type: "string" } },
+  },
+} as const;
