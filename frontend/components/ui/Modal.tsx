@@ -58,7 +58,7 @@ export function Modal({ open, onClose, title, children, size = 'md' }: ModalProp
             aria-label={typeof title === 'string' ? title : undefined}
             className={`absolute top-0 right-0 h-full w-full ${
               size === 'lg' ? 'max-w-2xl' : 'max-w-md'
-            } bg-white shadow-xl border-l border-[#EAEAEA] flex flex-col sm:rounded-l-2xl`}
+            } bg-white shadow-xl border-l border-[#EAEAEA] flex flex-col`}
             initial={{ x: '100%' }}
             animate={{ x: 0 }}
             exit={{ x: '100%' }}
@@ -78,7 +78,7 @@ export function Modal({ open, onClose, title, children, size = 'md' }: ModalProp
                 </button>
               </div>
             )}
-            <div className="flex-1 overflow-y-auto px-5 sm:px-6 py-5">{children}</div>
+            <div className="flex-1 overflow-y-auto no-scrollbar px-5 sm:px-6 py-5">{children}</div>
           </motion.div>
         </div>
       )}
