@@ -1,0 +1,147 @@
+'use client';
+
+import { useEffect, useState } from 'react';
+import Link from 'next/link';
+import { Card } from '@/components/ui/Card';
+import { Button } from '@/components/ui/Button';
+import { PracticalCard } from '@/components/ui/PracticalCard';
+import { TermPerformanceCard } from '@/components/ui/TermPerformanceCard';
+import { Award, Clock } from 'lucide-react';
+import type { BlendedPerformance, PracticalTermScore } from '@/lib/entities/practical-observations';
+import type { StudentTermPerformance } from '@/lib/entities/performance';
+
+interface Attempt {
+  assessmentSystemId: string;
+  title: string;
+  submittedAt: string;
+  totalScore: number | null;
+  maxScore: number | null;
+  percentage: number | null;
+  released: boolean;
+}
+
+export default function MyResultsPage() {
+  const [attempts, setAttempts] = useState<Attempt[]>([]);
+  const [practical, setPractical] = useState<PracticalTermScore | null>(null);
+  const [performance, setPerformance] = useState<BlendedPerformance | null>(null);
+  const [termPerformance, setTermPerformance] = useState<StudentTermPerformance | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    fetch('/api/v1/assessments/my-results')
+      .then((r) => r.json())
+      .then((d) => {
+        if (d.success) setAttempts(d.data);
+        else setError(d.message || 'Failed to load your results.');
+      })
+      .catch(() => setError('Network error.'))
+      .finally(() => setLoading(false));
+  }, []);
+
+  // Fetched separately and failing quietly on purpose: practical skills are a
+  // supplement to this page, not its subject. A learner must still see every
+  // assessment they sat even if the practical lookup is unavailable.
+  useEffect(() => {
+    fetch('/api/v1/practical/summary')
+      .then((r) => r.json())
+      .then((d) => {
+        if (!d.success) return;
+        setPractical(d.data);
+        setPerformance(d.performance ?? null);
+      })
+      .catch(() => {});
+  }, []);
+
+  // Fetched separately, same failure posture as practical above: this term's
+  // blended performance is a supplement to the assessment list, not its
+  // subject, so a failed lookup just leaves the card empty.
+  useEffect(() => {
+    fetch('/api/v1/performance/summary')
+      .then((r) => r.json())
+      .then((d) => {
+        if (d.success) setTermPerformance(d.data ?? null);
+      })
+      .catch(() => {});
+  }, []);
+
+  return (
+    <div className="w-full">
+      <h1 className="text-2xl font-bold text-primary-900 mb-1">My Results</h1>
+      <p className="text-sm text-text-muted mb-6">
+        Every assessment you&apos;ve sat, whether or not you noticed the notification.
+      </p>
+
+      {/* Above the assessment list, and visually separate from it: practical
+          skills are observed in the lab, not sat as a paper, and the two must
+          not read as one combined mark. */}
+      <div className="mb-6 space-y-4">
+        <TermPerformanceCard performance={termPerformance} />
+        <PracticalCard score={practical} performance={performance} />
+      </div>
+
+      {/* Every paper below is one moment, not a verdict — the overall figure
+          above already blends in how often you've shown up, and that's what
+          your report card leads with. A single low score here shouldn't read
+          as the whole story, and this line is here so it doesn't. */}
+      {attempts.length > 0 && (
+        <p className="text-xs text-text-faint mb-3">
+          Each paper below is just one attempt — your overall performance above is what really counts, and it
+          already gives you credit for being here.
+        </p>
+      )}
+
+      {loading ? (
+        <p className="text-text-muted">Loading…</p>
+      ) : error ? (
+        <p className="text-error">{error}</p>
+      ) : attempts.length === 0 ? (
+        <Card className="p-8 text-center">
+          <Award className="w-10 h-10 text-text-faint mx-auto mb-3" />
+          <p className="text-text-muted">You haven&apos;t sat any assessments yet.</p>
+        </Card>
+      ) : (
+        <div className="grid gap-3">
+          {attempts.map((a) => (
+            <Card
+              key={a.assessmentSystemId}
+              hover={a.released}
+              className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-5"
+            >
+              <div className="min-w-0">
+                <h3 className="font-semibold text-primary-900 truncate">{a.title}</h3>
+                <div className="flex items-center gap-1 mt-1 text-xs text-text-muted">
+                  <Clock className="w-3.5 h-3.5" />
+                  Sat {new Date(a.submittedAt).toLocaleDateString('en-GB')}
+                </div>
+              </div>
+
+              {a.released ? (
+                <div className="flex items-center gap-3 shrink-0">
+                  {/* The mark out of 100 leads, same Ugandan report-card
+                      convention as the individual result page — the raw
+                      fraction is still there, just as the secondary line. */}
+                  <div className="text-right">
+                    <p className="text-lg font-bold text-primary-900">
+                      {a.percentage === null ? 'pending' : `${a.percentage}%`}
+                    </p>
+                    <p className="text-xs text-text-muted">
+                      {a.totalScore ?? '—'}/{a.maxScore ?? '—'}
+                    </p>
+                  </div>
+                  <Link href={`/student/results/${a.assessmentSystemId}`}>
+                    <Button variant="outline">View result</Button>
+                  </Link>
+                </div>
+              ) : (
+                <span className="shrink-0 text-xs font-medium text-[#8A6A16] bg-[#FCF3DE] rounded-lg px-3 py-1.5">
+                  Not released yet
+                </span>
+              )}
+            </Card>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}

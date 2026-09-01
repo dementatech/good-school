@@ -1,0 +1,77 @@
+'use client';
+
+import { useEffect, useState } from 'react';
+import Link from 'next/link';
+import { Card } from '@/components/ui/Card';
+import { School, UserCog, GraduationCap, Contact, Library } from 'lucide-react';
+
+interface Stats {
+  schools: number;
+  staff: number;
+  students: number;
+  parents: number;
+  libraryPending: number;
+}
+
+const CARDS = [
+  { key: 'schools' as const, label: 'Schools', href: '/admin/system/schools', icon: School },
+  { key: 'staff' as const, label: 'Staff & Admins', href: '/admin/system/staff', icon: UserCog },
+  { key: 'students' as const, label: 'Student Accounts', href: '/admin/system/students', icon: GraduationCap },
+  { key: 'parents' as const, label: 'Parents', href: '/admin/system/parents', icon: Contact },
+  { key: 'libraryPending' as const, label: 'Library approvals pending', href: '/admin/system/library', icon: Library },
+];
+
+export default function SystemDashboard() {
+  const [stats, setStats] = useState<Stats>({ schools: 0, staff: 0, students: 0, parents: 0, libraryPending: 0 });
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    async function load() {
+      try {
+        const [schools, staff, students, parents, library] = await Promise.all([
+          fetch('/api/v1/admin/system/schools').then((r) => r.json()),
+          fetch('/api/v1/admin/system/staff').then((r) => r.json()),
+          fetch('/api/v1/admin/system/students').then((r) => r.json()),
+          fetch('/api/v1/admin/system/parents').then((r) => r.json()),
+          fetch('/api/v1/library/content?scope=pending').then((r) => r.json()),
+        ]);
+        setStats({
+          schools: schools.data?.length ?? 0,
+          staff: staff.data?.length ?? 0,
+          students: students.data?.length ?? 0,
+          parents: parents.data?.length ?? 0,
+          libraryPending: library.data?.length ?? 0,
+        });
+      } finally {
+        setLoading(false);
+      }
+    }
+    load();
+  }, []);
+
+  return (
+    <div className="w-full">
+      <h1 className="text-2xl font-bold text-primary-900 mb-1">System</h1>
+      <p className="text-sm text-text-muted mb-6">Create and manage every account and school. Super admin only.</p>
+
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-4">
+        {CARDS.map((c) => {
+          const Icon = c.icon;
+          return (
+            <Link key={c.key} href={c.href}>
+              <Card hover className="p-3 sm:p-5">
+                <div className="p-2 sm:p-2.5 rounded-xl bg-bg-muted w-fit mb-2 sm:mb-3">
+                  <Icon className="w-5 h-5 text-primary-700" />
+                </div>
+                <p className="text-2xl sm:text-3xl font-bold text-primary-900 tabular-nums">
+                  {loading ? '—' : stats[c.key]}
+                </p>
+                <p className="text-sm text-text-muted mt-1">{c.label}</p>
+              </Card>
+            </Link>
+          );
+        })}
+      </div>
+    </div>
+  );
+}

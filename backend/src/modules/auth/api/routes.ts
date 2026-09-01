@@ -18,14 +18,26 @@ export async function authRoutes(fastify: FastifyInstance) {
       if (!user) return reply.status(404).send({ error: "not_found" });
 
       return {
+        id: user.id,
+        // `users` holds identity/auth only — no name columns (see the auth
+        // brief). Name comes from the role-profile tables in a later phase.
+        name: null,
         email: user.email,
         phoneNumber: user.phone_number,
         systemId: user.system_id,
         role: user.role,
         schoolId: user.school_id,
+        mustChangePassword: false,
       };
     },
   );
+
+  // Clears the auth cookie. The JWT itself is stateless, so "logout" is just
+  // dropping the cookie client-side; the frontend calls this on sign-out.
+  fastify.post("/logout", async (_request, reply) => {
+    reply.clearCookie(COOKIE_NAME, { path: "/" });
+    return reply.status(204).send();
+  });
 
   fastify.post<{ Body: { identifier: string; password: string } }>(
     "/login",

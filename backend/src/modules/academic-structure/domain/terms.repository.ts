@@ -15,6 +15,7 @@ export class TermLimitExceededError extends Error {
 export interface TermRecord {
   id: string;
   academicYearId: string;
+  termNumber: number | null;
   name: string;
   startDate: string;
   endDate: string;
@@ -25,6 +26,7 @@ export interface TermRecord {
 
 export interface TermInput {
   academicYearId: string;
+  termNumber?: number | null;
   name: string;
   startDate: string;
   endDate: string;
@@ -34,6 +36,7 @@ export interface TermInput {
 interface TermRow {
   id: string;
   academic_year_id: string;
+  term_number: number | null;
   name: string;
   start_date: string;
   end_date: string;
@@ -42,12 +45,13 @@ interface TermRow {
   updated_at: string;
 }
 
-const SELECT_TERM = `select id, academic_year_id, name, start_date, end_date, is_current, created_at, updated_at from terms`;
+const SELECT_TERM = `select id, academic_year_id, term_number, name, start_date, end_date, is_current, created_at, updated_at from terms`;
 
 function mapRow(row: TermRow): TermRecord {
   return {
     id: row.id,
     academicYearId: row.academic_year_id,
+    termNumber: row.term_number,
     name: row.name,
     startDate: row.start_date,
     endDate: row.end_date,
@@ -75,12 +79,13 @@ export async function listTerms(
 ): Promise<TermRecord[]> {
   const result = academicYearId
     ? await pool.query<TermRow>(
-        `${SELECT_TERM} where school_id = $1 and academic_year_id = $2 order by start_date`,
+        `${SELECT_TERM} where school_id = $1 and academic_year_id = $2 order by term_number nulls last, start_date`,
         [schoolId, academicYearId],
       )
-    : await pool.query<TermRow>(`${SELECT_TERM} where school_id = $1 order by start_date`, [
-        schoolId,
-      ]);
+    : await pool.query<TermRow>(
+        `${SELECT_TERM} where school_id = $1 order by term_number nulls last, start_date`,
+        [schoolId],
+      );
   return result.rows.map(mapRow);
 }
 
@@ -124,12 +129,13 @@ export async function createTerm(
     }
 
     const result = await client.query<TermRow>(
-      `insert into terms (school_id, academic_year_id, name, start_date, end_date, is_current, created_by)
-       values ($1, $2, $3, $4, $5, $6, $7)
-       returning id, academic_year_id, name, start_date, end_date, is_current, created_at, updated_at`,
+      `insert into terms (school_id, academic_year_id, term_number, name, start_date, end_date, is_current, created_by)
+       values ($1, $2, $3, $4, $5, $6, $7, $8)
+       returning id, academic_year_id, term_number, name, start_date, end_date, is_current, created_at, updated_at`,
       [
         schoolId,
         input.academicYearId,
+        input.termNumber ?? null,
         input.name,
         input.startDate,
         input.endDate,
@@ -172,10 +178,18 @@ export async function updateTerm(
 
     const result = await client.query<TermRow>(
       `update terms
-       set name = $1, start_date = $2, end_date = $3, is_current = $4, updated_at = now()
-       where id = $5 and school_id = $6
-       returning id, academic_year_id, name, start_date, end_date, is_current, created_at, updated_at`,
-      [input.name, input.startDate, input.endDate, input.isCurrent ?? false, id, schoolId],
+       set term_number = $1, name = $2, start_date = $3, end_date = $4, is_current = $5, updated_at = now()
+       where id = $6 and school_id = $7
+       returning id, academic_year_id, term_number, name, start_date, end_date, is_current, created_at, updated_at`,
+      [
+        input.termNumber ?? null,
+        input.name,
+        input.startDate,
+        input.endDate,
+        input.isCurrent ?? false,
+        id,
+        schoolId,
+      ],
     );
 
     await client.query("COMMIT");

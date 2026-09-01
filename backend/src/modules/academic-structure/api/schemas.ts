@@ -1,45 +1,86 @@
-const errorResponseSchema = {
-  type: "object",
-  properties: { error: { type: "string" } },
-} as const;
+// Body validation for the academic-structure routes. Responses all use the
+// shared `{ success, data }` envelope (see src/shared/envelope.ts), so route
+// response schemas are intentionally loose.
 
-// -- Academic levels ---------------------------------------------------------
+// ── Reference data (super_admin) ─────────────────────────────────────────────
 
-export const academicLevelBodySchema = {
+export const curriculumBodySchema = {
   type: "object",
   required: ["code", "name"],
   properties: {
     code: { type: "string", minLength: 1 },
     name: { type: "string", minLength: 1 },
-    sortOrder: { type: "number" },
-    stage: { type: ["string", "null"] },
+    awardingBody: { type: ["string", "null"] },
+    isActive: { type: "boolean" },
   },
   additionalProperties: false,
 } as const;
 
-const academicLevelSchema = {
+export const stageBodySchema = {
   type: "object",
+  required: ["code", "name", "sequenceNumber"],
   properties: {
-    id: { type: "string" },
-    code: { type: "string" },
-    name: { type: "string" },
-    sortOrder: { type: "number" },
-    stage: { type: ["string", "null"] },
-    createdAt: { type: "string" },
-    updatedAt: { type: "string" },
+    code: { type: "string", minLength: 1 },
+    name: { type: "string", minLength: 1 },
+    sequenceNumber: { type: "integer", minimum: 1 },
+    phase: { type: ["string", "null"] },
+    ageEquivalentYears: { type: ["integer", "null"] },
   },
+  additionalProperties: false,
 } as const;
 
-export const listAcademicLevelsResponseSchema = {
-  200: { type: "array", items: academicLevelSchema },
+export const subjectBodySchema = {
+  type: "object",
+  required: ["phase", "code", "name"],
+  properties: {
+    phase: { type: "string", enum: ["O_LEVEL", "A_LEVEL"] },
+    code: { type: "string", minLength: 1 },
+    name: { type: "string", minLength: 1 },
+    category: {
+      type: "string",
+      enum: ["language", "science", "humanity", "vocational", "core", "general"],
+    },
+    isExaminable: { type: "boolean" },
+    isActive: { type: "boolean" },
+    stageIds: { type: "array", items: { type: "string" } },
+  },
+  additionalProperties: false,
 } as const;
 
-export const academicLevelResponseSchema = {
-  200: academicLevelSchema,
-  404: errorResponseSchema,
+export const combinationBodySchema = {
+  type: "object",
+  required: ["name"],
+  properties: {
+    // Optional — derived from the principal subjects' codes when omitted, so
+    // the code always reflects real picks rather than a typed guess.
+    code: { type: "string" },
+    name: { type: "string", minLength: 1 },
+    description: { type: ["string", "null"] },
+    isActive: { type: "boolean" },
+    subjects: {
+      type: "array",
+      items: {
+        type: "object",
+        required: ["subjectId", "role"],
+        properties: {
+          subjectId: { type: "string" },
+          role: { type: "string", enum: ["principal", "subsidiary", "compulsory"] },
+        },
+        additionalProperties: false,
+      },
+    },
+  },
+  additionalProperties: false,
 } as const;
 
-// -- Academic years -----------------------------------------------------------
+// ── Per-school ──────────────────────────────────────────────────────────────
+
+export const schoolCurriculumBodySchema = {
+  type: "object",
+  required: ["curriculumId"],
+  properties: { curriculumId: { type: "string" } },
+  additionalProperties: false,
+} as const;
 
 export const academicYearBodySchema = {
   type: "object",
@@ -49,39 +90,17 @@ export const academicYearBodySchema = {
     startDate: { type: "string" },
     endDate: { type: "string" },
     isCurrent: { type: "boolean" },
+    makeCurrent: { type: "boolean" },
   },
   additionalProperties: false,
 } as const;
-
-const academicYearSchema = {
-  type: "object",
-  properties: {
-    id: { type: "string" },
-    yearName: { type: "string" },
-    startDate: { type: "string" },
-    endDate: { type: "string" },
-    isCurrent: { type: "boolean" },
-    createdAt: { type: "string" },
-    updatedAt: { type: "string" },
-  },
-} as const;
-
-export const listAcademicYearsResponseSchema = {
-  200: { type: "array", items: academicYearSchema },
-} as const;
-
-export const academicYearResponseSchema = {
-  200: academicYearSchema,
-  404: errorResponseSchema,
-} as const;
-
-// -- Terms --------------------------------------------------------------------
 
 export const termBodySchema = {
   type: "object",
   required: ["academicYearId", "name", "startDate", "endDate"],
   properties: {
     academicYearId: { type: "string" },
+    termNumber: { type: ["integer", "null"], minimum: 1, maximum: 3 },
     name: { type: "string", minLength: 1 },
     startDate: { type: "string" },
     endDate: { type: "string" },
@@ -90,67 +109,18 @@ export const termBodySchema = {
   additionalProperties: false,
 } as const;
 
-const termSchema = {
-  type: "object",
-  properties: {
-    id: { type: "string" },
-    academicYearId: { type: "string" },
-    name: { type: "string" },
-    startDate: { type: "string" },
-    endDate: { type: "string" },
-    isCurrent: { type: "boolean" },
-    createdAt: { type: "string" },
-    updatedAt: { type: "string" },
-  },
-} as const;
-
-export const listTermsResponseSchema = {
-  200: { type: "array", items: termSchema },
-} as const;
-
-export const termResponseSchema = {
-  200: termSchema,
-  400: errorResponseSchema,
-  404: errorResponseSchema,
-} as const;
-
-// -- Classes --------------------------------------------------------------------
-
 export const classBodySchema = {
   type: "object",
-  required: ["academicYearId", "academicLevelId"],
+  required: ["academicYearId", "curriculumStageId"],
   properties: {
     academicYearId: { type: "string" },
-    academicLevelId: { type: "string" },
+    curriculumStageId: { type: "string" },
     hasStreams: { type: "boolean" },
     classTeacherId: { type: ["string", "null"] },
+    isActive: { type: "boolean" },
   },
   additionalProperties: false,
 } as const;
-
-const classSchema = {
-  type: "object",
-  properties: {
-    id: { type: "string" },
-    academicYearId: { type: "string" },
-    academicLevelId: { type: "string" },
-    hasStreams: { type: "boolean" },
-    classTeacherId: { type: ["string", "null"] },
-    createdAt: { type: "string" },
-    updatedAt: { type: "string" },
-  },
-} as const;
-
-export const listClassesResponseSchema = {
-  200: { type: "array", items: classSchema },
-} as const;
-
-export const classResponseSchema = {
-  200: classSchema,
-  404: errorResponseSchema,
-} as const;
-
-// -- Streams ----------------------------------------------------------------------
 
 export const streamBodySchema = {
   type: "object",
@@ -159,27 +129,8 @@ export const streamBodySchema = {
     classId: { type: "string" },
     name: { type: "string", minLength: 1 },
     streamTeacherId: { type: ["string", "null"] },
+    capacity: { type: ["integer", "null"], minimum: 1 },
+    isActive: { type: "boolean" },
   },
   additionalProperties: false,
-} as const;
-
-const streamSchema = {
-  type: "object",
-  properties: {
-    id: { type: "string" },
-    classId: { type: "string" },
-    name: { type: "string" },
-    streamTeacherId: { type: ["string", "null"] },
-    createdAt: { type: "string" },
-    updatedAt: { type: "string" },
-  },
-} as const;
-
-export const listStreamsResponseSchema = {
-  200: { type: "array", items: streamSchema },
-} as const;
-
-export const streamResponseSchema = {
-  200: streamSchema,
-  404: errorResponseSchema,
 } as const;

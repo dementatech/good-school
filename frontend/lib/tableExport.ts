@@ -1,63 +1,52 @@
+/**
+ * Client-side triggers for the DataTable export button. CSV is built here
+ * directly (a few string ops, no library needed); Excel and PDF are handed
+ * off to /api/export — both exceljs and @react-pdf/renderer are Node-oriented
+ * and are deliberately kept server-side rather than bundled into every page.
+ */
+
 export type ExportCell = string | number | null | undefined;
 
-function cellText(cell: ExportCell): string {
-  return cell === null || cell === undefined ? "" : String(cell);
-}
-
-function downloadBlob(filename: string, blob: Blob) {
+function triggerDownload(blob: Blob, filename: string) {
   const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = filename;
-  link.click();
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
   URL.revokeObjectURL(url);
 }
 
-export function exportToCsv(filename: string, headers: string[], rows: ExportCell[][]): void {
-  const escape = (value: string) =>
-    /[",\n]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value;
-
-  const lines = [headers, ...rows.map((row) => row.map(cellText))].map((line) =>
-    line.map(escape).join(","),
-  );
-
-  downloadBlob(`${filename}.csv`, new Blob([lines.join("\n")], { type: "text/csv;charset=utf-8;" }));
+function csvCell(value: ExportCell): string {
+  const s = value === null || value === undefined ? "" : String(value);
+  return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 }
 
-// xlsx/jspdf are only imported when actually used, so exporting rarely-used
-// formats doesn't add weight to every page load.
-export async function exportToExcel(
-  filename: string,
-  headers: string[],
-  rows: ExportCell[][],
-): Promise<void> {
-  const XLSX = await import("xlsx");
-  const worksheet = XLSX.utils.aoa_to_sheet([headers, ...rows.map((row) => row.map(cellText))]);
-  const workbook = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(workbook, worksheet, "Sheet1");
-  XLSX.writeFile(workbook, `${filename}.xlsx`);
+export function exportToCsv(filename: string, headers: string[], rows: ExportCell[][]) {
+  const lines = [headers, ...rows].map((row) => row.map(csvCell).join(","));
+  // Leading BOM so Excel opens UTF-8 CSVs (accented names, etc.) without mangling them.
+  const blob = new Blob(["﻿" + lines.join("\r\n")], { type: "text/csv;charset=utf-8;" });
+  triggerDownload(blob, `${filename}.csv`);
 }
 
-export async function exportToPdf(
-  filename: string,
-  title: string,
-  headers: string[],
-  rows: ExportCell[][],
-): Promise<void> {
-  const [{ jsPDF }, { default: autoTable }] = await Promise.all([
-    import("jspdf"),
-    import("jspdf-autotable"),
-  ]);
-
-  const doc = new jsPDF({ orientation: rows.length && headers.length > 6 ? "landscape" : "portrait" });
-  doc.setFontSize(12);
-  doc.text(title, 14, 14);
-  autoTable(doc, {
-    head: [headers],
-    body: rows.map((row) => row.map(cellText)),
-    startY: 20,
-    styles: { fontSize: 8 },
-    headStyles: { fillColor: [64, 64, 64] },
+async function requestFile(url: string, body: Record<string, unknown>, fallbackName: string): Promise<void> {
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
   });
-  doc.save(`${filename}.pdf`);
+  if (!res.ok) throw new Error("Export failed. Please try again.");
+  const blob = await res.blob();
+  const disposition = res.headers.get("Content-Disposition") || "";
+  const match = /filename="([^"]+)"/.exec(disposition);
+  triggerDownload(blob, match ? match[1] : fallbackName);
+}
+
+export function exportToExcel(filename: string, headers: string[], rows: ExportCell[][]): Promise<void> {
+  return requestFile("/api/v1/export/excel", { filename, headers, rows }, `${filename}.xlsx`);
+}
+
+export function exportToPdf(filename: string, title: string, headers: string[], rows: ExportCell[][]): Promise<void> {
+  return requestFile("/api/v1/export/pdf", { filename, title, headers, rows }, `${filename}.pdf`);
 }

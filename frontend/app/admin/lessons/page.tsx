@@ -1,0 +1,231 @@
+'use client';
+
+import { useEffect, useState } from 'react';
+import { Card } from '@/components/ui/Card';
+import { LessonPracticalPanel } from '@/components/ui/PracticalContextPanel';
+import { Input } from '@/components/ui/Input';
+import { Button } from '@/components/ui/Button';
+import { LessonAnalyticsPanel } from '@/components/ui/LessonAnalyticsPanel';
+import { ChevronDown, ChevronUp, FileText, CheckCircle2 } from 'lucide-react';
+
+interface Lesson {
+  id: string;
+  school: string;
+  className: string;
+  lessonDate: string;
+  period: string;
+  status: string;
+  learningArea: string;
+  specificSkill: string;
+  approach: string;
+  present: number;
+  absent: number;
+  computerAccess: string;
+  overallProgress: string;
+  achievement: string;
+  challenges: string;
+  challengeDetails: string;
+  supportRequired: string;
+  reference: string;
+  teacher: string;
+  createdAt: string;
+  reviewed: boolean;
+  reviewedByName: string;
+}
+
+interface AttendanceEntry {
+  studentId: string;
+  systemId: string | null;
+  name: string;
+  present: boolean;
+}
+
+function Detail({ label, value }: { label: string; value: string | number }) {
+  return (
+    <div>
+      <p className="text-xs text-text-muted">{label}</p>
+      <p className="text-sm text-primary-900">{value || '—'}</p>
+    </div>
+  );
+}
+
+export default function AdminLessonsPage() {
+  const [lessons, setLessons] = useState<Lesson[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [query, setQuery] = useState('');
+  const [expanded, setExpanded] = useState<string | null>(null);
+  const [attendance, setAttendance] = useState<Record<string, AttendanceEntry[]>>({});
+  const [marking, setMarking] = useState<string | null>(null);
+
+  useEffect(() => {
+    fetch('/api/v1/admin/lessons')
+      .then((r) => r.json())
+      .then((d) => {
+        if (d.success) setLessons(d.data);
+        else setError(d.message || 'Failed to load');
+      })
+      .catch(() => setError('Network error'))
+      .finally(() => setLoading(false));
+  }, []);
+
+  function toggleExpand(id: string) {
+    const next = expanded === id ? null : id;
+    setExpanded(next);
+    if (next && !attendance[next]) {
+      fetch(`/api/v1/admin/lessons/${next}/attendance`)
+        .then((r) => r.json())
+        .then((d) => {
+          if (d.success) setAttendance((prev) => ({ ...prev, [next]: d.data }));
+        })
+        .catch(() => {});
+    }
+  }
+
+  async function markReviewed(id: string) {
+    setMarking(id);
+    try {
+      const res = await fetch(`/api/v1/admin/lessons/${id}/review`, { method: 'PATCH' });
+      const json = await res.json();
+      if (json.success) {
+        setLessons((prev) => prev.map((l) => (l.id === id ? { ...l, reviewed: true } : l)));
+      }
+    } finally {
+      setMarking(null);
+    }
+  }
+
+  const filtered = lessons.filter((l) => {
+    if (!query.trim()) return true;
+    const q = query.toLowerCase();
+    return [l.reference, l.school, l.className, l.teacher, l.learningArea]
+      .some((f) => f.toLowerCase().includes(q));
+  });
+
+  return (
+    <div className="w-full">
+      <h1 className="text-2xl font-bold text-primary-900 mb-1">Lesson Submissions</h1>
+      <p className="text-sm text-text-muted mb-6">All daily ICT lesson records submitted by teachers.</p>
+
+      <div className="mb-6">
+        <LessonAnalyticsPanel endpoint="/api/v1/admin/system/lessons/analytics" breakdownLabel="School" />
+      </div>
+
+      <div className="mb-4 max-w-sm">
+        <Input
+          placeholder="Search by reference, school, class, teacher…"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+        />
+      </div>
+
+      {loading ? (
+        <p className="text-text-muted">Loading…</p>
+      ) : error ? (
+        <p className="text-error">{error}</p>
+      ) : filtered.length === 0 ? (
+        <Card className="p-8 text-center">
+          <FileText className="w-10 h-10 text-text-faint mx-auto mb-3" />
+          <p className="text-text-muted">No lesson submissions found.</p>
+        </Card>
+      ) : (
+        <div className="space-y-3">
+          {filtered.map((l) => {
+            const open = expanded === l.id;
+            return (
+              <Card key={l.id} className="p-0 overflow-hidden">
+                <button
+                  onClick={() => toggleExpand(l.id)}
+                  className="w-full flex items-center justify-between gap-3 p-4 text-left hover:bg-bg-muted transition-colors"
+                >
+                  <div className="min-w-0">
+                    <p className="font-semibold text-primary-900 truncate flex items-center gap-2">
+                      {l.reference || 'No reference'} • {l.className}
+                      {l.reviewed && (
+                        <span className="inline-flex items-center gap-1 text-xs font-normal text-[#1F7A54]">
+                          <CheckCircle2 className="w-3.5 h-3.5" /> Reviewed
+                        </span>
+                      )}
+                    </p>
+                    <p className="text-xs text-text-muted truncate">
+                      {l.school} • {l.learningArea} • {l.teacher} • {l.lessonDate}
+                    </p>
+                  </div>
+                  {open ? <ChevronUp className="w-5 h-5 text-text-muted shrink-0" /> : <ChevronDown className="w-5 h-5 text-text-muted shrink-0" />}
+                </button>
+                {open && (
+                  <div className="border-t border-border p-4 grid grid-cols-2 sm:grid-cols-3 gap-4">
+                    <Detail label="Reference" value={l.reference} />
+                    <Detail label="Teacher" value={l.teacher} />
+                    <Detail label="Date" value={l.lessonDate} />
+                    <Detail label="School" value={l.school} />
+                    <Detail label="Class" value={l.className} />
+                    <Detail label="Session" value={l.period} />
+                    <Detail label="Status" value={l.status} />
+                    <Detail label="Learning area" value={l.learningArea} />
+                    <Detail label="Specific skill" value={l.specificSkill} />
+                    <Detail label="Approach" value={l.approach} />
+                    <Detail label="Present" value={l.present} />
+                    <Detail label="Absent" value={l.absent} />
+                    <Detail label="Computer access" value={l.computerAccess} />
+                    <Detail label="Overall progress" value={l.overallProgress} />
+                    <Detail label="Challenges" value={l.challenges} />
+                    <div className="col-span-2 sm:col-span-3">
+                      <Detail label="Achievement" value={l.achievement} />
+                    </div>
+                    {l.challengeDetails && (
+                      <div className="col-span-2 sm:col-span-3">
+                        <Detail label="Challenge details" value={l.challengeDetails} />
+                      </div>
+                    )}
+                    {l.supportRequired && (
+                      <div className="col-span-2 sm:col-span-3">
+                        <Detail label="Support required" value={l.supportRequired} />
+                      </div>
+                    )}
+
+                    {/* Only renders when the lesson was a lab lesson. An
+                        ordinary lesson shows nothing, which is the truth rather
+                        than an empty chart that reads as a bad result. */}
+                    <div className="col-span-2 sm:col-span-3">
+                      <LessonPracticalPanel lessonReportId={l.id} />
+                    </div>
+
+                    {attendance[l.id] && attendance[l.id].length > 0 && (
+                      <div className="col-span-2 sm:col-span-3">
+                        <p className="text-xs text-text-muted mb-1.5">Attendance</p>
+                        <div className="flex flex-wrap gap-1.5">
+                          {attendance[l.id].map((a) => (
+                            <span
+                              key={a.studentId}
+                              className={`text-xs px-2 py-1 rounded-lg ${
+                                a.present ? 'bg-[#F5F5F5] text-[#0489AE]' : 'bg-[#C0392B]/10 text-[#C0392B]'
+                              }`}
+                            >
+                              {a.name}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    <div className="col-span-2 sm:col-span-3 flex justify-end">
+                      <Button
+                        variant="outline"
+                        disabled={l.reviewed || marking === l.id}
+                        onClick={() => void markReviewed(l.id)}
+                      >
+                        <CheckCircle2 className="w-4 h-4 mr-1.5" aria-hidden />
+                        {l.reviewed ? `Reviewed${l.reviewedByName ? ` by ${l.reviewedByName}` : ''}` : marking === l.id ? 'Marking…' : 'Mark reviewed'}
+                      </Button>
+                    </div>
+                  </div>
+                )}
+              </Card>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}

@@ -28,11 +28,14 @@ export const meResponseSchema = {
   200: {
     type: "object",
     properties: {
+      id: { type: "string" },
+      name: { type: ["string", "null"] },
       email: { type: ["string", "null"] },
       phoneNumber: { type: ["string", "null"] },
       systemId: { type: ["string", "null"] },
       role: { type: "string" },
       schoolId: { type: ["string", "null"] },
+      mustChangePassword: { type: "boolean" },
     },
   },
   404: {

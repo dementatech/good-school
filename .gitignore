@@ -1,0 +1,10 @@
+# Reference material only — the ported source app. Not part of this repo.
+inspo/
+
+# Local env
+.env
+.env.local
+.env.*.local
+
+# OS / editor
+.DS_Store

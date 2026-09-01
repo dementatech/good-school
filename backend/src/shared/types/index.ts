@@ -1,4 +1,10 @@
-export type Role = "student" | "teacher" | "parent" | "admin" | "super_admin";
+export type Role =
+  | "student"
+  | "teacher"
+  | "parent"
+  | "school_admin"
+  | "admin"
+  | "super_admin";
 
 export interface JwtPayload {
   user_id: string;
