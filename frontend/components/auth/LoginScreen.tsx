@@ -75,6 +75,9 @@ export const LoginScreen: React.FC<{
         } else {
           setError('Signed in, but your profile could not be loaded. Try again.');
         }
+      } else if (data.error === 'school_suspended') {
+        // Not the user's fault — don't count it toward the lockout.
+        setError("Your school's account is suspended. Contact your administrator.");
       } else {
         const newAttempts = attempts + 1;
         setAttempts(newAttempts);
@@ -83,7 +86,11 @@ export const LoginScreen: React.FC<{
           setLockoutTimer(900);
           setError('Account locked for 15 minutes due to multiple failed attempts.');
         } else {
-          setError(data.error || data.message || `Invalid credentials. ${3 - newAttempts} attempts remaining.`);
+          const friendly =
+            data.error === 'invalid_credentials' || data.error === 'invalid_identifier_format'
+              ? `Invalid credentials. ${3 - newAttempts} attempts remaining.`
+              : data.error || data.message;
+          setError(friendly || `Invalid credentials. ${3 - newAttempts} attempts remaining.`);
         }
       }
     } catch {

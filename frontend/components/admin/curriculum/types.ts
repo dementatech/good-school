@@ -60,22 +60,4 @@ export const PHASE_RANGE: Record<Phase, string> = {
   A_LEVEL: 'Senior 5–6',
 };
 
-/** Shared response-envelope unwrap + toast on failure. */
-export async function submitJson(
-  url: string,
-  method: 'POST' | 'PATCH' | 'DELETE',
-  body?: unknown,
-): Promise<{ ok: boolean; error?: string; data?: unknown }> {
-  try {
-    const res = await fetch(url, {
-      method,
-      headers: body ? { 'Content-Type': 'application/json' } : undefined,
-      body: body ? JSON.stringify(body) : undefined,
-    });
-    const json = await res.json().catch(() => ({}));
-    if (res.ok && json.success !== false) return { ok: true, data: json.data };
-    return { ok: false, error: json.error ?? json.message ?? 'Request failed.' };
-  } catch {
-    return { ok: false, error: 'Network error.' };
-  }
-}
+export { submitJson } from '@/lib/api/envelope';

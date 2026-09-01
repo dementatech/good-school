@@ -46,7 +46,7 @@ export const FEATURES: Record<FeatureKey, FeatureMeta> = {
   behaviour: { label: "Behaviour Rating", ready: false },
   forms: { label: "Data Forms", ready: false },
   academic_structure: { label: "Academic Structure", ready: true },
-  schools: { label: "Schools", ready: false },
+  schools: { label: "Schools", ready: true },
   accounts: { label: "Account Management", ready: false },
   student_portal: { label: "Student Portal", ready: false },
   parent_portal: { label: "Parent Portal", ready: false },

@@ -32,7 +32,7 @@ function mapRow(row: SchoolAdminRow): SchoolAdminRecord {
 export async function listSchoolAdmins(schoolId: string): Promise<SchoolAdminRecord[]> {
   const result = await pool.query<SchoolAdminRow>(
     `select id, email, phone_number, created_at from users
-     where school_id = $1 and role = 'admin'
+     where school_id = $1 and role = 'school_admin'
      order by created_at`,
     [schoolId],
   );
@@ -53,7 +53,7 @@ export async function createSchoolAdmin(
 
   const result = await pool.query<SchoolAdminRow>(
     `insert into users (school_id, email, phone_number, password_hash, role)
-     values ($1, $2, $3, $4, 'admin')
+     values ($1, $2, $3, $4, 'school_admin')
      returning id, email, phone_number, created_at`,
     [schoolId, email, input.phoneNumber ?? null, passwordHash],
   );
@@ -63,7 +63,7 @@ export async function createSchoolAdmin(
 
 export async function deleteSchoolAdmin(schoolId: string, userId: string): Promise<boolean> {
   const result = await pool.query(
-    `delete from users where id = $1 and school_id = $2 and role = 'admin'`,
+    `delete from users where id = $1 and school_id = $2 and role = 'school_admin'`,
     [userId, schoolId],
   );
   return (result.rowCount ?? 0) > 0;
