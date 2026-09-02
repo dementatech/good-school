@@ -5,6 +5,14 @@ name: Deploy to droplet
 # `push: { branches: [main] }` trigger here if you decide you want auto-deploy.
 on:
   workflow_dispatch:
+    inputs:
+      mode:
+        description: What to run on the droplet
+        type: choice
+        default: check
+        options:
+          - check    # verify SSH + path + docker + DB reachability, then stop
+          - deploy   # pull, back up, build, migrate, restart
 
 concurrency:
   group: deploy-production
@@ -14,8 +22,8 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
-      - name: SSH in and run the deploy script
-        uses: appleboy/ssh-action@v1.2.0
+      - name: SSH in and run the deploy script (${{ inputs.mode }})
+        uses: appleboy/ssh-action@v1.2.2
         with:
           host: ${{ secrets.DROPLET_HOST }}
           username: ${{ secrets.DROPLET_USER }}
@@ -24,4 +32,9 @@ jobs:
           command_timeout: 20m
           script: |
             cd ${{ secrets.DROPLET_REPO_PATH || '~/projects/school-os' }}
-            ./deploy/deploy.sh
+            git fetch origin main && git merge --ff-only origin/main
+            if [ "${{ inputs.mode }}" = "check" ]; then
+              ./deploy/deploy.sh --check --no-pull
+            else
+              ./deploy/deploy.sh --no-pull
+            fi

@@ -5,6 +5,7 @@
 #   ./deploy/deploy.sh              # pull, back up, rebuild + restart the backend
 #   ./deploy/deploy.sh --no-pull    # skip git pull (deploy what's already checked out)
 #   ./deploy/deploy.sh --no-backup  # skip the pre-deploy DB dump (not recommended)
+#   ./deploy/deploy.sh --check      # verify plumbing only (git remote, docker, DB) — no build, no restart
 #
 # The frontend is on Vercel and redeploys itself on push — this script only
 # touches the backend + Postgres + Redis stack.
@@ -20,16 +21,40 @@ HEALTH_URL="${HEALTH_URL:-http://127.0.0.1:4000/api/v1/auth/me}"   # 401 = alive
 
 DO_PULL=1
 DO_BACKUP=1
+CHECK_ONLY=0
 for arg in "$@"; do
   case "$arg" in
     --no-pull)   DO_PULL=0 ;;
     --no-backup) DO_BACKUP=0 ;;
+    --check)     CHECK_ONLY=1 ;;
     *) echo "unknown flag: $arg" >&2; exit 2 ;;
   esac
 done
 
 say() { printf '\n\033[1;34m▸ %s\033[0m\n' "$*"; }
 die() { printf '\n\033[1;31m✗ %s\033[0m\n' "$*" >&2; exit 1; }
+
+# ── --check: prove the pipeline can reach everything, then stop ───────────────
+if [ "$CHECK_ONLY" = 1 ]; then
+  say "connectivity check (no build, no restart)"
+  echo "  host        : $(hostname)"
+  echo "  repo        : $(pwd)"
+  echo "  checked out : $(git rev-parse --short HEAD) — $(git log -1 --pretty=%s)"
+  git ls-remote --exit-code origin HEAD >/dev/null 2>&1 \
+    && echo "  git remote  : reachable" || die "git remote unreachable (SSH/token/network)"
+  docker version --format '{{.Server.Version}}' >/dev/null 2>&1 \
+    && echo "  docker      : $(docker version --format '{{.Server.Version}}')" || die "docker not usable by this user"
+  $COMPOSE config -q && echo "  compose file: valid" || die "docker-compose.prod.yml invalid"
+  [ -f .env ] && echo "  .env        : present" || echo "  .env        : MISSING (needed on first real deploy)"
+  $COMPOSE up -d postgres >/dev/null 2>&1 || true
+  for _ in $(seq 1 15); do $COMPOSE exec -T postgres pg_isready -U postgres >/dev/null 2>&1 && break; sleep 1; done
+  $COMPOSE exec -T postgres pg_isready -U postgres >/dev/null 2>&1 \
+    && echo "  postgres    : accepting connections" || die "postgres not reachable"
+  N=$($COMPOSE exec -T postgres psql -U postgres -d school_os -tAc "select count(*) from pgmigrations" 2>/dev/null || echo "?")
+  echo "  migrations  : $N applied"
+  say "check passed — a real deploy would run now"
+  exit 0
+fi
 
 # ── 1. Pull ──────────────────────────────────────────────────────────────────
 if [ "$DO_PULL" = 1 ]; then
