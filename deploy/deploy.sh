@@ -6,6 +6,7 @@
 #   ./deploy/deploy.sh --no-pull    # skip git pull (deploy what's already checked out)
 #   ./deploy/deploy.sh --no-backup  # skip the pre-deploy DB dump (not recommended)
 #   ./deploy/deploy.sh --check      # verify plumbing only (git remote, docker, DB) — no build, no restart
+#   ./deploy/deploy.sh --status     # report what's deployed vs origin/main — no changes at all
 #
 # The frontend is on Vercel and redeploys itself on push — this script only
 # touches the backend + Postgres + Redis stack.
@@ -22,17 +23,50 @@ HEALTH_URL="${HEALTH_URL:-http://127.0.0.1:4000/api/v1/auth/me}"   # 401 = alive
 DO_PULL=1
 DO_BACKUP=1
 CHECK_ONLY=0
+STATUS_ONLY=0
 for arg in "$@"; do
   case "$arg" in
     --no-pull)   DO_PULL=0 ;;
     --no-backup) DO_BACKUP=0 ;;
     --check)     CHECK_ONLY=1 ;;
+    --status)    STATUS_ONLY=1 ;;
     *) echo "unknown flag: $arg" >&2; exit 2 ;;
   esac
 done
 
 say() { printf '\n\033[1;34m▸ %s\033[0m\n' "$*"; }
 die() { printf '\n\033[1;31m✗ %s\033[0m\n' "$*" >&2; exit 1; }
+mark() { [ "$1" = 1 ] && printf '\033[1;32m✓\033[0m' || printf '\033[1;31m✗\033[0m'; }
+
+# ── --status: is this droplet in sync with origin/main? read-only ────────────
+if [ "$STATUS_ONLY" = 1 ]; then
+  say "deployment status"
+  git fetch -q origin main
+  LOCAL=$(git rev-parse HEAD); REMOTE=$(git rev-parse origin/main)
+  IN_SYNC=$([ "$LOCAL" = "$REMOTE" ] && echo 1 || echo 0)
+  printf '  %s code checked out : %s — %s\n' "$(mark "$IN_SYNC")" "$(git rev-parse --short HEAD)" "$(git log -1 --pretty=%s)"
+  [ "$IN_SYNC" = 1 ] || printf '      origin/main is at : %s — %s  (run ./deploy/deploy.sh)\n' "$(git rev-parse --short origin/main)" "$(git log -1 --pretty=%s origin/main)"
+
+  RUNNING=$($COMPOSE ps --status running --services 2>/dev/null | tr '\n' ' ')
+  BE_UP=$(echo "$RUNNING" | grep -qw backend && echo 1 || echo 0)
+  printf '  %s backend container : %s\n' "$(mark "$BE_UP")" "${RUNNING:-none running}"
+
+  # image built after the last commit?
+  IMG=$(docker inspect --format '{{.Created}}' "$($COMPOSE images -q backend 2>/dev/null | head -1)" 2>/dev/null | cut -c1-19 || true)
+  [ -n "$IMG" ] && printf '      backend image built: %s   (last commit: %s)\n' "$IMG" "$(git log -1 --format=%cd --date=format:'%Y-%m-%dT%H:%M:%S')"
+
+  CODE=$(curl -s -o /dev/null -w '%{http_code}' "$HEALTH_URL" || echo "-")
+  printf '  %s backend responding : HTTP %s on :4000\n' "$([ "$CODE" = 401 ] || [ "$CODE" = 200 ] && echo 1 || echo 0)" "$CODE"
+
+  if [ "$BE_UP" = 1 ]; then
+    LAST=$($COMPOSE exec -T postgres psql -U postgres -d school_os -tAc \
+      "select string_agg(name, E'\n      ' order by run_on desc) from (select name, run_on from pgmigrations order by run_on desc limit 3) t" 2>/dev/null || echo "?")
+    printf '    latest migrations  : %s\n' "$LAST"
+  fi
+  echo
+  echo "  Frontend is on Vercel — check its dashboard shows a Ready deploy for $(git rev-parse --short origin/main)."
+  exit 0
+fi
 
 # ── --check: prove the pipeline can reach everything, then stop ───────────────
 if [ "$CHECK_ONLY" = 1 ]; then

@@ -16,8 +16,12 @@ restarts it, and waits for it to answer. The backend container runs
 `npm run migrate:up` before it boots, so migrations apply as part of the
 restart.
 
-Flags: `--no-pull`, `--no-backup`, `--check` (verify plumbing — git remote,
-docker, DB reachability — then stop; no build, no restart).
+Flags:
+- `--no-pull`, `--no-backup`
+- `--check` — verify plumbing (git remote, docker, DB), then stop
+- `--status` — report **what's deployed vs `origin/main`** (commit, container,
+  image age, health, latest migrations). Read-only, changes nothing. This is
+  the "is prod in sync?" command.
 
 If the backend never becomes healthy the script prints the last 60 log lines and
 the exact `psql` restore command for the backup it just took.
