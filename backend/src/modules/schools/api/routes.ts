@@ -37,6 +37,15 @@ import {
 const SUPER = requireAuth(["super_admin"]);
 
 export async function schoolsRoutes(fastify: FastifyInstance) {
+  // The signed-in user's own school (read-only) — any role that belongs to a
+  // school. Registered before `/:id` so "me" is not read as an id.
+  fastify.get("/me", { preHandler: requireAuth() }, async (request, reply) => {
+    const schoolId = request.authUser?.school_id;
+    if (!schoolId) return reply.status(404).send(fail("no_school"));
+    const school = await getSchool(schoolId);
+    return school ? ok(school) : reply.status(404).send(fail("not_found"));
+  });
+
   // ═══ School tenants — super_admin only ═══════════════════════════════════
 
   fastify.get("/", { preHandler: SUPER }, async () => ok(await listSchools()));
