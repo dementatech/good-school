@@ -51,12 +51,19 @@ if [ "$STATUS_ONLY" = 1 ]; then
   BE_UP=$(echo "$RUNNING" | grep -qw backend && echo 1 || echo 0)
   printf '  %s backend container : %s\n' "$(mark "$BE_UP")" "${RUNNING:-none running}"
 
-  # image built after the last commit?
-  IMG=$(docker inspect --format '{{.Created}}' "$($COMPOSE images -q backend 2>/dev/null | head -1)" 2>/dev/null | cut -c1-19 || true)
-  [ -n "$IMG" ] && printf '      backend image built: %s   (last commit: %s)\n' "$IMG" "$(git log -1 --format=%cd --date=format:'%Y-%m-%dT%H:%M:%S')"
+  # Is the running image older than the latest commit? (i.e. code pulled but
+  # never rebuilt — the classic "in sync but not really" state.)
+  IMG_ISO=$(docker inspect --format '{{.Created}}' "$($COMPOSE images -q backend 2>/dev/null | head -1)" 2>/dev/null || true)
+  COMMIT_EPOCH=$(git log -1 --format=%ct)
+  IMG_EPOCH=$([ -n "$IMG_ISO" ] && date -d "$IMG_ISO" +%s 2>/dev/null || echo 0)
+  IMG_FRESH=$([ "$IMG_EPOCH" -ge "$COMMIT_EPOCH" ] && echo 1 || echo 0)
+  printf '  %s backend image      : built %s   (HEAD committed %s)\n' \
+    "$(mark "$IMG_FRESH")" "${IMG_ISO:0:19}" "$(git log -1 --format=%cd --date=format:'%Y-%m-%dT%H:%M:%S')"
+  [ "$IMG_FRESH" = 1 ] || echo "      → image predates HEAD: run ./deploy/deploy.sh to rebuild"
 
   CODE=$(curl -s -o /dev/null -w '%{http_code}' "$HEALTH_URL" || echo "-")
-  printf '  %s backend responding : HTTP %s on :4000\n' "$([ "$CODE" = 401 ] || [ "$CODE" = 200 ] && echo 1 || echo 0)" "$CODE"
+  printf '  %s backend responding : HTTP %s on :4000\n' \
+    "$(mark "$([ "$CODE" = 401 ] || [ "$CODE" = 200 ] && echo 1 || echo 0)")" "$CODE"
 
   if [ "$BE_UP" = 1 ]; then
     LAST=$($COMPOSE exec -T postgres psql -U postgres -d school_os -tAc \
