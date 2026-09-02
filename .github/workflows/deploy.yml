@@ -1,0 +1,27 @@
+name: Deploy to droplet
+
+# Manual trigger only (Actions tab → "Run workflow") so a merge to main never
+# hits production on its own — the migrations can be destructive. Add a
+# `push: { branches: [main] }` trigger here if you decide you want auto-deploy.
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: SSH in and run the deploy script
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.DROPLET_HOST }}
+          username: ${{ secrets.DROPLET_USER }}
+          key: ${{ secrets.DROPLET_SSH_KEY }}
+          script_stop: true
+          command_timeout: 20m
+          script: |
+            cd ${{ secrets.DROPLET_REPO_PATH || '~/projects/school-os' }}
+            ./deploy/deploy.sh
