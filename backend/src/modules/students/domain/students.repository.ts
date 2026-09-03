@@ -1,66 +1,125 @@
 import { pool } from "../../../shared/db/index.js";
 import { generateTempPassword, hashPassword } from "../../auth/index.js";
 import { nextSystemId } from "./system-id.js";
+import {
+  createEnrollment,
+  getActiveEnrollment,
+  type EnrollmentInput,
+  type EnrollmentRecord,
+} from "./enrollments.repository.js";
+import {
+  InvalidGuardianInputError,
+  linkGuardianToStudent,
+  listGuardiansForStudent,
+  matchOrCreateGuardian,
+  type GuardianLinkInput,
+  type NewGuardianInput,
+  type StudentGuardianRecord,
+} from "./guardians.repository.js";
+
+// Identity only (see docs/design/student-data-model.md §2) — no class,
+// stream, or "current" anything on this table. "Where/when are they
+// attending" lives entirely in student_enrollment.
+export type LinStatus = "verified" | "pending" | "not_yet_issued";
+export type Gender = "male" | "female";
 
 export interface StudentRecord {
   userId: string;
   systemId: string | null;
-  fullName: string;
+  firstName: string;
+  middleName: string | null;
+  lastName: string;
   dateOfBirth: string | null;
-  className: string | null;
+  gender: Gender | null;
+  lin: string | null;
+  linStatus: LinStatus;
   email: string | null;
   phoneNumber: string | null;
-  enrolledAt: string;
   isActive: boolean;
+  createdAt: string;
+  activeEnrollment: EnrollmentRecord | null;
 }
 
-export interface StudentInput {
-  fullName: string;
+export interface StudentIdentityInput {
+  firstName: string;
+  middleName?: string | null;
+  lastName: string;
   dateOfBirth?: string | null;
-  className?: string | null;
+  gender?: Gender | null;
+  lin?: string | null;
+  linStatus?: LinStatus;
   email?: string | null;
   phoneNumber?: string | null;
+}
+
+export interface GuardianRow {
+  guardianId?: string; // attach an existing guardian by id
+  newGuardian?: NewGuardianInput; // or match-or-create from scratch
+  role: GuardianLinkInput["role"];
+  isPrimaryContact: boolean;
+  isFeeResponsible: boolean;
+  isEmergencyContact: boolean;
+}
+
+export interface CreateStudentInput extends StudentIdentityInput {
+  enrollment: EnrollmentInput;
+  guardians: GuardianRow[];
 }
 
 interface StudentRow {
   user_id: string;
   system_id: string | null;
-  full_name: string;
+  first_name: string;
+  middle_name: string | null;
+  last_name: string;
   date_of_birth: string | null;
-  class_name: string | null;
+  gender: Gender | null;
+  lin: string | null;
+  lin_status: LinStatus;
   email: string | null;
   phone_number: string | null;
-  enrolled_at: string;
   is_active: boolean;
+  created_at: string;
 }
 
 const SELECT_STUDENT = `
   select u.id as user_id, u.system_id, u.email, u.phone_number,
-         s.full_name, s.date_of_birth, s.class_name, s.enrolled_at, s.is_active
+         s.first_name, s.middle_name, s.last_name, s.date_of_birth, s.gender,
+         s.lin, s.lin_status, s.is_active, s.created_at
   from students s
   join users u on u.id = s.user_id
 `;
 
-function mapRow(row: StudentRow): StudentRecord {
+function mapRow(row: StudentRow): Omit<StudentRecord, "activeEnrollment"> {
   return {
     userId: row.user_id,
     systemId: row.system_id,
-    fullName: row.full_name,
+    firstName: row.first_name,
+    middleName: row.middle_name,
+    lastName: row.last_name,
     dateOfBirth: row.date_of_birth,
-    className: row.class_name,
+    gender: row.gender,
+    lin: row.lin,
+    linStatus: row.lin_status,
     email: row.email,
     phoneNumber: row.phone_number,
-    enrolledAt: row.enrolled_at,
     isActive: row.is_active,
+    createdAt: row.created_at,
   };
 }
 
 export async function listStudents(schoolId: string): Promise<StudentRecord[]> {
   const result = await pool.query<StudentRow>(
-    `${SELECT_STUDENT} where u.school_id = $1 order by s.full_name`,
+    `${SELECT_STUDENT} where u.school_id = $1 order by s.first_name, s.last_name`,
     [schoolId],
   );
-  return result.rows.map(mapRow);
+  const students = result.rows.map(mapRow);
+  return Promise.all(
+    students.map(async (student) => ({
+      ...student,
+      activeEnrollment: await getActiveEnrollment(schoolId, student.userId),
+    })),
+  );
 }
 
 export async function getStudent(schoolId: string, userId: string): Promise<StudentRecord | null> {
@@ -68,13 +127,26 @@ export async function getStudent(schoolId: string, userId: string): Promise<Stud
     `${SELECT_STUDENT} where u.school_id = $1 and u.id = $2`,
     [schoolId, userId],
   );
-  return result.rows[0] ? mapRow(result.rows[0]) : null;
+  if (!result.rows[0]) return null;
+  return {
+    ...mapRow(result.rows[0]),
+    activeEnrollment: await getActiveEnrollment(schoolId, userId),
+  };
 }
 
+// One transaction: identity + users row + first enrollment + guardian(s),
+// per docs/design/parent-guardian-module.md §2.5 ("one transaction ...
+// even though guardian and student remain two separate tables underneath").
+// A student is required to have at least one guardian and an enrollment at
+// creation time — a student without either isn't meaningfully enrolled yet.
 export async function createStudent(
   schoolId: string,
-  input: StudentInput,
-): Promise<{ student: StudentRecord; tempPassword: string }> {
+  input: CreateStudentInput,
+): Promise<{
+  student: StudentRecord;
+  tempPassword: string;
+  guardians: (StudentGuardianRecord & { matchedExisting: boolean })[];
+}> {
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
@@ -91,25 +163,61 @@ export async function createStudent(
     );
     const userId = userResult.rows[0].id;
 
-    const studentResult = await client.query<StudentRow>(
-      `insert into students (user_id, full_name, date_of_birth, class_name)
-       values ($1, $2, $3, $4)
-       returning user_id, $5::text as system_id, $6::text as email, $7::text as phone_number,
-                 full_name, date_of_birth, class_name, enrolled_at, is_active`,
+    await client.query(
+      `insert into students
+         (user_id, first_name, middle_name, last_name, date_of_birth, gender, lin, lin_status)
+       values ($1, $2, $3, $4, $5, $6, $7, $8)`,
       [
         userId,
-        input.fullName,
+        input.firstName,
+        input.middleName ?? null,
+        input.lastName,
         input.dateOfBirth ?? null,
-        input.className ?? null,
-        systemId,
-        input.email ?? null,
-        input.phoneNumber ?? null,
+        input.gender ?? null,
+        input.lin ?? null,
+        input.linStatus ?? "not_yet_issued",
       ],
     );
 
+    const activeEnrollment = await createEnrollment(client, schoolId, userId, input.enrollment);
+
+    // Tracks match-or-create outcome per row so the frontend can surface
+    // "linked to existing guardian" vs. "new guardian created" after submit
+    // (docs/design/parent-guardian-module.md §2 calls for this visibility).
+    const guardianMatches: { guardianId: string; matched: boolean }[] = [];
+    for (const g of input.guardians) {
+      let guardianId = g.guardianId;
+      let matched = true;
+      if (!guardianId) {
+        if (!g.newGuardian) {
+          throw new InvalidGuardianInputError("Each guardian needs either guardianId or newGuardian");
+        }
+        const result = await matchOrCreateGuardian(client, g.newGuardian, "intake");
+        guardianId = result.guardian.id;
+        matched = result.matched;
+      }
+      guardianMatches.push({ guardianId, matched });
+      await linkGuardianToStudent(client, userId, guardianId, {
+        role: g.role,
+        isPrimaryContact: g.isPrimaryContact,
+        isFeeResponsible: g.isFeeResponsible,
+        isEmergencyContact: g.isEmergencyContact,
+      });
+    }
+
     await client.query("COMMIT");
 
-    return { student: mapRow(studentResult.rows[0]), tempPassword };
+    const identityRow = await client.query<StudentRow>(`${SELECT_STUDENT} where u.id = $1`, [
+      userId,
+    ]);
+    const guardians = await listGuardiansForStudent(userId);
+    const matchedById = new Map(guardianMatches.map((m) => [m.guardianId, m.matched]));
+
+    return {
+      student: { ...mapRow(identityRow.rows[0]), activeEnrollment },
+      tempPassword,
+      guardians: guardians.map((g) => ({ ...g, matchedExisting: matchedById.get(g.id) ?? false })),
+    };
   } catch (err) {
     await client.query("ROLLBACK");
     throw err;
@@ -121,7 +229,7 @@ export async function createStudent(
 export async function updateStudent(
   schoolId: string,
   userId: string,
-  input: StudentInput,
+  input: StudentIdentityInput,
 ): Promise<StudentRecord | null> {
   const client = await pool.connect();
   try {
@@ -143,9 +251,19 @@ export async function updateStudent(
 
     await client.query(
       `update students
-       set full_name = $1, date_of_birth = $2, class_name = $3, updated_at = now()
-       where user_id = $4`,
-      [input.fullName, input.dateOfBirth ?? null, input.className ?? null, userId],
+       set first_name = $1, middle_name = $2, last_name = $3, date_of_birth = $4,
+           gender = $5, lin = $6, lin_status = $7, updated_at = now()
+       where user_id = $8`,
+      [
+        input.firstName,
+        input.middleName ?? null,
+        input.lastName,
+        input.dateOfBirth ?? null,
+        input.gender ?? null,
+        input.lin ?? null,
+        input.linStatus ?? "not_yet_issued",
+        userId,
+      ],
     );
 
     await client.query("COMMIT");
@@ -235,3 +353,39 @@ export async function resetStudentPasswords(
     client.release();
   }
 }
+
+export type { EnrollmentRecord, StudentGuardianRecord };
+export {
+  createEnrollment,
+  withdrawEnrollment,
+  listEnrollments,
+} from "./enrollments.repository.js";
+export {
+  searchGuardians,
+  listGuardiansForStudent,
+  linkGuardianToStudent,
+  unlinkGuardianFromStudent,
+  matchOrCreateGuardian,
+  InvalidGuardianInputError,
+} from "./guardians.repository.js";
+export { UnknownReferenceError, ActiveEnrollmentExistsError } from "./enrollments.repository.js";
+
+export type { StudentSubjectRecord } from "./student-subjects.repository.js";
+export {
+  addStudentSubject,
+  listStudentSubjects,
+  setStudentSubjectStatus,
+  CompulsorySubjectError,
+  SubjectNotOfferedError,
+} from "./student-subjects.repository.js";
+
+export type { StudentCombinationRecord } from "./student-combinations.repository.js";
+export {
+  getCurrentCombination,
+  listCombinationHistory,
+  selectCombination,
+  reassignCombination,
+  InvalidSubsidiaryError,
+  ActiveCombinationExistsError,
+  UnknownReferenceError as UnknownCombinationReferenceError,
+} from "./student-combinations.repository.js";

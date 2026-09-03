@@ -1,6 +1,7 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { requireAuth } from "../../auth/index.js";
 import { ok, fail } from "../../../shared/envelope.js";
+import { pool } from "../../../shared/db/index.js";
 import {
   createCurriculum,
   createStage,
@@ -65,14 +66,33 @@ import {
   type StreamInput,
 } from "../domain/streams.repository.js";
 import {
+  AlwaysOnSubjectError,
+  LastReligiousSubjectError,
+  listSubjectOfferings,
+  removeSubjectOffering,
+  setSubjectOffering,
+  UnknownSubjectError,
+  type SubjectOfferingInput,
+} from "../domain/subject-offering.repository.js";
+import {
+  createSchoolCombination,
+  deleteSchoolCombination,
+  InvalidSchoolCombinationError,
+  listSchoolCombinations,
+  updateSchoolCombination,
+  type SchoolCombinationInput,
+} from "../domain/school-combinations.repository.js";
+import {
   academicYearBodySchema,
   classBodySchema,
   combinationBodySchema,
   curriculumBodySchema,
+  schoolCombinationBodySchema,
   schoolCurriculumBodySchema,
   stageBodySchema,
   streamBodySchema,
   subjectBodySchema,
+  subjectOfferingBodySchema,
   termBodySchema,
 } from "./schemas.js";
 
@@ -178,12 +198,36 @@ export async function academicStructureRoutes(fastify: FastifyInstance) {
       ok(await listSubjects(request.query.curriculumId, request.query.phase)),
   );
 
+  // Schools can add their own subjects too (docs/design/subject-selection-module.md
+  // — a school running a genuinely non-standard subject), not just super_admin's
+  // platform catalog — but never as 'core' (the 7 nationally-mandated subjects
+  // are a platform truth, not a school's to declare) or 'general' (General
+  // Paper's category means "always-on for every A-Level student" — a school
+  // minting a second one would silently double up that rule), and only into a
+  // curriculum their own school actually runs.
   fastify.post<{ Querystring: { curriculumId?: string }; Body: SubjectInput }>(
     "/subjects",
-    { preHandler: REFERENCE, schema: { body: subjectBodySchema } },
+    { preHandler: SCHOOL, schema: { body: subjectBodySchema } },
     async (request, reply) => {
       if (!request.query.curriculumId) {
         return reply.status(400).send(fail("curriculumId query param required"));
+      }
+      const isSuperAdmin = request.authUser!.role === "super_admin";
+      if (!isSuperAdmin) {
+        if (request.body.category === "core" || request.body.category === "general") {
+          return reply
+            .status(400)
+            .send(fail("Only a platform admin can add a core or General Paper subject."));
+        }
+        const schoolId = schoolOf(request, reply);
+        if (!schoolId) return;
+        const runsCurriculum = await pool.query(
+          `select 1 from school_curriculum where school_id = $1 and curriculum_id = $2`,
+          [schoolId, request.query.curriculumId],
+        );
+        if (runsCurriculum.rowCount === 0) {
+          return reply.status(400).send(fail("Your school doesn't run that curriculum."));
+        }
       }
       try {
         const subject = await createSubject(request.query.curriculumId, request.body);
@@ -498,6 +542,123 @@ export async function academicStructureRoutes(fastify: FastifyInstance) {
       const schoolId = schoolOf(request, reply);
       if (!schoolId) return;
       const deleted = await deleteStream(schoolId, request.params.id);
+      return deleted ? ok(null) : reply.status(404).send(fail("not_found"));
+    },
+  );
+
+  // -- Subject offering (O-Level: which catalog subjects this school runs,
+  // and which are compulsory here) — school_admin/admin, per academic year.
+  fastify.get<{ Querystring: { academicYearId?: string; phase?: "O_LEVEL" | "A_LEVEL" } }>(
+    "/subject-offerings",
+    { preHandler: SCHOOL },
+    async (request, reply) => {
+      const schoolId = schoolOf(request, reply);
+      if (!schoolId) return;
+      if (!request.query.academicYearId) {
+        return reply.status(400).send(fail("academicYearId query param required"));
+      }
+      return ok(
+        await listSubjectOfferings(schoolId, request.query.academicYearId, request.query.phase),
+      );
+    },
+  );
+
+  fastify.post<{ Querystring: { academicYearId?: string }; Body: SubjectOfferingInput }>(
+    "/subject-offerings",
+    { preHandler: SCHOOL, schema: { body: subjectOfferingBodySchema } },
+    async (request, reply) => {
+      const schoolId = schoolOf(request, reply);
+      if (!schoolId) return;
+      if (!request.query.academicYearId) {
+        return reply.status(400).send(fail("academicYearId query param required"));
+      }
+      try {
+        const offering = await setSubjectOffering(schoolId, request.query.academicYearId, request.body);
+        return reply.status(201).send(ok(offering));
+      } catch (err) {
+        if (
+          err instanceof UnknownSubjectError ||
+          err instanceof AlwaysOnSubjectError ||
+          err instanceof LastReligiousSubjectError
+        ) {
+          return reply.status(400).send(fail(err.message));
+        }
+        throw err;
+      }
+    },
+  );
+
+  fastify.delete<{ Params: { id: string } }>(
+    "/subject-offerings/:id",
+    { preHandler: SCHOOL },
+    async (request, reply) => {
+      const schoolId = schoolOf(request, reply);
+      if (!schoolId) return;
+      const deleted = await removeSubjectOffering(schoolId, request.params.id);
+      return deleted ? ok(null) : reply.status(404).send(fail("not_found"));
+    },
+  );
+
+  // -- School combinations (A-Level: adopted-from-catalog or custom) --------
+  fastify.get<{ Querystring: { academicYearId?: string } }>(
+    "/school-combinations",
+    { preHandler: SCHOOL },
+    async (request, reply) => {
+      const schoolId = schoolOf(request, reply);
+      if (!schoolId) return;
+      if (!request.query.academicYearId) {
+        return reply.status(400).send(fail("academicYearId query param required"));
+      }
+      return ok(await listSchoolCombinations(schoolId, request.query.academicYearId));
+    },
+  );
+
+  fastify.post<{ Querystring: { academicYearId?: string }; Body: SchoolCombinationInput }>(
+    "/school-combinations",
+    { preHandler: SCHOOL, schema: { body: schoolCombinationBodySchema } },
+    async (request, reply) => {
+      const schoolId = schoolOf(request, reply);
+      if (!schoolId) return;
+      if (!request.query.academicYearId) {
+        return reply.status(400).send(fail("academicYearId query param required"));
+      }
+      try {
+        const combo = await createSchoolCombination(schoolId, request.query.academicYearId, request.body);
+        return reply.status(201).send(ok(combo));
+      } catch (err) {
+        if (err instanceof InvalidSchoolCombinationError) {
+          return reply.status(400).send(fail(err.message));
+        }
+        throw err;
+      }
+    },
+  );
+
+  fastify.patch<{ Params: { id: string }; Body: SchoolCombinationInput }>(
+    "/school-combinations/:id",
+    { preHandler: SCHOOL, schema: { body: schoolCombinationBodySchema } },
+    async (request, reply) => {
+      const schoolId = schoolOf(request, reply);
+      if (!schoolId) return;
+      try {
+        const updated = await updateSchoolCombination(schoolId, request.params.id, request.body);
+        return updated ? ok(updated) : reply.status(404).send(fail("not_found"));
+      } catch (err) {
+        if (err instanceof InvalidSchoolCombinationError) {
+          return reply.status(400).send(fail(err.message));
+        }
+        throw err;
+      }
+    },
+  );
+
+  fastify.delete<{ Params: { id: string } }>(
+    "/school-combinations/:id",
+    { preHandler: SCHOOL },
+    async (request, reply) => {
+      const schoolId = schoolOf(request, reply);
+      if (!schoolId) return;
+      const deleted = await deleteSchoolCombination(schoolId, request.params.id);
       return deleted ? ok(null) : reply.status(404).send(fail("not_found"));
     },
   );

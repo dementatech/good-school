@@ -1,6 +1,6 @@
 # Uganda Secondary School System — Domain Foundations
 
-A reference for modeling academic years, classes, subjects, grading, and enrollment in a Ugandan secondary school SaaS.
+A reference for modeling academic years, classes, subjects, grading, and student enrollment in a Ugandan secondary school SaaS. For how *schools themselves* get onboarded as tenants, see the companion document `school-onboarding-enrollment.md`.
 
 ---
 
@@ -50,7 +50,7 @@ enrollment (id, student_id, stream_id, term_id, status)
 ```
 
 ### 3.2 O-Level subjects (S1–S4)
-- Students take a **minimum of 8, maximum of 10 subjects**, grouped roughly into English Language, Humanities (History, Geography, Literature), Languages, Mathematics, Sciences (Physics, Chemistry, Biology), and vocational/other subjects (Business Studies, Computer Studies, Agriculture, Art, Music, etc.).
+- Students take a **minimum of 8, maximum of 9 subjects under the current NLSC curriculum** (verified against NCDC reporting — see `subject-selection-module.md` §2 for the full compulsory/religion/vocational breakdown), grouped roughly into English Language, Humanities (History, Geography), Sciences (Physics, Chemistry, Biology), Religious Education, and vocational/practical electives (Agriculture, ICT, Art & Design, Performing Arts, Nutrition & Food Technology, Literature in English, foreign languages). *(The older pre-2020 system allowed up to 10 subjects, with only the best 8 counted toward the UCE aggregate — relevant if you need to support legacy-cohort or transferring-student records.)*
 - Since 2020, O-Level runs under the **New Lower Secondary Curriculum (NLSC)** — competence-based, with continuous assessment built in throughout, not just a terminal exam.
 - Model subjects as a catalog independent of class/term, then join per-student per-term:
 ```
@@ -166,6 +166,8 @@ This keeps your core `student`, `result`, and `enrollment` tables completely cur
 ---
 
 ## 7. Quick summary of core entities
+
+*(See the companion document `school-onboarding-enrollment.md` for how a school itself gets provisioned/verified before any of this applies.)*
 
 ```
 school → school_curriculum (a school may run more than one curriculum)

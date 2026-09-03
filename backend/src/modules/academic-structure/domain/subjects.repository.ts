@@ -10,6 +10,8 @@ export type SubjectCategory =
   | "humanity"
   | "vocational"
   | "core"
+  | "religion"
+  | "special"
   | "general";
 
 /** Which secondary phase a subject belongs to — matches `curriculum_stage.phase`. */

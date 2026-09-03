@@ -38,7 +38,16 @@ export const subjectBodySchema = {
     name: { type: "string", minLength: 1 },
     category: {
       type: "string",
-      enum: ["language", "science", "humanity", "vocational", "core", "general"],
+      enum: [
+        "language",
+        "science",
+        "humanity",
+        "vocational",
+        "core",
+        "religion",
+        "special",
+        "general",
+      ],
     },
     isExaminable: { type: "boolean" },
     isActive: { type: "boolean" },
@@ -131,6 +140,42 @@ export const streamBodySchema = {
     streamTeacherId: { type: ["string", "null"] },
     capacity: { type: ["integer", "null"], minimum: 1 },
     isActive: { type: "boolean" },
+  },
+  additionalProperties: false,
+} as const;
+
+export const subjectOfferingBodySchema = {
+  type: "object",
+  required: ["subjectId", "isOffered", "isCompulsory"],
+  properties: {
+    subjectId: { type: "string" },
+    isOffered: { type: "boolean" },
+    isCompulsory: { type: "boolean" },
+  },
+  additionalProperties: false,
+} as const;
+
+const schoolCombinationMemberSchema = {
+  type: "object",
+  required: ["subjectId", "role"],
+  properties: {
+    subjectId: { type: "string" },
+    role: { type: "string", enum: ["principal", "subsidiary", "compulsory"] },
+  },
+  additionalProperties: false,
+} as const;
+
+export const schoolCombinationBodySchema = {
+  type: "object",
+  required: [],
+  properties: {
+    catalogCombinationId: { type: ["string", "null"] },
+    code: { type: ["string", "null"] },
+    name: { type: "string", minLength: 1 },
+    description: { type: ["string", "null"] },
+    isOffered: { type: "boolean" },
+    minClassSize: { type: ["integer", "null"], minimum: 1 },
+    subjects: { type: "array", items: schoolCombinationMemberSchema },
   },
   additionalProperties: false,
 } as const;

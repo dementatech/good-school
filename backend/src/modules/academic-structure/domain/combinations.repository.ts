@@ -116,13 +116,22 @@ async function replaceMembers(
   // combination that quietly loses a subject is exactly the kind of surprise
   // this check exists to prevent.
   const ids = members.map((m) => m.subjectId);
-  const found = await client.query<{ id: string }>(
-    `select id from subject where curriculum_id = $1 and id = any($2::uuid[])`,
+  const found = await client.query<{ id: string; category: string }>(
+    `select id, category from subject where curriculum_id = $1 and id = any($2::uuid[])`,
     [curriculumId, ids],
   );
   if (found.rowCount !== new Set(ids).size) {
     throw new InvalidCombinationError(
       "One or more chosen subjects don't exist in this curriculum. Add the subject first, then build the combination.",
+    );
+  }
+  // General Paper (category 'general') is implicit for every A-Level student
+  // the moment they're placed into ANY combination — it's never a per-
+  // combination choice, so it never appears as a member. See
+  // docs/design/subject-selection-module.md §3.1.
+  if (found.rows.some((r) => r.category === "general")) {
+    throw new InvalidCombinationError(
+      "General Paper is automatic for every A-Level student — don't add it to a combination.",
     );
   }
 
@@ -137,17 +146,33 @@ async function replaceMembers(
   }
 }
 
-/** PCM from Physics/Chemistry/Maths — first letter of each principal's code. */
+/**
+ * "PCM/ICT" — first letter of each principal's code, in the order they were
+ * picked (Physics, Chemistry, Maths -> "PCM"; there's no single "correct"
+ * alphabetical order for these, so we don't impose one), then the
+ * subsidiary's own code after a slash. A combination with no subsidiary
+ * member is just "PCM". General Paper never appears — it's excluded from
+ * `members` entirely by `replaceMembers` above.
+ */
 async function deriveCode(
   client: import("pg").PoolClient,
   members: CombinationMember[],
 ): Promise<string> {
   const principalIds = members.filter((m) => m.role === "principal").map((m) => m.subjectId);
-  const { rows } = await client.query<{ code: string }>(
-    `select code from subject where id = any($1::uuid[]) order by code`,
-    [principalIds],
+  const subsidiaryIds = members.filter((m) => m.role === "subsidiary").map((m) => m.subjectId);
+  const { rows } = await client.query<{ id: string; code: string }>(
+    `select id, code from subject where id = any($1::uuid[])`,
+    [[...principalIds, ...subsidiaryIds]],
   );
-  return rows.map((r) => r.code[0]?.toUpperCase() ?? "").join("") || "COMB";
+  const byId = new Map(rows.map((r) => [r.id, r.code]));
+
+  const principalLetters = principalIds
+    .map((id) => byId.get(id)?.[0]?.toUpperCase() ?? "")
+    .join("");
+  const subsidiaryCode = subsidiaryIds.map((id) => byId.get(id) ?? "").join("+");
+
+  const code = principalLetters || "COMB";
+  return subsidiaryCode ? `${code}/${subsidiaryCode}` : code;
 }
 
 export async function createCombination(

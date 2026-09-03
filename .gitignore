@@ -6,5 +6,8 @@ inspo/
 .env.local
 .env.*.local
 
+# Local test credentials — never commit real or dev logins
+test.txt
+
 # OS / editor
 .DS_Store

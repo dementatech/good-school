@@ -23,6 +23,7 @@ export type FeatureKey =
   | "forms"
   | "academic_structure"
   | "schools"
+  | "students"
   | "accounts"
   | "student_portal"
   | "parent_portal"
@@ -47,6 +48,9 @@ export const FEATURES: Record<FeatureKey, FeatureMeta> = {
   forms: { label: "Data Forms", ready: false },
   academic_structure: { label: "Academic Structure", ready: true },
   schools: { label: "Schools", ready: true },
+  // School-scoped student enrollment (Phase 3A). Distinct from `accounts`
+  // (staff/parent/super-admin login management) — that's still unwired.
+  students: { label: "Students", ready: true },
   accounts: { label: "Account Management", ready: false },
   student_portal: { label: "Student Portal", ready: false },
   parent_portal: { label: "Parent Portal", ready: false },
@@ -68,7 +72,11 @@ const ROUTE_FEATURES: { prefix: string; key: FeatureKey }[] = [
   { prefix: "/admin/system/academic-years", key: "academic_structure" },
   { prefix: "/admin/system/schools", key: "schools" },
   { prefix: "/admin/system/staff", key: "accounts" },
+  // Cross-tenant student roster (super_admin, school picker) is deferred —
+  // the students API is school-scoped only as of Phase 3A. school-admin's
+  // own roster below is the real, live page.
   { prefix: "/admin/system/students", key: "accounts" },
+  // Reconciliation/merge screen — deferred to Phase 3B.
   { prefix: "/admin/system/parents", key: "accounts" },
   { prefix: "/admin/system/super-admins", key: "accounts" },
   { prefix: "/admin/system/library", key: "library" },
@@ -90,11 +98,12 @@ const ROUTE_FEATURES: { prefix: string; key: FeatureKey }[] = [
   { prefix: "/staff/forms", key: "forms" },
 
   { prefix: "/school-admin/classes", key: "academic_structure" },
+  { prefix: "/school-admin/subjects", key: "academic_structure" },
   { prefix: "/school-admin/academic-years", key: "academic_structure" },
   { prefix: "/school-admin/terms", key: "academic_structure" },
   { prefix: "/school-admin/school", key: "schools" },
   { prefix: "/school-admin/staff", key: "accounts" },
-  { prefix: "/school-admin/students", key: "accounts" },
+  { prefix: "/school-admin/students", key: "students" },
   { prefix: "/school-admin/attendance", key: "attendance" },
   { prefix: "/school-admin/lessons", key: "lessons" },
   { prefix: "/school-admin/assessments", key: "assessments" },
