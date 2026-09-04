@@ -2,6 +2,12 @@ import { pool } from "../../../shared/db/index.js";
 import { generateTempPassword, hashPassword } from "../../auth/index.js";
 import { nextSystemId } from "../../../shared/system-id.js";
 import {
+  deleteUploadedFile,
+  saveUploadedImage,
+  uploadedFileUrl,
+  UnsupportedImageTypeError,
+} from "../../../shared/uploads.js";
+import {
   createAssignment,
   getActiveAssignmentAtSchool,
   type StaffAssignmentInput,
@@ -19,6 +25,10 @@ import { addSpecialization, listSpecializations } from "./staff-specialization.r
 export type TmisStatus = "registered" | "pending" | "not_registered";
 export type Gender = "male" | "female";
 export type EmploymentType = "government" | "private" | "pta" | "volunteer";
+// A different axis from EmploymentType (who pays vs. time commitment) — kept
+// as its own nullable column rather than folded into employment_type, so
+// neither classification is lost. See the migration's comment.
+export type EmploymentBasis = "fulltime" | "parttime" | "practicing";
 
 export interface StaffRecord {
   userId: string;
@@ -32,6 +42,8 @@ export interface StaffRecord {
   gender: Gender | null;
   qualification: string | null;
   employmentType: EmploymentType;
+  employmentBasis: EmploymentBasis | null;
+  photoUrl: string | null;
   email: string | null;
   phoneNumber: string | null;
   isActive: boolean;
@@ -50,6 +62,7 @@ export interface StaffIdentityInput {
   tmisStatus?: TmisStatus;
   qualification?: string | null;
   employmentType: EmploymentType;
+  employmentBasis?: EmploymentBasis | null;
   email?: string | null;
   phoneNumber?: string | null;
 }
@@ -71,6 +84,8 @@ interface StaffRow {
   gender: Gender | null;
   qualification: string | null;
   employment_type: EmploymentType;
+  employment_basis: EmploymentBasis | null;
+  photo_path: string | null;
   email: string | null;
   phone_number: string | null;
   is_active: boolean;
@@ -80,8 +95,8 @@ interface StaffRow {
 const SELECT_STAFF = `
   select u.id as user_id, u.system_id, u.email, u.phone_number,
          s.tmis_number, s.tmis_status, s.first_name, s.middle_name, s.last_name,
-         s.date_of_birth, s.gender, s.qualification, s.employment_type,
-         s.is_active, s.created_at
+         s.date_of_birth, s.gender, s.qualification, s.employment_type, s.employment_basis,
+         s.photo_path, s.is_active, s.created_at
   from staff s
   join users u on u.id = s.user_id
 `;
@@ -99,6 +114,8 @@ function mapRow(row: StaffRow): Omit<StaffRecord, "activeAssignment" | "speciali
     gender: row.gender,
     qualification: row.qualification,
     employmentType: row.employment_type,
+    employmentBasis: row.employment_basis,
+    photoUrl: row.photo_path ? uploadedFileUrl(row.photo_path) : null,
     email: row.email,
     phoneNumber: row.phone_number,
     isActive: row.is_active,
@@ -167,8 +184,8 @@ export async function createStaff(
     await client.query(
       `insert into staff
          (user_id, tmis_number, tmis_status, first_name, middle_name, last_name,
-          date_of_birth, gender, qualification, employment_type)
-       values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+          date_of_birth, gender, qualification, employment_type, employment_basis)
+       values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
       [
         userId,
         input.tmisNumber ?? null,
@@ -180,6 +197,7 @@ export async function createStaff(
         input.gender ?? null,
         input.qualification ?? null,
         input.employmentType,
+        input.employmentBasis ?? null,
       ],
     );
 
@@ -231,8 +249,9 @@ export async function updateStaff(
     await client.query(
       `update staff
        set tmis_number = $1, tmis_status = $2, first_name = $3, middle_name = $4, last_name = $5,
-           date_of_birth = $6, gender = $7, qualification = $8, employment_type = $9, updated_at = now()
-       where user_id = $10`,
+           date_of_birth = $6, gender = $7, qualification = $8, employment_type = $9,
+           employment_basis = $10, updated_at = now()
+       where user_id = $11`,
       [
         input.tmisNumber ?? null,
         input.tmisStatus ?? "not_registered",
@@ -243,6 +262,7 @@ export async function updateStaff(
         input.gender ?? null,
         input.qualification ?? null,
         input.employmentType,
+        input.employmentBasis ?? null,
         userId,
       ],
     );
@@ -333,6 +353,39 @@ export async function resetStaffPasswords(
   }
 }
 
+// Uploads a new photo (replacing and deleting any prior one) or, given
+// `null`, clears it back to the default initials avatar the frontend renders
+// when photoUrl is null.
+export async function setStaffPhoto(
+  schoolId: string,
+  userId: string,
+  file: { mimeType: string; data: Buffer } | null,
+): Promise<StaffRecord | null> {
+  const existing = await pool.query<{ photo_path: string | null }>(
+    `select s.photo_path from staff s
+     join users u on u.id = s.user_id
+     where u.id = $1 and u.school_id = $2 and u.role = 'teacher'`,
+    [userId, schoolId],
+  );
+  if (!existing.rows[0]) return null;
+  const priorPath = existing.rows[0].photo_path;
+
+  let newPath: string | null = null;
+  if (file) {
+    newPath = await saveUploadedImage("staff", file.mimeType, file.data);
+  }
+
+  await pool.query(`update staff set photo_path = $1, updated_at = now() where user_id = $2`, [
+    newPath,
+    userId,
+  ]);
+
+  if (priorPath) await deleteUploadedFile(priorPath);
+
+  return getStaff(schoolId, userId);
+}
+
+export { UnsupportedImageTypeError };
 export { addSpecialization };
 export type { StaffAssignmentRecord, StaffAssignmentInput };
 export {

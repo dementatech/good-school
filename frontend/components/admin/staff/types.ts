@@ -4,6 +4,8 @@
 export type Gender = 'male' | 'female';
 export type TmisStatus = 'registered' | 'pending' | 'not_registered';
 export type EmploymentType = 'government' | 'private' | 'pta' | 'volunteer';
+// A different axis from EmploymentType (who pays vs. time commitment).
+export type EmploymentBasis = 'fulltime' | 'parttime' | 'practicing';
 export type StaffRole = 'teacher' | 'head_teacher' | 'deputy' | 'bursar' | 'admin' | 'support';
 export type AssignmentEntryType = 'new_hire' | 'transfer' | 'government_posting';
 export type AssignmentExitType = 'transfer' | 'resignation' | 'retirement' | 'government_reposting';
@@ -43,6 +45,8 @@ export interface Staff {
   gender: Gender | null;
   qualification: string | null;
   employmentType: EmploymentType;
+  employmentBasis: EmploymentBasis | null;
+  photoUrl: string | null;
   email: string | null;
   phoneNumber: string | null;
   isActive: boolean;
@@ -107,6 +111,26 @@ export const EMPLOYMENT_TYPE_LABEL: Record<EmploymentType, string> = {
   pta: 'PTA',
   volunteer: 'Volunteer',
 };
+export const EMPLOYMENT_BASES: readonly EmploymentBasis[] = ['fulltime', 'parttime', 'practicing'];
+export const EMPLOYMENT_BASIS_LABEL: Record<EmploymentBasis, string> = {
+  fulltime: 'Full-time',
+  parttime: 'Part-time',
+  practicing: 'Practicing (on teaching practice / not yet certified)',
+};
+// A controlled list rather than free text (matches every other "pick from
+// known values, don't invent one" field in this system) — covers the
+// qualification levels actually relevant to Ugandan secondary teaching
+// staff. "Other" stays free text for the genuine outlier.
+export const QUALIFICATIONS = [
+  'Grade III Teaching Certificate',
+  'Grade V Teaching Certificate',
+  'Diploma in Education',
+  "Bachelor's Degree (Education)",
+  "Bachelor's Degree + PGDE",
+  "Master's Degree",
+  'PhD',
+  'Other',
+] as const;
 export const STAFF_ROLES: readonly StaffRole[] = [
   'teacher',
   'head_teacher',

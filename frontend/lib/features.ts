@@ -25,6 +25,7 @@ export type FeatureKey =
   | "schools"
   | "students"
   | "staff"
+  | "organization"
   | "accounts"
   | "student_portal"
   | "parent_portal"
@@ -58,6 +59,10 @@ export const FEATURES: Record<FeatureKey, FeatureMeta> = {
   // /admin/system/staff — still unwired, and a separate concern from the
   // school_admin's own staff roster below (same split as `students`/`accounts`).
   staff: { label: "Staff", ready: true },
+  // Departments + the position/staff_position org chart (docs/design/
+  // departments-module.md, organization-studio.md) — the Organisation
+  // Studio route.
+  organization: { label: "Organisation Studio", ready: true },
   accounts: { label: "Account Management", ready: false },
   student_portal: { label: "Student Portal", ready: false },
   parent_portal: { label: "Parent Portal", ready: false },
@@ -110,6 +115,7 @@ const ROUTE_FEATURES: { prefix: string; key: FeatureKey }[] = [
   { prefix: "/school-admin/terms", key: "academic_structure" },
   { prefix: "/school-admin/school", key: "schools" },
   { prefix: "/school-admin/staff", key: "staff" },
+  { prefix: "/school-admin/organisation-studio", key: "organization" },
   { prefix: "/school-admin/students", key: "students" },
   { prefix: "/school-admin/attendance", key: "attendance" },
   { prefix: "/school-admin/lessons", key: "lessons" },

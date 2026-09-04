@@ -29,6 +29,8 @@ services:
       COOKIE_SECRET: ${COOKIE_SECRET}
       COOKIE_SECURE: "true"
       PORT: 4000
+    volumes:
+      - backend-uploads:/app/uploads
     ports:
       - "127.0.0.1:4000:4000"
     depends_on:
@@ -39,3 +41,4 @@ services:
 
 volumes:
   postgres-data:
+  backend-uploads:

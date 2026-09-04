@@ -9,23 +9,39 @@ import { useToast } from '@/components/ui/ToastProvider';
 import { fetchList, submitJson } from '@/lib/api/envelope';
 import type { CatalogSubject } from '@/components/admin/subjects/types';
 import {
+  EMPLOYMENT_BASIS_LABEL,
+  EMPLOYMENT_BASES,
   EMPLOYMENT_TYPE_LABEL,
   EMPLOYMENT_TYPES,
   ENTRY_TYPE_LABEL,
   ENTRY_TYPES,
   GENDERS,
+  QUALIFICATIONS,
   STAFF_ROLE_LABEL,
   STAFF_ROLES,
   TMIS_STATUS_LABEL,
   TMIS_STATUSES,
   type AcademicYear,
   type AssignmentEntryType,
+  type EmploymentBasis,
   type EmploymentType,
   type Gender,
   type Staff,
   type StaffRole,
   type TmisStatus,
 } from './types';
+
+/** Which class levels this person teaches — purely a UI filter on the
+ * specialization picker below, not a stored field: the real, class-specific
+ * "what do they actually teach" fact lives in subject_teacher_assignment
+ * (assigned later, per subject, from the Subjects & Combinations page). */
+type TeachingLevel = 'O_LEVEL' | 'A_LEVEL' | 'both';
+
+const TEACHING_LEVEL_LABEL: Record<TeachingLevel, string> = {
+  O_LEVEL: 'O-Level only',
+  A_LEVEL: 'A-Level only',
+  both: 'Both O-Level and A-Level',
+};
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
@@ -45,12 +61,19 @@ type IdentityState = {
   tmisNumber: string;
   tmisStatus: TmisStatus;
   qualification: string;
+  qualificationOther: string;
   employmentType: EmploymentType;
+  employmentBasis: EmploymentBasis | '';
   email: string;
   phoneNumber: string;
 };
 
+// A qualification on file that isn't one of the dropdown's known values is
+// itself the "Other" choice, with its actual text preserved rather than
+// discarded — this only happens editing an existing record created before
+// the dropdown existed, or one where "Other" was picked.
 function initialIdentity(s?: Staff): IdentityState {
+  const knownQualification = s?.qualification && QUALIFICATIONS.includes(s.qualification as (typeof QUALIFICATIONS)[number]);
   return {
     firstName: s?.firstName ?? '',
     middleName: s?.middleName ?? '',
@@ -59,8 +82,10 @@ function initialIdentity(s?: Staff): IdentityState {
     gender: s?.gender ?? '',
     tmisNumber: s?.tmisNumber ?? '',
     tmisStatus: s?.tmisStatus ?? 'not_registered',
-    qualification: s?.qualification ?? '',
+    qualification: s?.qualification ? (knownQualification ? s.qualification : 'Other') : '',
+    qualificationOther: s?.qualification && !knownQualification ? s.qualification : '',
     employmentType: s?.employmentType ?? 'government',
+    employmentBasis: s?.employmentBasis ?? '',
     email: s?.email ?? '',
     phoneNumber: s?.phoneNumber ?? '',
   };
@@ -95,7 +120,11 @@ export function StaffFormModal({
   const [entryType, setEntryType] = useState<AssignmentEntryType>('new_hire');
 
   // Specializations — which subjects this person is qualified to teach
-  // (§3). Optional at intake; can also be set later from the staff detail.
+  // (§3), NOT which specific classes they actually teach right now (that's
+  // subject_teacher_assignment, set later per class/stream from the
+  // Subjects & Combinations page). Optional at intake; can also be changed
+  // later from the staff detail view.
+  const [teachingLevel, setTeachingLevel] = useState<TeachingLevel>('O_LEVEL');
   const [subjects, setSubjects] = useState<CatalogSubject[]>([]);
   const [specializationIds, setSpecializationIds] = useState<string[]>(
     () => staff?.specializations.map((s) => s.subjectId) ?? [],
@@ -128,6 +157,8 @@ export function StaffFormModal({
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     const trim = (v: string) => v.trim() || null;
+    const qualification =
+      identity.qualification === 'Other' ? trim(identity.qualificationOther) : trim(identity.qualification);
 
     if (isEdit) {
       setSaving(true);
@@ -139,8 +170,9 @@ export function StaffFormModal({
         gender: identity.gender || null,
         tmisNumber: trim(identity.tmisNumber),
         tmisStatus: identity.tmisStatus,
-        qualification: trim(identity.qualification),
+        qualification,
         employmentType: identity.employmentType,
+        employmentBasis: identity.employmentBasis || null,
         email: trim(identity.email),
         phoneNumber: trim(identity.phoneNumber),
       });
@@ -169,8 +201,9 @@ export function StaffFormModal({
       gender: identity.gender || null,
       tmisNumber: trim(identity.tmisNumber),
       tmisStatus: identity.tmisStatus,
-      qualification: trim(identity.qualification),
+      qualification,
       employmentType: identity.employmentType,
+      employmentBasis: identity.employmentBasis || null,
       email: trim(identity.email),
       phoneNumber: trim(identity.phoneNumber),
       assignment: { academicYearId, role, entryDate, entryType },
@@ -219,12 +252,32 @@ export function StaffFormModal({
             />
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <Input label="Qualification" value={identity.qualification} onChange={(e) => set('qualification', e.target.value)} placeholder="e.g. Bachelor of Education" />
+            <Select
+              label="Qualification"
+              value={identity.qualification}
+              onChange={(e) => set('qualification', e.target.value)}
+              options={[{ value: '', label: '—' }, ...QUALIFICATIONS.map((q) => ({ value: q, label: q }))]}
+            />
+            {identity.qualification === 'Other' && (
+              <Input
+                label="Specify qualification"
+                value={identity.qualificationOther}
+                onChange={(e) => set('qualificationOther', e.target.value)}
+              />
+            )}
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <Select
               label="Employment type"
               value={identity.employmentType}
               onChange={(e) => set('employmentType', e.target.value as EmploymentType)}
               options={EMPLOYMENT_TYPES.map((t) => ({ value: t, label: EMPLOYMENT_TYPE_LABEL[t] }))}
+            />
+            <Select
+              label="Employment basis"
+              value={identity.employmentBasis}
+              onChange={(e) => set('employmentBasis', e.target.value as EmploymentBasis | '')}
+              options={[{ value: '', label: '—' }, ...EMPLOYMENT_BASES.map((b) => ({ value: b, label: EMPLOYMENT_BASIS_LABEL[b] }))]}
             />
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -263,25 +316,53 @@ export function StaffFormModal({
 
             <Section title="Subject specializations (optional)">
               <p className="text-xs text-text-muted -mt-1">
-                Which subjects this person is qualified to teach — used to suggest them when allocating
-                a subject to a teacher. Can be changed later.
+                Which subjects this person is <em>qualified</em> to teach — a hint for the candidate list
+                when allocating a subject to a teacher later, not an assignment itself. It doesn&apos;t
+                put them in front of any class; which specific classes they actually teach (e.g. Biology
+                in only S2 and S4) is set separately, per class/stream, from the Subjects &amp;
+                Combinations page — and can be changed any time regardless of what&apos;s ticked here.
               </p>
-              <div className="flex flex-wrap gap-x-4 gap-y-2 max-h-48 overflow-y-auto pr-1">
-                {subjects.map((s) => (
-                  <label key={s.id} className="flex items-center gap-2 text-sm text-[#12333F]">
-                    <input
-                      type="checkbox"
-                      checked={specializationIds.includes(s.id)}
-                      onChange={() => toggleSpecialization(s.id)}
-                      className="rounded border-[#E5E5E5]"
-                    />
-                    {s.name}
-                  </label>
-                ))}
-                {subjects.length === 0 && (
-                  <span className="text-xs text-text-faint">No subjects in the catalog yet.</span>
-                )}
-              </div>
+              <Select
+                label="Teaches which level(s)?"
+                value={teachingLevel}
+                onChange={(e) => setTeachingLevel(e.target.value as TeachingLevel)}
+                options={(['O_LEVEL', 'A_LEVEL', 'both'] as const).map((l) => ({
+                  value: l,
+                  label: TEACHING_LEVEL_LABEL[l],
+                }))}
+              />
+              {(['O_LEVEL', 'A_LEVEL'] as const)
+                .filter((phase) => teachingLevel === 'both' || teachingLevel === phase)
+                .map((phase) => {
+                  const phaseSubjects = subjects.filter((s) => s.phase === phase);
+                  return (
+                    <div key={phase} className="space-y-1.5">
+                      {teachingLevel === 'both' && (
+                        <h4 className="text-xs font-medium text-text-faint">
+                          {phase === 'O_LEVEL' ? 'O-Level' : 'A-Level'}
+                        </h4>
+                      )}
+                      <div className="flex flex-wrap gap-x-4 gap-y-2 max-h-40 overflow-y-auto pr-1">
+                        {phaseSubjects.map((s) => (
+                          <label key={s.id} className="flex items-center gap-2 text-sm text-[#12333F]">
+                            <input
+                              type="checkbox"
+                              checked={specializationIds.includes(s.id)}
+                              onChange={() => toggleSpecialization(s.id)}
+                              className="rounded border-[#E5E5E5]"
+                            />
+                            {s.name}
+                          </label>
+                        ))}
+                        {phaseSubjects.length === 0 && (
+                          <span className="text-xs text-text-faint">
+                            No {phase === 'O_LEVEL' ? 'O-Level' : 'A-Level'} subjects in the catalog yet.
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
             </Section>
           </>
         )}

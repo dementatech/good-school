@@ -13,6 +13,7 @@ import { fetchList, submitJson } from '@/lib/api/envelope';
 import { Eye, KeyRound, Pencil, Plus, RotateCcw, UserX } from 'lucide-react';
 import { StaffFormModal } from '@/components/admin/staff/StaffFormModal';
 import { StaffDetailModal } from '@/components/admin/staff/StaffDetailModal';
+import { StaffAvatar } from '@/components/admin/staff/StaffAvatar';
 import { STAFF_ROLE_LABEL, staffFullName, type Staff } from '@/components/admin/staff/types';
 
 function ResetPasswordModal({ staff, onClose }: { staff: Staff; onClose: () => void }) {
@@ -92,10 +93,13 @@ export default function SchoolAdminStaffPage() {
       header: 'Staff member',
       value: (s) => staffFullName(s),
       render: (s) => (
-        <span className="flex flex-wrap items-center gap-1.5">
-          <span className="font-medium">{staffFullName(s)}</span>
-          {s.systemId && <Badge variant="muted">{s.systemId}</Badge>}
-          {!s.isActive && <Badge variant="muted">Inactive</Badge>}
+        <span className="flex items-center gap-2.5">
+          <StaffAvatar photoUrl={s.photoUrl} name={staffFullName(s)} />
+          <span className="flex flex-wrap items-center gap-1.5 min-w-0">
+            <span className="font-medium truncate">{staffFullName(s)}</span>
+            {s.systemId && <Badge variant="muted">{s.systemId}</Badge>}
+            {!s.isActive && <Badge variant="muted">Inactive</Badge>}
+          </span>
         </span>
       ),
     },

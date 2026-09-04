@@ -18,7 +18,9 @@ import {
   removeSpecialization,
   resetStaffPasswords,
   restoreStaff,
+  setStaffPhoto,
   updateStaff,
+  UnsupportedImageTypeError,
   type CreateStaffInput,
   type StaffAssignmentInput,
   type StaffIdentityInput,
@@ -159,6 +161,35 @@ export async function staffRoutes(fastify: FastifyInstance) {
       return ok(await resetStaffPasswords(schoolId, request.body.userIds));
     },
   );
+
+  // Multipart upload — @fastify/multipart is registered globally in
+  // server.ts. A staff record with no photo shows an initials avatar
+  // instead; this is how that gets replaced with a real one.
+  fastify.post<{ Params: { id: string } }>("/:id/photo", { preHandler: ADMIN }, async (request, reply) => {
+    const schoolId = schoolOf(request, reply);
+    if (!schoolId) return;
+    const uploaded = await request.file();
+    if (!uploaded) return reply.status(400).send(fail("No file uploaded"));
+    const data = await uploaded.toBuffer();
+    try {
+      const staff = await setStaffPhoto(schoolId, request.params.id, {
+        mimeType: uploaded.mimetype,
+        data,
+      });
+      return staff ? ok(staff) : reply.status(404).send(fail("not_found"));
+    } catch (err) {
+      if (err instanceof UnsupportedImageTypeError) return reply.status(400).send(fail(err.message));
+      throw err;
+    }
+  });
+
+  // Clears back to the default initials avatar.
+  fastify.delete<{ Params: { id: string } }>("/:id/photo", { preHandler: ADMIN }, async (request, reply) => {
+    const schoolId = schoolOf(request, reply);
+    if (!schoolId) return;
+    const staff = await setStaffPhoto(schoolId, request.params.id, null);
+    return staff ? ok(staff) : reply.status(404).send(fail("not_found"));
+  });
 
   // ── School assignment history ───────────────────────────────────────────
 

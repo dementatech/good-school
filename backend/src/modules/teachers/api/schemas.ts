@@ -12,6 +12,7 @@ const identityFields = {
   tmisStatus: { type: "string", enum: ["registered", "pending", "not_registered"] },
   qualification: { type: ["string", "null"] },
   employmentType: { type: "string", enum: ["government", "private", "pta", "volunteer"] },
+  employmentBasis: { type: ["string", "null"], enum: ["fulltime", "parttime", "practicing", null] },
   email: { type: ["string", "null"] },
   phoneNumber: { type: ["string", "null"] },
 };

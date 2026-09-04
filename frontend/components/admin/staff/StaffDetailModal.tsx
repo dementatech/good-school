@@ -8,9 +8,12 @@ import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import { useToast } from '@/components/ui/ToastProvider';
 import { fetchList, submitJson } from '@/lib/api/envelope';
-import { Trash2 } from 'lucide-react';
+import { Camera, Trash2, X } from 'lucide-react';
 import type { CatalogSubject } from '@/components/admin/subjects/types';
+import type { Position, StaffPosition } from '@/components/admin/organization/types';
+import { StaffAvatar } from './StaffAvatar';
 import {
+  EMPLOYMENT_BASIS_LABEL,
   EMPLOYMENT_TYPE_LABEL,
   ENTRY_TYPE_LABEL,
   ENTRY_TYPES,
@@ -29,6 +32,221 @@ import {
   type StaffSpecialization,
   type SubjectTeacherAssignment,
 } from './types';
+
+function PhotoEditor({ staff, onChanged }: { staff: Staff; onChanged: () => Promise<void> | void }) {
+  const toast = useToast();
+  const [uploading, setUploading] = useState(false);
+  // Local override so the avatar updates the moment an upload succeeds,
+  // rather than waiting on the parent list's refetch to flow a new `staff`
+  // prop back down here (the modal doesn't get closed/reopened just for this).
+  const [photoUrl, setPhotoUrl] = useState(staff.photoUrl);
+
+  async function upload(file: File) {
+    setUploading(true);
+    try {
+      const form = new FormData();
+      form.append('file', file);
+      const res = await fetch(`/api/v1/staff/${staff.userId}/photo`, {
+        method: 'POST',
+        body: form,
+        credentials: 'include',
+      });
+      const json = await res.json().catch(() => ({}));
+      if (res.ok && json.success !== false) {
+        setPhotoUrl(json.data.photoUrl);
+        await onChanged();
+      } else {
+        toast.error(json.error ?? 'Could not upload photo.');
+      }
+    } catch {
+      toast.error('Network error while uploading photo.');
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  async function remove() {
+    const res = await submitJson<Staff>(`/api/v1/staff/${staff.userId}/photo`, 'DELETE');
+    if (res.ok) {
+      setPhotoUrl(null);
+      await onChanged();
+    } else {
+      toast.error(res.error!);
+    }
+  }
+
+  return (
+    <div className="flex items-center gap-4">
+      <StaffAvatar photoUrl={photoUrl} name={staffFullName(staff)} size="lg" />
+      <div className="flex flex-col gap-2">
+        <label className="inline-flex items-center gap-1.5 text-sm font-medium text-primary-700 cursor-pointer hover:underline">
+          <Camera className="w-4 h-4" aria-hidden />
+          {uploading ? 'Uploading…' : photoUrl ? 'Replace photo' : 'Add photo'}
+          <input
+            type="file"
+            accept="image/jpeg,image/png,image/webp"
+            className="hidden"
+            disabled={uploading}
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              if (file) void upload(file);
+              e.target.value = '';
+            }}
+          />
+        </label>
+        {photoUrl && (
+          <button
+            type="button"
+            onClick={() => void remove()}
+            className="inline-flex items-center gap-1.5 text-sm text-text-muted hover:text-red-600"
+          >
+            <X className="w-4 h-4" aria-hidden />
+            Remove photo
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function AssignPositionForm({ staff, positions, onDone }: { staff: Staff; positions: Position[]; onDone: () => Promise<void> | void }) {
+  const toast = useToast();
+  const [years, setYears] = useState<AcademicYear[]>([]);
+  const [academicYearId, setAcademicYearId] = useState('');
+  const [positionId, setPositionId] = useState('');
+  const [startDate, setStartDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    void (async () => {
+      const list = await fetchList<AcademicYear>('/api/v1/academic/years');
+      setYears(list);
+      const current = list.find((y) => y.isCurrent) ?? list[0];
+      if (current) setAcademicYearId(current.id);
+    })();
+  }, []);
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!positionId) {
+      toast.error('Pick a position.');
+      return;
+    }
+    setSaving(true);
+    const res = await submitJson(`/api/v1/organization/positions/${positionId}/holders`, 'POST', {
+      staffId: staff.userId,
+      academicYearId,
+      startDate,
+    });
+    setSaving(false);
+    if (res.ok) {
+      toast.success('Position assigned.');
+      await onDone();
+    } else {
+      toast.error(res.error!);
+    }
+  }
+
+  return (
+    <form onSubmit={submit} className="space-y-3 rounded-xl border border-border p-3">
+      <Select
+        label="Position"
+        value={positionId}
+        onChange={(e) => setPositionId(e.target.value)}
+        options={[
+          { value: '', label: 'Select a position…' },
+          ...positions.map((p) => ({
+            value: p.id,
+            label: p.departmentName ? `${p.title} (${p.departmentName})` : p.title,
+          })),
+        ]}
+      />
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <Select label="Academic year" value={academicYearId} onChange={(e) => setAcademicYearId(e.target.value)} options={years.map((y) => ({ value: y.id, label: y.yearName }))} />
+        <Input label="Start date" type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} required />
+      </div>
+      <Button type="submit" isLoading={saving}>
+        Assign position
+      </Button>
+    </form>
+  );
+}
+
+function PositionsPanel({ staff, onChanged }: { staff: Staff; onChanged: () => Promise<void> | void }) {
+  const toast = useToast();
+  const [staffPositions, setStaffPositions] = useState<StaffPosition[] | null>(null);
+  const [allPositions, setAllPositions] = useState<Position[]>([]);
+  const [showAssign, setShowAssign] = useState(false);
+
+  const load = async () => {
+    setStaffPositions(await fetchList<StaffPosition>(`/api/v1/organization/staff/${staff.userId}/positions`));
+    setAllPositions(await fetchList<Position>('/api/v1/organization/positions'));
+  };
+
+  useEffect(() => {
+    void (async () => {
+      await load();
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [staff.userId]);
+
+  async function end(staffPositionId: string) {
+    const endDate = new Date().toISOString().slice(0, 10);
+    const res = await submitJson(`/api/v1/organization/staff-positions/${staffPositionId}/end`, 'POST', { endDate });
+    if (res.ok) {
+      toast.success('Position ended.');
+      await load();
+      await onChanged();
+    } else {
+      toast.error(res.error!);
+    }
+  }
+
+  const active = staffPositions?.filter((p) => p.status === 'active') ?? [];
+
+  return (
+    <div className="space-y-2">
+      {staffPositions === null ? (
+        <p className="text-sm text-text-faint">Loading…</p>
+      ) : active.length === 0 ? (
+        <p className="text-sm text-text-faint">
+          No position in the org chart yet — see{' '}
+          <span className="font-medium">Organisation Studio</span> to set up departments first.
+        </p>
+      ) : (
+        <div className="space-y-1.5">
+          {active.map((p) => (
+            <div key={p.id} className="flex items-center justify-between text-sm border-t border-border pt-1.5 first:border-0 first:pt-0">
+              <span>
+                {p.title}
+                {p.departmentName ? ` — ${p.departmentName}` : ''}
+              </span>
+              <Button type="button" variant="outline" inline onClick={() => void end(p.id)}>
+                End
+              </Button>
+            </div>
+          ))}
+        </div>
+      )}
+      {allPositions.length > 0 && (
+        <Button type="button" variant="outline" onClick={() => setShowAssign((v) => !v)}>
+          Assign a position
+        </Button>
+      )}
+      {showAssign && (
+        <AssignPositionForm
+          staff={staff}
+          positions={allPositions}
+          onDone={async () => {
+            await load();
+            await onChanged();
+            setShowAssign(false);
+          }}
+        />
+      )}
+    </div>
+  );
+}
 
 function assignmentStatusVariant(status: StaffAssignment['status']): 'default' | 'accent' | 'success' | 'muted' {
   if (status === 'active') return 'success';
@@ -234,11 +452,15 @@ export function StaffDetailModal({
   return (
     <Modal open={open} onClose={onClose} title={staffFullName(staff)} size="lg">
       <div className="space-y-6">
+        <section>
+          <PhotoEditor staff={staff} onChanged={onChanged} />
+        </section>
+
         <section className="space-y-1 text-sm">
           <div className="grid grid-cols-2 gap-x-4 gap-y-1.5">
             <div><span className="text-text-faint">Staff ID</span><div className="font-medium">{staff.systemId ?? '—'}</div></div>
             <div><span className="text-text-faint">TMIS</span><div className="font-medium">{staff.tmisNumber ?? `— (${TMIS_STATUS_LABEL[staff.tmisStatus]})`}</div></div>
-            <div><span className="text-text-faint">Employment</span><div className="font-medium">{EMPLOYMENT_TYPE_LABEL[staff.employmentType]}</div></div>
+            <div><span className="text-text-faint">Employment</span><div className="font-medium">{EMPLOYMENT_TYPE_LABEL[staff.employmentType]}{staff.employmentBasis ? ` · ${EMPLOYMENT_BASIS_LABEL[staff.employmentBasis]}` : ''}</div></div>
             <div><span className="text-text-faint">Qualification</span><div className="font-medium">{staff.qualification ?? '—'}</div></div>
             <div><span className="text-text-faint">Email</span><div className="font-medium">{staff.email ?? '—'}</div></div>
             <div><span className="text-text-faint">Phone</span><div className="font-medium">{staff.phoneNumber ?? '—'}</div></div>
@@ -316,6 +538,13 @@ export function StaffDetailModal({
         <section>
           <h3 className="text-xs font-bold uppercase tracking-widest text-text-faint mb-2">Specializations</h3>
           <SpecializationsPanel staff={staff} onChanged={refresh} />
+        </section>
+
+        <section>
+          <h3 className="text-xs font-bold uppercase tracking-widest text-text-faint mb-2">
+            Department &amp; position
+          </h3>
+          <PositionsPanel staff={staff} onChanged={onChanged} />
         </section>
 
         <div className="flex gap-2 pt-1">
