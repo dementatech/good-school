@@ -41,17 +41,28 @@ export function meToUser(me: MeResponse): User {
   };
 }
 
+export async function endSession(): Promise<void> {
+  await fetch("/api/v1/auth/logout", { method: "POST", credentials: "include" }).catch(() => {});
+}
+
 export async function loadIdentity(): Promise<Identity> {
   try {
     const res = await fetch("/api/v1/auth/me", { credentials: "include" });
-    if (!res.ok) return SIGNED_OUT;
+    if (!res.ok) {
+      // A cookie can exist but fail real verification (wrong/rotated secret,
+      // expired, tampered) while `proxy.ts` — which only base64-decodes the
+      // JWT payload, unverified, for its optimistic routing — still reads a
+      // role out of it and keeps sending an unauthenticated visitor back into
+      // a protected portal. That portal's PortalGate then bounces them to
+      // /auth, proxy.ts sends them right back, forever. Clearing the cookie
+      // here (the one place every failed-session path funnels through) is
+      // what breaks that loop instead of just reporting "signed out".
+      if (res.status === 401) await endSession();
+      return SIGNED_OUT;
+    }
     const me = (await res.json()) as MeResponse;
     return { user: meToUser(me), mustChangePassword: !!me.mustChangePassword };
   } catch {
     return SIGNED_OUT;
   }
-}
-
-export async function endSession(): Promise<void> {
-  await fetch("/api/v1/auth/logout", { method: "POST", credentials: "include" }).catch(() => {});
 }
