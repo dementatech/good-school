@@ -1,8 +1,22 @@
 import type { FastifyInstance } from "fastify";
 import { login } from "../domain/login.js";
-import { findUserById } from "../domain/users.repository.js";
+import { resolveIdentifierKind } from "../domain/identifier.js";
+import { findUserById, findUsersByIdentifierForReset } from "../domain/users.repository.js";
+import {
+  consumeResetToken,
+  createResetToken,
+  invalidateUserResetTokens,
+  sendPasswordResetEmail,
+} from "../domain/password-reset.js";
 import { requireAuth } from "./verify.js";
-import { loginBodySchema, loginResponseSchema, meResponseSchema } from "./schemas.js";
+import {
+  forgotPasswordBodySchema,
+  loginBodySchema,
+  loginResponseSchema,
+  meResponseSchema,
+  messageResponseSchema,
+  resetPasswordBodySchema,
+} from "./schemas.js";
 
 const COOKIE_NAME = "school_os_token";
 
@@ -73,6 +87,62 @@ export async function authRoutes(fastify: FastifyInstance) {
       });
 
       return reply.status(200).send({ role: result.role, school_id: result.schoolId });
+    },
+  );
+
+  // Start a reset. Always answers 200 with the same message — it must not
+  // reveal whether the identifier matched an account. Delivery is by email
+  // only; a System ID / phone is accepted as the *lookup*, the link still
+  // goes to the address on file.
+  fastify.post<{ Body: { identifier: string } }>(
+    "/forgot-password",
+    { schema: { body: forgotPasswordBodySchema, response: messageResponseSchema } },
+    async (request, reply) => {
+      const { identifier } = request.body;
+      const message =
+        "If an account matches that ID or email, a reset link has been sent to the email on file.";
+
+      const kind = resolveIdentifierKind(identifier);
+      if (kind) {
+        const users = await findUsersByIdentifierForReset(kind, identifier);
+        for (const user of users) {
+          if (!user.email) {
+            fastify.log.warn(
+              { userId: user.id },
+              "password reset requested for an account with no email on file",
+            );
+            continue;
+          }
+          try {
+            await invalidateUserResetTokens(user.id);
+            const token = await createResetToken(user.id);
+            await sendPasswordResetEmail(user.email, token);
+          } catch (err) {
+            fastify.log.error({ err, userId: user.id }, "failed to send password reset email");
+          }
+        }
+      }
+
+      return reply.status(200).send({ message });
+    },
+  );
+
+  // Finish a reset. The token is single-use and expires in an hour; on
+  // success every outstanding token for that user is burned.
+  fastify.post<{ Body: { token: string; newPassword: string } }>(
+    "/reset-password",
+    { schema: { body: resetPasswordBodySchema, response: messageResponseSchema } },
+    async (request, reply) => {
+      const { token, newPassword } = request.body;
+
+      const result = await consumeResetToken(token, newPassword);
+      if (!result.ok) {
+        return reply.status(400).send({ error: "invalid_or_expired" });
+      }
+
+      return reply
+        .status(200)
+        .send({ message: "Your password has been reset. You can now sign in." });
     },
   );
 }

@@ -3,10 +3,10 @@ import { randomInt } from "node:crypto";
 import { hashPassword } from "../src/modules/auth/index.js";
 import { pool } from "../src/shared/db/index.js";
 
-// Break-glass password reset by email — same reasoning as
-// create-super-admin.ts: no email/SMS sending is set up yet, so a
-// self-service "forgot password" flow isn't buildable without picking a
-// provider first. This is the terminal-access equivalent until then.
+// Break-glass password reset by email — for when the self-service "forgot
+// password" flow (POST /api/v1/auth/forgot-password, which emails a link via
+// Resend) can't be used: no RESEND_API_KEY configured, the account has no
+// email on file, or you're locked out before email delivery is trusted.
 function parseArgs(): { email?: string; password?: string } {
   const args = process.argv.slice(2);
   const out: Record<string, string> = {};

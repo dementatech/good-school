@@ -45,6 +45,23 @@ export async function findUserByIdentifier(
   return result.rows[0] ?? null;
 }
 
+// Every account matching a "forgot password" identifier. Not school-scoped
+// (the reset form has no school context) and returns all matches — an email
+// can be reused across schools, and each such account gets its own link.
+export async function findUsersByIdentifierForReset(
+  kind: IdentifierKind,
+  identifier: string,
+): Promise<{ id: string; email: string | null }[]> {
+  const column = COLUMN_BY_KIND[kind];
+  const value = kind === "email" ? identifier.trim().toLowerCase() : identifier.trim();
+
+  const result = await pool.query<{ id: string; email: string | null }>(
+    `select id, email from users where ${column} = $1`,
+    [value],
+  );
+  return result.rows;
+}
+
 export async function findUserById(id: string): Promise<AuthUserRecord | null> {
   const result = await pool.query<AuthUserRecord>(
     `select id, school_id, system_id, email, phone_number, password_hash, role
