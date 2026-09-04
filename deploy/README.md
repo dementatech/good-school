@@ -34,7 +34,16 @@ the exact `psql` restore command for the backup it just took.
 JWT_SECRET=<openssl rand -hex 32>          # must match the Vercel project
 COOKIE_SECRET=<openssl rand -hex 32>
 POSTGRES_PASSWORD=<openssl rand -hex 32>
+
+# Password-reset emails (Resend — https://resend.com). Without RESEND_API_KEY
+# the backend logs the reset link instead of emailing it.
+RESEND_API_KEY=<from the Resend dashboard>
+RESEND_FROM=Good School <onboarding@resend.dev>   # until a domain is verified
+APP_URL=https://<the Vercel frontend domain>       # no trailing slash
 ```
+
+After editing `.env`, `./deploy/deploy.sh` picks the new values up on the next
+restart (compose reads `.env` automatically).
 
 `pg_dump` / `psql` are not on the host — always go through the container:
 
