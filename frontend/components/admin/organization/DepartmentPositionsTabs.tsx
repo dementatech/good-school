@@ -18,7 +18,27 @@ import {
   type Department,
   type Position,
   type PositionCategory,
+  type PositionHolder,
 } from './types';
+
+// One row per holder, not per position — a position with several holders
+// (co-teachers on a generic "Biology Teacher" slot, most visibly) shows each
+// of them as their own line rather than folding them into one cell, and an
+// unfilled position still gets a row (holder: null) so a vacancy is never
+// silently invisible.
+interface HolderRow {
+  key: string;
+  position: Position;
+  holder: PositionHolder | null;
+}
+
+function toHolderRows(positions: Position[]): HolderRow[] {
+  return positions.flatMap((p): HolderRow[] =>
+    p.holders.length > 0
+      ? p.holders.map((h): HolderRow => ({ key: h.staffPositionId, position: p, holder: h }))
+      : [{ key: `vacant-${p.id}`, position: p, holder: null }],
+  );
+}
 
 // One professional table per department (plus a "Leadership" table for
 // positions with no department) instead of one long tree — the tabs are
@@ -192,7 +212,6 @@ export function DepartmentPositionsTabs({
   const [assignModal, setAssignModal] = useState<Position | null>(null);
   const [seeding, setSeeding] = useState(false);
 
-  const positionsById = useMemo(() => new Map(positions.map((p) => [p.id, p])), [positions]);
   const hasLeadership = positions.some((p) => p.category === 'executive');
 
   const tabs = useMemo(() => {
@@ -211,7 +230,8 @@ export function DepartmentPositionsTabs({
   const effectiveActiveTab = tabs.some((t) => t.key === activeTab) ? activeTab : (tabs[0]?.key ?? LEADERSHIP_TAB);
 
   const currentDepartmentId = effectiveActiveTab === LEADERSHIP_TAB ? null : effectiveActiveTab;
-  const rows = positions.filter((p) => (p.departmentId ?? null) === currentDepartmentId);
+  const positionsInTab = positions.filter((p) => (p.departmentId ?? null) === currentDepartmentId);
+  const rows = toHolderRows(positionsInTab);
 
   async function seedTemplate() {
     setSeeding(true);
@@ -257,75 +277,62 @@ export function DepartmentPositionsTabs({
     }
   }
 
-  const columns: DataTableColumn<Position>[] = [
+  const columns: DataTableColumn<HolderRow>[] = [
     {
-      key: 'title',
+      key: 'holder',
+      header: 'Holder',
+      value: (r) => r.holder?.staffName ?? '',
+      render: (r) =>
+        r.holder ? (
+          r.holder.staffName
+        ) : (
+          <span className="text-text-faint italic">Vacant</span>
+        ),
+    },
+    {
+      key: 'position',
       header: 'Position',
-      value: (p) => p.title,
-      render: (p) => (
+      value: (r) => r.position.title,
+      render: (r) => (
         <span className="flex flex-wrap items-center gap-1.5">
-          <span className="font-medium">{p.title}</span>
-          {p.isAcademicRoot && (
+          <span className="font-medium">{r.position.title}</span>
+          {r.position.isAcademicRoot && (
             <Badge variant="success">
               <Crown className="w-3 h-3 mr-1 inline" aria-hidden />
               Academics lead
             </Badge>
           )}
-          {p.isUnique && p.holders.length === 0 && <span className="text-text-faint text-xs italic">Vacant</span>}
         </span>
       ),
     },
     {
       key: 'category',
       header: 'Category',
-      value: (p) => POSITION_CATEGORY_LABEL[p.category],
-      render: (p) => <Badge variant={p.category === 'executive' ? 'accent' : 'muted'}>{POSITION_CATEGORY_LABEL[p.category]}</Badge>,
+      value: (r) => POSITION_CATEGORY_LABEL[r.position.category],
+      render: (r) => (
+        <Badge variant={r.position.category === 'executive' ? 'accent' : 'muted'}>
+          {POSITION_CATEGORY_LABEL[r.position.category]}
+        </Badge>
+      ),
     },
     {
-      key: 'reportsTo',
-      header: 'Reports to',
-      value: (p) => (p.parentPositionId ? (positionsById.get(p.parentPositionId)?.title ?? '') : ''),
-      hideOnMobile: true,
-      render: (p) => {
-        const parent = p.parentPositionId ? positionsById.get(p.parentPositionId) : null;
-        return parent ? parent.title : <span className="text-text-faint">Top of the tree</span>;
-      },
-    },
-    {
-      key: 'holders',
-      header: 'Holder(s)',
-      value: (p) => p.holders.map((h) => h.staffName).join(', '),
-      render: (p) =>
-        p.holders.length === 0 ? (
-          <span className="text-text-faint">—</span>
-        ) : (
-          <span className="flex flex-wrap gap-1">
-            {p.holders.map((h) => (
-              <span key={h.staffPositionId} className="inline-flex items-center gap-1 rounded-full bg-bg-subtle px-2 py-0.5 text-xs">
-                {h.staffName}
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    void endHolder(h.staffPositionId);
-                  }}
-                  className="text-text-faint hover:text-red-600"
-                  aria-label={`End ${h.staffName}'s term`}
-                >
-                  <X className="w-3 h-3" aria-hidden />
-                </button>
-              </span>
-            ))}
-          </span>
-        ),
+      key: 'startDate',
+      header: 'Date assigned',
+      value: (r) => r.holder?.startDate ?? '',
+      render: (r) => (r.holder ? new Date(r.holder.startDate).toLocaleDateString() : <span className="text-text-faint">—</span>),
     },
   ];
 
-  const rowActions = (p: Position): DropdownMenuItem[] => {
-    const items: DropdownMenuItem[] = [
-      { label: 'Assign holder', icon: UserPlus, onClick: () => setAssignModal(p) },
-      { label: 'Edit', icon: Pencil, onClick: () => setFormModal({ position: p }) },
-    ];
+  const rowActions = (r: HolderRow): DropdownMenuItem[] => {
+    const { position: p, holder } = r;
+    const items: DropdownMenuItem[] = [];
+    if (holder) {
+      items.push({ label: 'End this assignment', icon: X, onClick: () => void endHolder(holder.staffPositionId) });
+    }
+    items.push(
+      { label: 'Assign a holder', icon: UserPlus, onClick: () => setAssignModal(p) },
+      { label: 'Edit position', icon: Pencil, onClick: () => setFormModal({ position: p }) },
+    );
     if (p.category === 'executive') {
       items.push({
         label: p.isAcademicRoot ? 'Academics lead (current)' : 'Set as academics lead',
@@ -334,7 +341,7 @@ export function DepartmentPositionsTabs({
         onClick: () => void setAcademicRoot(p.id),
       });
     }
-    items.push({ label: 'Remove', icon: Trash2, danger: true, separatorBefore: true, onClick: () => void remove(p) });
+    items.push({ label: 'Remove position', icon: Trash2, danger: true, separatorBefore: true, onClick: () => void remove(p) });
     return items;
   };
 
@@ -375,8 +382,8 @@ export function DepartmentPositionsTabs({
         rows={rows}
         columns={columns}
         rowActions={rowActions}
-        rowKey={(p) => p.id}
-        initialSort={{ key: 'category', direction: 'asc' }}
+        rowKey={(r) => r.key}
+        initialSort={{ key: 'position', direction: 'asc' }}
         searchPlaceholder="Search this department…"
         emptyMessage="No positions here yet."
         exportFileName={`positions-${effectiveActiveTab === LEADERSHIP_TAB ? 'leadership' : effectiveActiveTab}`}
