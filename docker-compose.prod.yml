@@ -28,6 +28,9 @@ services:
       JWT_SECRET: ${JWT_SECRET}
       COOKIE_SECRET: ${COOKIE_SECRET}
       COOKIE_SECURE: "true"
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+      RESEND_FROM: ${RESEND_FROM:-Good School <onboarding@resend.dev>}
+      APP_URL: ${APP_URL:-}
       PORT: 4000
     volumes:
       - backend-uploads:/app/uploads
