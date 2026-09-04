@@ -15,6 +15,22 @@ export type AssignmentEntryType = "new_hire" | "transfer" | "government_posting"
 export type AssignmentExitType = "transfer" | "resignation" | "retirement" | "government_reposting";
 export type AssignmentStatus = "active" | "transferred_out" | "left" | "retired";
 
+// Mirrors StaffCategory from staff.repository.ts, redeclared rather than
+// imported to avoid a circular import (staff.repository.ts already imports
+// createAssignment from this file). Which roles make sense for which broad
+// category — the frontend's hire form only offers these per category
+// already, but that's a UI constraint a direct API call can bypass, so it's
+// enforced here too, the one place every assignment (hire-time and a later
+// transfer/rehire period alike) actually gets written.
+type StaffCategoryForRoleCheck = "administration" | "teaching" | "non_teaching" | "support";
+
+const ROLES_FOR_CATEGORY: Record<StaffCategoryForRoleCheck, readonly StaffRole[]> = {
+  teaching: ["teacher", "head_teacher", "deputy"],
+  administration: ["admin", "head_teacher", "deputy"],
+  non_teaching: ["bursar", "admin"],
+  support: ["support"],
+};
+
 export interface StaffAssignmentRecord {
   id: string;
   staffId: string;
@@ -94,6 +110,13 @@ export class ActiveAssignmentExistsError extends Error {
   }
 }
 
+export class RoleNotAllowedForCategoryError extends Error {
+  constructor(role: string, category: string) {
+    super(`"${role}" isn't a valid role for ${category.replace("_", "-")} staff`);
+    this.name = "RoleNotAllowedForCategoryError";
+  }
+}
+
 async function assertYearBelongsToSchool(
   client: PoolClient,
   schoolId: string,
@@ -155,6 +178,15 @@ export async function createAssignment(
   input: StaffAssignmentInput,
 ): Promise<StaffAssignmentRecord> {
   await assertYearBelongsToSchool(client, schoolId, input.academicYearId);
+
+  const staffCategory = await client.query<{ category: StaffCategoryForRoleCheck }>(
+    `select category from staff where user_id = $1`,
+    [staffId],
+  );
+  const category = staffCategory.rows[0]?.category;
+  if (category && !ROLES_FOR_CATEGORY[category].includes(input.role)) {
+    throw new RoleNotAllowedForCategoryError(input.role, category);
+  }
 
   const active = await client.query(
     `select 1 from staff_assignment where school_id = $1 and staff_id = $2 and status = 'active'`,

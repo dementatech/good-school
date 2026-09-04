@@ -30,7 +30,8 @@ export type FeatureKey =
   | "student_portal"
   | "parent_portal"
   | "notifications"
-  | "account_settings";
+  | "account_settings"
+  | "staff_account";
 
 interface FeatureMeta {
   label: string;
@@ -68,6 +69,10 @@ export const FEATURES: Record<FeatureKey, FeatureMeta> = {
   parent_portal: { label: "Parent Portal", ready: false },
   notifications: { label: "Notifications", ready: false },
   account_settings: { label: "My Account", ready: false },
+  // A staff member's own profile + self-service academic document upload
+  // (docs/design/teacher-staff-module.md) — distinct from `account_settings`,
+  // which also governs the unrelated, still-unwired /admin/account page.
+  staff_account: { label: "My Account", ready: true },
 };
 
 export function isFeatureReady(key: FeatureKey): boolean {
@@ -99,6 +104,7 @@ const ROUTE_FEATURES: { prefix: string; key: FeatureKey }[] = [
   { prefix: "/admin/performance", key: "performance" },
   { prefix: "/admin/lessons", key: "lessons" },
 
+  { prefix: "/staff/account", key: "staff_account" },
   { prefix: "/staff/assessments", key: "assessments" },
   { prefix: "/staff/marking", key: "marking" },
   { prefix: "/staff/library", key: "library" },

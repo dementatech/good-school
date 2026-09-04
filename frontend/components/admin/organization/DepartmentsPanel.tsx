@@ -8,6 +8,7 @@ import { type DropdownMenuItem } from '@/components/ui/DropdownMenu';
 import { Input } from '@/components/ui/Input';
 import { Modal } from '@/components/ui/Modal';
 import { Select } from '@/components/ui/Select';
+import { Tabs } from '@/components/ui/Tabs';
 import { useToast } from '@/components/ui/ToastProvider';
 import { submitJson } from '@/lib/api/envelope';
 import { Plus, Trash2 } from 'lucide-react';
@@ -94,10 +95,20 @@ function AddFromCatalogModal({
   );
 }
 
-function CustomDepartmentModal({ positions, onSaved, onClose }: { positions: Position[]; onSaved: () => Promise<void> | void; onClose: () => void }) {
+function CustomDepartmentModal({
+  positions,
+  defaultType,
+  onSaved,
+  onClose,
+}: {
+  positions: Position[];
+  defaultType: DepartmentType;
+  onSaved: () => Promise<void> | void;
+  onClose: () => void;
+}) {
   const toast = useToast();
   const [name, setName] = useState('');
-  const [departmentType, setDepartmentType] = useState<DepartmentType>('non_academic');
+  const [departmentType, setDepartmentType] = useState<DepartmentType>(defaultType);
   const [reportsTo, setReportsTo] = useState('');
   const [saving, setSaving] = useState(false);
 
@@ -161,11 +172,22 @@ export function DepartmentsPanel({
   onChanged: () => Promise<void> | void;
 }) {
   const toast = useToast();
+  const [activeTab, setActiveTab] = useState<DepartmentType>('academic');
   const [catalogModal, setCatalogModal] = useState(false);
   const [customModal, setCustomModal] = useState(false);
 
   const usedCatalogIds = new Set(departments.filter((d) => d.catalogId).map((d) => d.catalogId));
   const availableCatalog = catalog.filter((c) => !usedCatalogIds.has(c.id));
+
+  const tabs = [
+    { key: 'academic', label: 'Academic', count: departments.filter((d) => d.departmentType === 'academic').length },
+    {
+      key: 'non_academic',
+      label: 'Non-Academic',
+      count: departments.filter((d) => d.departmentType === 'non_academic').length,
+    },
+  ];
+  const visibleDepartments = departments.filter((d) => d.departmentType === activeTab);
 
   async function remove(id: string, name: string) {
     if (!confirm(`Remove ${name}? This only works if nobody currently holds a position in it.`)) return;
@@ -191,12 +213,6 @@ export function DepartmentsPanel({
       ),
     },
     {
-      key: 'departmentType',
-      header: 'Type',
-      value: (d) => DEPARTMENT_TYPE_LABEL[d.departmentType],
-      render: (d) => <Badge variant={d.departmentType === 'academic' ? 'default' : 'muted'}>{DEPARTMENT_TYPE_LABEL[d.departmentType]}</Badge>,
-    },
-    {
       key: 'subjects',
       header: 'Subject(s)',
       value: (d) => d.subjects.map((s) => s.subjectName).join(', '),
@@ -219,21 +235,29 @@ export function DepartmentsPanel({
   ];
 
   return (
-    <div className="space-y-2">
+    <div className="space-y-3">
+      <Tabs tabs={tabs} active={activeTab} onChange={(key) => setActiveTab(key as DepartmentType)} />
+
       <DataTable
-        rows={departments}
+        rows={visibleDepartments}
         columns={columns}
         rowActions={rowActions}
         rowKey={(d) => d.id}
         initialSort={{ key: 'name', direction: 'asc' }}
         searchPlaceholder="Search departments…"
-        emptyMessage="No departments yet — offer a subject, or add one below."
-        exportFileName="departments"
+        emptyMessage={
+          activeTab === 'academic'
+            ? 'No academic departments yet — offer a subject to get one.'
+            : 'No non-academic departments yet — add one below.'
+        }
+        exportFileName={`departments-${activeTab}`}
         actions={
-          <Button onClick={() => setCatalogModal(true)} disabled={availableCatalog.length === 0}>
-            <Plus className="w-4 h-4 mr-1.5" aria-hidden />
-            Add from catalog
-          </Button>
+          activeTab === 'non_academic' ? (
+            <Button onClick={() => setCatalogModal(true)} disabled={availableCatalog.length === 0}>
+              <Plus className="w-4 h-4 mr-1.5" aria-hidden />
+              Add from catalog
+            </Button>
+          ) : undefined
         }
         secondaryActions={[{ label: 'Add a custom department', icon: Plus, onClick: () => setCustomModal(true) }]}
       />
@@ -247,7 +271,12 @@ export function DepartmentsPanel({
         />
       )}
       {customModal && (
-        <CustomDepartmentModal positions={positions} onSaved={onChanged} onClose={() => setCustomModal(false)} />
+        <CustomDepartmentModal
+          positions={positions}
+          defaultType={activeTab}
+          onSaved={onChanged}
+          onClose={() => setCustomModal(false)}
+        />
       )}
     </div>
   );

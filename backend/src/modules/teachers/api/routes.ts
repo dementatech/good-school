@@ -6,6 +6,7 @@ import {
   UnknownReferenceError,
   UnknownSubjectError,
   addSpecialization,
+  addStaffDocument,
   archiveStaff,
   createAssignment,
   createStaff,
@@ -15,12 +16,15 @@ import {
   listAssignments,
   listSpecializations,
   listStaff,
+  listStaffDocuments,
   removeSpecialization,
+  removeStaffDocument,
   resetStaffPasswords,
   restoreStaff,
   setStaffPhoto,
   updateStaff,
-  UnsupportedImageTypeError,
+  RoleNotAllowedForCategoryError,
+  UnsupportedFileTypeError,
   type CreateStaffInput,
   type StaffAssignmentInput,
   type StaffIdentityInput,
@@ -51,6 +55,7 @@ import {
 } from "./schemas.js";
 
 const ADMIN = requireAuth(["admin", "school_admin", "super_admin"]);
+const ADMIN_ROLES = ["admin", "school_admin", "super_admin"];
 
 /** Pulls the caller's school from the JWT, or replies 400 and returns null. */
 function schoolOf(request: FastifyRequest, reply: FastifyReply): string | null {
@@ -60,6 +65,16 @@ function schoolOf(request: FastifyRequest, reply: FastifyReply): string | null {
     return null;
   }
   return schoolId;
+}
+
+/**
+ * Academic documents are the one staff sub-resource a non-admin can touch —
+ * a staff member manages their own after logging in (the actual point of
+ * the feature), an admin manages anyone's at this school.
+ */
+function isSelfOrAdmin(request: FastifyRequest, staffId: string): boolean {
+  const auth = request.authUser!;
+  return ADMIN_ROLES.includes(auth.role) || auth.user_id === staffId;
 }
 
 export async function staffRoutes(fastify: FastifyInstance) {
@@ -101,7 +116,9 @@ export async function staffRoutes(fastify: FastifyInstance) {
         const { staff, tempPassword } = await createStaff(schoolId, request.body);
         return reply.status(201).send(ok({ staff, tempPassword }));
       } catch (err) {
-        if (err instanceof UnknownReferenceError) return reply.status(400).send(fail(err.message));
+        if (err instanceof UnknownReferenceError || err instanceof RoleNotAllowedForCategoryError) {
+          return reply.status(400).send(fail(err.message));
+        }
         if (err instanceof ActiveAssignmentExistsError) {
           return reply.status(409).send(fail(err.message));
         }
@@ -178,7 +195,7 @@ export async function staffRoutes(fastify: FastifyInstance) {
       });
       return staff ? ok(staff) : reply.status(404).send(fail("not_found"));
     } catch (err) {
-      if (err instanceof UnsupportedImageTypeError) return reply.status(400).send(fail(err.message));
+      if (err instanceof UnsupportedFileTypeError) return reply.status(400).send(fail(err.message));
       throw err;
     }
   });
@@ -190,6 +207,65 @@ export async function staffRoutes(fastify: FastifyInstance) {
     const staff = await setStaffPhoto(schoolId, request.params.id, null);
     return staff ? ok(staff) : reply.status(404).send(fail("not_found"));
   });
+
+  // ── Academic documents (self-service — see isSelfOrAdmin) ──────────────
+
+  fastify.get<{ Params: { id: string } }>(
+    "/:id/documents",
+    { preHandler: requireAuth() },
+    async (request, reply) => {
+      if (!isSelfOrAdmin(request, request.params.id)) return reply.status(403).send(fail("forbidden"));
+      const schoolId = schoolOf(request, reply);
+      if (!schoolId) return;
+      const staff = await getStaff(schoolId, request.params.id);
+      if (!staff) return reply.status(404).send(fail("not_found"));
+      return ok(await listStaffDocuments(request.params.id));
+    },
+  );
+
+  // Multipart upload, same pattern as /:id/photo — but any authenticated
+  // staff member can hit this for their own id, not just an admin. The
+  // frontend sends `title` before `file` in the FormData: @fastify/multipart
+  // only has fields parsed so far available on `request.file()`'s result, so
+  // field order in the request matters.
+  fastify.post<{ Params: { id: string } }>("/:id/documents", { preHandler: requireAuth() }, async (request, reply) => {
+    if (!isSelfOrAdmin(request, request.params.id)) return reply.status(403).send(fail("forbidden"));
+    const schoolId = schoolOf(request, reply);
+    if (!schoolId) return;
+    const staff = await getStaff(schoolId, request.params.id);
+    if (!staff) return reply.status(404).send(fail("not_found"));
+
+    const uploaded = await request.file();
+    if (!uploaded) return reply.status(400).send(fail("No file uploaded"));
+    const titleField = uploaded.fields.title;
+    const title =
+      titleField && !Array.isArray(titleField) && titleField.type === "field" ? String(titleField.value).trim() : "";
+    if (!title) return reply.status(400).send(fail("A document title is required"));
+    const data = await uploaded.toBuffer();
+
+    try {
+      const document = await addStaffDocument(
+        request.params.id,
+        title,
+        { mimeType: uploaded.mimetype, data },
+        request.authUser!.user_id,
+      );
+      return reply.status(201).send(ok(document));
+    } catch (err) {
+      if (err instanceof UnsupportedFileTypeError) return reply.status(400).send(fail(err.message));
+      throw err;
+    }
+  });
+
+  fastify.delete<{ Params: { id: string; documentId: string } }>(
+    "/:id/documents/:documentId",
+    { preHandler: requireAuth() },
+    async (request, reply) => {
+      if (!isSelfOrAdmin(request, request.params.id)) return reply.status(403).send(fail("forbidden"));
+      const removed = await removeStaffDocument(request.params.id, request.params.documentId);
+      return removed ? ok(null) : reply.status(404).send(fail("not_found"));
+    },
+  );
 
   // ── School assignment history ───────────────────────────────────────────
 
@@ -219,7 +295,9 @@ export async function staffRoutes(fastify: FastifyInstance) {
         return reply.status(201).send(ok(assignment));
       } catch (err) {
         await client.query("ROLLBACK");
-        if (err instanceof UnknownReferenceError) return reply.status(400).send(fail(err.message));
+        if (err instanceof UnknownReferenceError || err instanceof RoleNotAllowedForCategoryError) {
+          return reply.status(400).send(fail(err.message));
+        }
         if (err instanceof ActiveAssignmentExistsError) {
           return reply.status(409).send(fail(err.message));
         }

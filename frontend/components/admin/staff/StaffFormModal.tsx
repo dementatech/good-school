@@ -17,8 +17,10 @@ import {
   ENTRY_TYPES,
   GENDERS,
   QUALIFICATIONS,
+  ROLES_FOR_CATEGORY,
+  STAFF_CATEGORIES,
+  STAFF_CATEGORY_LABEL,
   STAFF_ROLE_LABEL,
-  STAFF_ROLES,
   TMIS_STATUS_LABEL,
   TMIS_STATUSES,
   type AcademicYear,
@@ -27,6 +29,7 @@ import {
   type EmploymentType,
   type Gender,
   type Staff,
+  type StaffCategory,
   type StaffRole,
   type TmisStatus,
 } from './types';
@@ -96,6 +99,7 @@ export function StaffFormModal({
   onClose,
   onSaved,
   staff,
+  defaultCategory = 'teaching',
 }: {
   open: boolean;
   onClose: () => void;
@@ -104,20 +108,32 @@ export function StaffFormModal({
    * (the school assignment is managed separately once a staff record
    * exists — see the "Assignments" tab on the detail view). */
   staff?: Staff;
+  /** Which category tab the admin was on when they clicked "Hire" — just a
+   * sensible starting point, freely changeable in the form itself. */
+  defaultCategory?: StaffCategory;
 }) {
   const toast = useToast();
   const isEdit = Boolean(staff);
+  const [category, setCategory] = useState<StaffCategory>(staff?.category ?? defaultCategory);
   const [identity, setIdentity] = useState<IdentityState>(() => initialIdentity(staff));
   const set = <K extends keyof IdentityState>(k: K, v: IdentityState[K]) =>
     setIdentity((f) => ({ ...f, [k]: v }));
 
   // Assignment — only asked at hire time. A staff member without one isn't
-  // meaningfully working at this school yet (teachers-module.md §2).
+  // meaningfully working at this school yet (teachers-module.md §2). Role
+  // options narrow to whatever's sensible for the chosen category — picking
+  // a category resets role to that list's first entry, since a category
+  // switch can leave a previously-valid role no longer offered.
   const [years, setYears] = useState<AcademicYear[]>([]);
   const [academicYearId, setAcademicYearId] = useState('');
-  const [role, setRole] = useState<StaffRole>('teacher');
+  const [role, setRole] = useState<StaffRole>(ROLES_FOR_CATEGORY[staff?.category ?? defaultCategory][0]);
   const [entryDate, setEntryDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [entryType, setEntryType] = useState<AssignmentEntryType>('new_hire');
+
+  function changeCategory(next: StaffCategory) {
+    setCategory(next);
+    setRole(ROLES_FOR_CATEGORY[next][0]);
+  }
 
   // Specializations — which subjects this person is qualified to teach
   // (§3), NOT which specific classes they actually teach right now (that's
@@ -163,6 +179,7 @@ export function StaffFormModal({
     if (isEdit) {
       setSaving(true);
       const res = await submitJson(`/api/v1/staff/${staff!.userId}`, 'PATCH', {
+        category,
         firstName: identity.firstName.trim(),
         middleName: trim(identity.middleName),
         lastName: identity.lastName.trim(),
@@ -194,6 +211,7 @@ export function StaffFormModal({
 
     setSaving(true);
     const res = await submitJson<{ staff: Staff; tempPassword: string }>('/api/v1/staff', 'POST', {
+      category,
       firstName: identity.firstName.trim(),
       middleName: trim(identity.middleName),
       lastName: identity.lastName.trim(),
@@ -222,6 +240,15 @@ export function StaffFormModal({
   return (
     <Modal open={open} onClose={onClose} title={isEdit ? `Edit ${staff!.firstName}` : 'Hire a staff member'} size="lg">
       <form onSubmit={submit} className="space-y-6">
+        <Section title="Category">
+          <Select
+            label="What kind of staff member is this?"
+            value={category}
+            onChange={(e) => changeCategory(e.target.value as StaffCategory)}
+            options={STAFF_CATEGORIES.map((c) => ({ value: c, label: STAFF_CATEGORY_LABEL[c] }))}
+          />
+        </Section>
+
         <Section title="Identity">
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <Input label="First name" value={identity.firstName} onChange={(e) => set('firstName', e.target.value)} required />
@@ -300,7 +327,7 @@ export function StaffFormModal({
                   label="Role"
                   value={role}
                   onChange={(e) => setRole(e.target.value as StaffRole)}
-                  options={STAFF_ROLES.map((r) => ({ value: r, label: STAFF_ROLE_LABEL[r] }))}
+                  options={ROLES_FOR_CATEGORY[category].map((r) => ({ value: r, label: STAFF_ROLE_LABEL[r] }))}
                 />
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -314,6 +341,7 @@ export function StaffFormModal({
               </div>
             </Section>
 
+            {category === 'teaching' && (
             <Section title="Subject specializations (optional)">
               <p className="text-xs text-text-muted -mt-1">
                 Which subjects this person is <em>qualified</em> to teach — a hint for the candidate list
@@ -364,6 +392,7 @@ export function StaffFormModal({
                   );
                 })}
             </Section>
+            )}
           </>
         )}
 

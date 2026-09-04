@@ -2,11 +2,12 @@ import { pool } from "../../../shared/db/index.js";
 import { generateTempPassword, hashPassword } from "../../auth/index.js";
 import { nextSystemId } from "../../../shared/system-id.js";
 import {
-  deleteUploadedFile,
-  saveUploadedImage,
-  uploadedFileUrl,
-  UnsupportedImageTypeError,
-} from "../../../shared/uploads.js";
+  deleteStoredFile,
+  fileUrl,
+  storeFile,
+  UnsupportedFileTypeError,
+  type StorageProvider,
+} from "../../../shared/media.js";
 import {
   createAssignment,
   getActiveAssignmentAtSchool,
@@ -29,10 +30,17 @@ export type EmploymentType = "government" | "private" | "pta" | "volunteer";
 // as its own nullable column rather than folded into employment_type, so
 // neither classification is lost. See the migration's comment.
 export type EmploymentBasis = "fulltime" | "parttime" | "practicing";
+// The broad HR grouping the Staff page's tabs are organized around — a
+// separate dimension from EmploymentType/EmploymentBasis (why they're paid /
+// how much time they give) and from staff_assignment.role (their specific
+// job title). Drives which fields the hire form actually asks for: e.g.
+// subject specialization only makes sense for 'teaching'.
+export type StaffCategory = "administration" | "teaching" | "non_teaching" | "support";
 
 export interface StaffRecord {
   userId: string;
   systemId: string | null;
+  category: StaffCategory;
   tmisNumber: string | null;
   tmisStatus: TmisStatus;
   firstName: string;
@@ -53,6 +61,7 @@ export interface StaffRecord {
 }
 
 export interface StaffIdentityInput {
+  category: StaffCategory;
   firstName: string;
   middleName?: string | null;
   lastName: string;
@@ -75,6 +84,7 @@ export interface CreateStaffInput extends StaffIdentityInput {
 interface StaffRow {
   user_id: string;
   system_id: string | null;
+  category: StaffCategory;
   tmis_number: string | null;
   tmis_status: TmisStatus;
   first_name: string;
@@ -86,6 +96,7 @@ interface StaffRow {
   employment_type: EmploymentType;
   employment_basis: EmploymentBasis | null;
   photo_path: string | null;
+  photo_provider: StorageProvider | null;
   email: string | null;
   phone_number: string | null;
   is_active: boolean;
@@ -94,9 +105,9 @@ interface StaffRow {
 
 const SELECT_STAFF = `
   select u.id as user_id, u.system_id, u.email, u.phone_number,
-         s.tmis_number, s.tmis_status, s.first_name, s.middle_name, s.last_name,
+         s.category, s.tmis_number, s.tmis_status, s.first_name, s.middle_name, s.last_name,
          s.date_of_birth, s.gender, s.qualification, s.employment_type, s.employment_basis,
-         s.photo_path, s.is_active, s.created_at
+         s.photo_path, s.photo_provider, s.is_active, s.created_at
   from staff s
   join users u on u.id = s.user_id
 `;
@@ -105,6 +116,7 @@ function mapRow(row: StaffRow): Omit<StaffRecord, "activeAssignment" | "speciali
   return {
     userId: row.user_id,
     systemId: row.system_id,
+    category: row.category,
     tmisNumber: row.tmis_number,
     tmisStatus: row.tmis_status,
     firstName: row.first_name,
@@ -115,7 +127,12 @@ function mapRow(row: StaffRow): Omit<StaffRecord, "activeAssignment" | "speciali
     qualification: row.qualification,
     employmentType: row.employment_type,
     employmentBasis: row.employment_basis,
-    photoUrl: row.photo_path ? uploadedFileUrl(row.photo_path) : null,
+    // Photos are always images by construction (setStaffPhoto only accepts
+    // image mime types) — a placeholder image/* mimeType is enough for
+    // fileUrl() to pick Cloudinary's "image" resource type correctly.
+    photoUrl: row.photo_path
+      ? fileUrl({ provider: row.photo_provider ?? "local", ref: row.photo_path, mimeType: "image/jpeg" })
+      : null,
     email: row.email,
     phoneNumber: row.phone_number,
     isActive: row.is_active,
@@ -183,11 +200,12 @@ export async function createStaff(
 
     await client.query(
       `insert into staff
-         (user_id, tmis_number, tmis_status, first_name, middle_name, last_name,
+         (user_id, category, tmis_number, tmis_status, first_name, middle_name, last_name,
           date_of_birth, gender, qualification, employment_type, employment_basis)
-       values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+       values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
       [
         userId,
+        input.category,
         input.tmisNumber ?? null,
         input.tmisStatus ?? "not_registered",
         input.firstName,
@@ -248,11 +266,12 @@ export async function updateStaff(
 
     await client.query(
       `update staff
-       set tmis_number = $1, tmis_status = $2, first_name = $3, middle_name = $4, last_name = $5,
-           date_of_birth = $6, gender = $7, qualification = $8, employment_type = $9,
-           employment_basis = $10, updated_at = now()
-       where user_id = $11`,
+       set category = $1, tmis_number = $2, tmis_status = $3, first_name = $4, middle_name = $5,
+           last_name = $6, date_of_birth = $7, gender = $8, qualification = $9, employment_type = $10,
+           employment_basis = $11, updated_at = now()
+       where user_id = $12`,
       [
+        input.category,
         input.tmisNumber ?? null,
         input.tmisStatus ?? "not_registered",
         input.firstName,
@@ -353,7 +372,8 @@ export async function resetStaffPasswords(
   }
 }
 
-// Uploads a new photo (replacing and deleting any prior one) or, given
+// Uploads a new photo (replacing and deleting any prior one — via Cloudinary
+// when configured, local disk otherwise, see shared/media.ts) or, given
 // `null`, clears it back to the default initials avatar the frontend renders
 // when photoUrl is null.
 export async function setStaffPhoto(
@@ -361,31 +381,33 @@ export async function setStaffPhoto(
   userId: string,
   file: { mimeType: string; data: Buffer } | null,
 ): Promise<StaffRecord | null> {
-  const existing = await pool.query<{ photo_path: string | null }>(
-    `select s.photo_path from staff s
+  const existing = await pool.query<{ photo_path: string | null; photo_provider: StorageProvider | null }>(
+    `select s.photo_path, s.photo_provider from staff s
      join users u on u.id = s.user_id
      where u.id = $1 and u.school_id = $2 and u.role = 'teacher'`,
     [userId, schoolId],
   );
   if (!existing.rows[0]) return null;
-  const priorPath = existing.rows[0].photo_path;
+  const prior = existing.rows[0];
 
-  let newPath: string | null = null;
+  let stored: Awaited<ReturnType<typeof storeFile>> | null = null;
   if (file) {
-    newPath = await saveUploadedImage("staff", file.mimeType, file.data);
+    stored = await storeFile("staff", file.mimeType, file.data);
   }
 
-  await pool.query(`update staff set photo_path = $1, updated_at = now() where user_id = $2`, [
-    newPath,
-    userId,
-  ]);
+  await pool.query(
+    `update staff set photo_path = $1, photo_provider = $2, updated_at = now() where user_id = $3`,
+    [stored?.ref ?? null, stored?.provider ?? null, userId],
+  );
 
-  if (priorPath) await deleteUploadedFile(priorPath);
+  if (prior.photo_path) {
+    await deleteStoredFile({ provider: prior.photo_provider ?? "local", ref: prior.photo_path, mimeType: "image/jpeg" });
+  }
 
   return getStaff(schoolId, userId);
 }
 
-export { UnsupportedImageTypeError };
+export { UnsupportedFileTypeError };
 export { addSpecialization };
 export type { StaffAssignmentRecord, StaffAssignmentInput };
 export {
@@ -394,9 +416,17 @@ export {
   listAssignments,
   UnknownReferenceError,
   ActiveAssignmentExistsError,
+  RoleNotAllowedForCategoryError,
 } from "./staff-assignment.repository.js";
 export {
   listSpecializations,
   removeSpecialization,
   UnknownSubjectError,
 } from "./staff-specialization.repository.js";
+
+export type { StaffDocumentRecord } from "./staff-documents.repository.js";
+export {
+  addStaffDocument,
+  listStaffDocuments,
+  removeStaffDocument,
+} from "./staff-documents.repository.js";

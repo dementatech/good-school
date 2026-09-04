@@ -12,6 +12,7 @@ import { Camera, Trash2, X } from 'lucide-react';
 import type { CatalogSubject } from '@/components/admin/subjects/types';
 import type { Position, StaffPosition } from '@/components/admin/organization/types';
 import { StaffAvatar } from './StaffAvatar';
+import { DocumentsPanel } from './DocumentsPanel';
 import {
   EMPLOYMENT_BASIS_LABEL,
   EMPLOYMENT_TYPE_LABEL,
@@ -19,6 +20,7 @@ import {
   ENTRY_TYPES,
   EXIT_TYPE_LABEL,
   EXIT_TYPES,
+  STAFF_CATEGORY_LABEL,
   STAFF_ROLE_LABEL,
   STAFF_ROLES,
   TMIS_STATUS_LABEL,
@@ -459,6 +461,7 @@ export function StaffDetailModal({
         <section className="space-y-1 text-sm">
           <div className="grid grid-cols-2 gap-x-4 gap-y-1.5">
             <div><span className="text-text-faint">Staff ID</span><div className="font-medium">{staff.systemId ?? '—'}</div></div>
+            <div><span className="text-text-faint">Category</span><div className="font-medium">{STAFF_CATEGORY_LABEL[staff.category]}</div></div>
             <div><span className="text-text-faint">TMIS</span><div className="font-medium">{staff.tmisNumber ?? `— (${TMIS_STATUS_LABEL[staff.tmisStatus]})`}</div></div>
             <div><span className="text-text-faint">Employment</span><div className="font-medium">{EMPLOYMENT_TYPE_LABEL[staff.employmentType]}{staff.employmentBasis ? ` · ${EMPLOYMENT_BASIS_LABEL[staff.employmentBasis]}` : ''}</div></div>
             <div><span className="text-text-faint">Qualification</span><div className="font-medium">{staff.qualification ?? '—'}</div></div>
@@ -535,16 +538,25 @@ export function StaffDetailModal({
           )}
         </section>
 
-        <section>
-          <h3 className="text-xs font-bold uppercase tracking-widest text-text-faint mb-2">Specializations</h3>
-          <SpecializationsPanel staff={staff} onChanged={refresh} />
-        </section>
+        {staff.category === 'teaching' && (
+          <section>
+            <h3 className="text-xs font-bold uppercase tracking-widest text-text-faint mb-2">Specializations</h3>
+            <SpecializationsPanel staff={staff} onChanged={refresh} />
+          </section>
+        )}
 
         <section>
           <h3 className="text-xs font-bold uppercase tracking-widest text-text-faint mb-2">
             Department &amp; position
           </h3>
           <PositionsPanel staff={staff} onChanged={onChanged} />
+        </section>
+
+        <section>
+          <h3 className="text-xs font-bold uppercase tracking-widest text-text-faint mb-2">
+            Academic documents
+          </h3>
+          <DocumentsPanel staffId={staff.userId} />
         </section>
 
         <div className="flex gap-2 pt-1">

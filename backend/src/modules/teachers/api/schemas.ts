@@ -3,6 +3,7 @@
 // students/api/schemas.ts's structure.
 
 const identityFields = {
+  category: { type: "string", enum: ["administration", "teaching", "non_teaching", "support"] },
   firstName: { type: "string", minLength: 1 },
   middleName: { type: ["string", "null"] },
   lastName: { type: "string", minLength: 1 },
@@ -19,7 +20,7 @@ const identityFields = {
 
 export const staffIdentityBodySchema = {
   type: "object",
-  required: ["firstName", "lastName", "employmentType"],
+  required: ["category", "firstName", "lastName", "employmentType"],
   properties: identityFields,
   additionalProperties: false,
 } as const;
@@ -41,7 +42,7 @@ const assignmentSchema = {
 
 export const createStaffBodySchema = {
   type: "object",
-  required: ["firstName", "lastName", "employmentType", "assignment"],
+  required: ["category", "firstName", "lastName", "employmentType", "assignment"],
   properties: {
     ...identityFields,
     assignment: assignmentSchema,

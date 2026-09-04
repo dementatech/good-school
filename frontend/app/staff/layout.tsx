@@ -8,7 +8,7 @@ import { FeatureGate } from '@/components/FeatureGate';
 import { NotificationBell } from '@/components/ui/NotificationBell';
 import { MobileNavDrawer } from '@/components/ui/MobileNavDrawer';
 import { PortalSidebar } from '@/components/ui/PortalSidebar';
-import { LayoutDashboard, FileText } from 'lucide-react';
+import { LayoutDashboard, FileText, UserCircle } from 'lucide-react';
 import type { Role } from '@/lib/auth/session';
 
 const STAFF_ROLES: Role[] = ['staff'];
@@ -22,6 +22,7 @@ const NAV = [
     icon: FileText,
     activePrefixes: ['/staff/forms', '/staff/lessons', '/staff/attendance', '/staff/practical', '/staff/behaviour'],
   },
+  { href: '/staff/account', label: 'My Account', icon: UserCircle },
 ];
 
 function StaffShell({ children }: { children: React.ReactNode }) {

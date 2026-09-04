@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/Button';
 import { DataTable, type DataTableColumn } from '@/components/ui/DataTable';
 import { type DropdownMenuItem } from '@/components/ui/DropdownMenu';
 import { Modal } from '@/components/ui/Modal';
+import { Tabs } from '@/components/ui/Tabs';
 import { CredentialsCard } from '@/components/admin/CredentialsCard';
 import { useToast } from '@/components/ui/ToastProvider';
 import { Loader } from '@/components/ui/loader';
@@ -14,7 +15,14 @@ import { Eye, KeyRound, Pencil, Plus, RotateCcw, UserX } from 'lucide-react';
 import { StaffFormModal } from '@/components/admin/staff/StaffFormModal';
 import { StaffDetailModal } from '@/components/admin/staff/StaffDetailModal';
 import { StaffAvatar } from '@/components/admin/staff/StaffAvatar';
-import { STAFF_ROLE_LABEL, staffFullName, type Staff } from '@/components/admin/staff/types';
+import {
+  STAFF_CATEGORIES,
+  STAFF_CATEGORY_LABEL,
+  STAFF_ROLE_LABEL,
+  staffFullName,
+  type Staff,
+  type StaffCategory,
+} from '@/components/admin/staff/types';
 
 function ResetPasswordModal({ staff, onClose }: { staff: Staff; onClose: () => void }) {
   const toast = useToast();
@@ -59,6 +67,7 @@ export default function SchoolAdminStaffPage() {
   const toast = useToast();
   const [staff, setStaff] = useState<Staff[]>([]);
   const [loading, setLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState<StaffCategory>('teaching');
   const [formStaff, setFormStaff] = useState<{ staff?: Staff } | null>(null);
   const [viewing, setViewing] = useState<Staff | null>(null);
   const [resetting, setResetting] = useState<Staff | null>(null);
@@ -86,6 +95,13 @@ export default function SchoolAdminStaffPage() {
       toast.error(res.error!);
     }
   }
+
+  const tabs = STAFF_CATEGORIES.map((c) => ({
+    key: c,
+    label: STAFF_CATEGORY_LABEL[c],
+    count: staff.filter((s) => s.category === c).length,
+  }));
+  const visibleStaff = staff.filter((s) => s.category === activeTab);
 
   const columns: DataTableColumn<Staff>[] = [
     {
@@ -121,18 +137,22 @@ export default function SchoolAdminStaffPage() {
       hideOnMobile: true,
       render: (s) => s.tmisNumber ?? <span className="text-text-faint">Not registered</span>,
     },
-    {
-      key: 'specializations',
-      header: 'Specializes in',
-      value: (s) => s.specializations.map((sp) => sp.subjectName).join(', '),
-      hideOnMobile: true,
-      render: (s) =>
-        s.specializations.length > 0 ? (
-          <span className="text-xs text-text-muted">{s.specializations.map((sp) => sp.subjectCode).join(', ')}</span>
-        ) : (
-          <span className="text-text-faint">—</span>
-        ),
-    },
+    ...(activeTab === 'teaching'
+      ? [
+          {
+            key: 'specializations',
+            header: 'Specializes in',
+            value: (s: Staff) => s.specializations.map((sp) => sp.subjectName).join(', '),
+            hideOnMobile: true,
+            render: (s: Staff) =>
+              s.specializations.length > 0 ? (
+                <span className="text-xs text-text-muted">{s.specializations.map((sp) => sp.subjectCode).join(', ')}</span>
+              ) : (
+                <span className="text-text-faint">—</span>
+              ),
+          },
+        ]
+      : []),
     { key: 'phone', header: 'Phone', value: (s) => s.phoneNumber ?? '', hideOnMobile: true },
   ];
 
@@ -167,16 +187,18 @@ export default function SchoolAdminStaffPage() {
         </p>
       </div>
 
+      <Tabs tabs={tabs} active={activeTab} onChange={(key) => setActiveTab(key as StaffCategory)} />
+
       <DataTable
-        rows={staff}
+        rows={visibleStaff}
         columns={columns}
         rowActions={rowActions}
         rowKey={(s) => s.userId}
         loading={loading}
         initialSort={{ key: 'name', direction: 'asc' }}
         searchPlaceholder="Search staff…"
-        emptyMessage="No staff yet. Hire the first one."
-        exportFileName="staff"
+        emptyMessage={`No ${STAFF_CATEGORY_LABEL[activeTab].toLowerCase()} staff yet. Hire the first one.`}
+        exportFileName={`staff-${activeTab}`}
         actions={
           <Button onClick={() => setFormStaff({})}>
             <Plus className="w-4 h-4 mr-1.5" aria-hidden />
@@ -190,6 +212,7 @@ export default function SchoolAdminStaffPage() {
           open
           onClose={() => setFormStaff(null)}
           onSaved={load}
+          defaultCategory={activeTab}
           staff={formStaff.staff}
         />
       )}

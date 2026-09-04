@@ -8,6 +8,7 @@ import { type DropdownMenuItem } from '@/components/ui/DropdownMenu';
 import { Input } from '@/components/ui/Input';
 import { Modal } from '@/components/ui/Modal';
 import { Select } from '@/components/ui/Select';
+import { Tabs } from '@/components/ui/Tabs';
 import { useToast } from '@/components/ui/ToastProvider';
 import { fetchList, submitJson } from '@/lib/api/envelope';
 import { Crown, Pencil, Plus, Star, Trash2, UserPlus, X } from 'lucide-react';
@@ -359,24 +360,7 @@ export function DepartmentPositionsTabs({
         </div>
       )}
 
-      <div className="flex flex-wrap gap-2 border-b border-border">
-        {tabs.map((tab) => {
-          const selected = effectiveActiveTab === tab.key;
-          return (
-            <button
-              key={tab.key}
-              type="button"
-              onClick={() => setActiveTab(tab.key)}
-              className={`-mb-px px-3 py-2 text-sm font-medium border-b-2 transition-colors ${
-                selected ? 'border-primary-700 text-primary-900' : 'border-transparent text-text-muted hover:text-primary-900'
-              }`}
-            >
-              {tab.label}
-              <span className={`ml-1.5 text-xs ${selected ? 'text-primary-700' : 'text-text-muted/70'}`}>{tab.count}</span>
-            </button>
-          );
-        })}
-      </div>
+      <Tabs tabs={tabs} active={effectiveActiveTab} onChange={setActiveTab} />
 
       <DataTable
         rows={rows}

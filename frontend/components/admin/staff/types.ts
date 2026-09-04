@@ -6,6 +6,11 @@ export type TmisStatus = 'registered' | 'pending' | 'not_registered';
 export type EmploymentType = 'government' | 'private' | 'pta' | 'volunteer';
 // A different axis from EmploymentType (who pays vs. time commitment).
 export type EmploymentBasis = 'fulltime' | 'parttime' | 'practicing';
+// The broad HR grouping the Staff page's tabs are organized around — a
+// separate dimension from StaffRole (their specific job title) and from
+// EmploymentType/EmploymentBasis. Drives which fields the hire form asks
+// for (e.g. subject specialization only for 'teaching').
+export type StaffCategory = 'administration' | 'teaching' | 'non_teaching' | 'support';
 export type StaffRole = 'teacher' | 'head_teacher' | 'deputy' | 'bursar' | 'admin' | 'support';
 export type AssignmentEntryType = 'new_hire' | 'transfer' | 'government_posting';
 export type AssignmentExitType = 'transfer' | 'resignation' | 'retirement' | 'government_reposting';
@@ -33,9 +38,20 @@ export interface StaffSpecialization {
   subjectName: string;
 }
 
+export interface StaffDocument {
+  id: string;
+  staffId: string;
+  title: string;
+  mimeType: string;
+  fileUrl: string;
+  uploadedBy: string | null;
+  createdAt: string;
+}
+
 export interface Staff {
   userId: string;
   systemId: string | null;
+  category: StaffCategory;
   tmisNumber: string | null;
   tmisStatus: TmisStatus;
   firstName: string;
@@ -131,6 +147,13 @@ export const QUALIFICATIONS = [
   'PhD',
   'Other',
 ] as const;
+export const STAFF_CATEGORIES: readonly StaffCategory[] = ['administration', 'teaching', 'non_teaching', 'support'];
+export const STAFF_CATEGORY_LABEL: Record<StaffCategory, string> = {
+  administration: 'Administration',
+  teaching: 'Teaching',
+  non_teaching: 'Non-teaching',
+  support: 'Support',
+};
 export const STAFF_ROLES: readonly StaffRole[] = [
   'teacher',
   'head_teacher',
@@ -146,6 +169,16 @@ export const STAFF_ROLE_LABEL: Record<StaffRole, string> = {
   bursar: 'Bursar',
   admin: 'Admin / office staff',
   support: 'Support staff',
+};
+// Which job-title options make sense once a broad category is picked — the
+// specific title within a non-teaching/support department (Librarian,
+// Matron, Security Officer, ...) isn't a `role` value at all; it's expressed
+// by assigning the person a `position` in Organisation Studio instead.
+export const ROLES_FOR_CATEGORY: Record<StaffCategory, readonly StaffRole[]> = {
+  teaching: ['teacher', 'head_teacher', 'deputy'],
+  administration: ['admin', 'head_teacher', 'deputy'],
+  non_teaching: ['bursar', 'admin'],
+  support: ['support'],
 };
 export const ENTRY_TYPES: readonly AssignmentEntryType[] = ['new_hire', 'transfer', 'government_posting'];
 export const ENTRY_TYPE_LABEL: Record<AssignmentEntryType, string> = {
