@@ -24,6 +24,7 @@ export type FeatureKey =
   | "academic_structure"
   | "schools"
   | "students"
+  | "staff"
   | "accounts"
   | "student_portal"
   | "parent_portal"
@@ -51,6 +52,12 @@ export const FEATURES: Record<FeatureKey, FeatureMeta> = {
   // School-scoped student enrollment (Phase 3A). Distinct from `accounts`
   // (staff/parent/super-admin login management) — that's still unwired.
   students: { label: "Students", ready: true },
+  // School-scoped staff identity, assignment, and subject-teacher allocation
+  // (docs/design/teachers-module.md). Distinct from `accounts`, which is the
+  // super_admin-only cross-tenant staff *account* screen at
+  // /admin/system/staff — still unwired, and a separate concern from the
+  // school_admin's own staff roster below (same split as `students`/`accounts`).
+  staff: { label: "Staff", ready: true },
   accounts: { label: "Account Management", ready: false },
   student_portal: { label: "Student Portal", ready: false },
   parent_portal: { label: "Parent Portal", ready: false },
@@ -102,7 +109,7 @@ const ROUTE_FEATURES: { prefix: string; key: FeatureKey }[] = [
   { prefix: "/school-admin/academic-years", key: "academic_structure" },
   { prefix: "/school-admin/terms", key: "academic_structure" },
   { prefix: "/school-admin/school", key: "schools" },
-  { prefix: "/school-admin/staff", key: "accounts" },
+  { prefix: "/school-admin/staff", key: "staff" },
   { prefix: "/school-admin/students", key: "students" },
   { prefix: "/school-admin/attendance", key: "attendance" },
   { prefix: "/school-admin/lessons", key: "lessons" },

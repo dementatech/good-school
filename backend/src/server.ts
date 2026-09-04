@@ -5,6 +5,7 @@ import { registerAuthModule } from "./modules/auth/index.js";
 import { registerSchoolsModule } from "./modules/schools/index.js";
 import { registerStudentsModule } from "./modules/students/index.js";
 import { registerAcademicStructureModule } from "./modules/academic-structure/index.js";
+import { registerTeachersModule } from "./modules/teachers/index.js";
 
 const fastify = Fastify({
   logger:
@@ -21,6 +22,7 @@ await registerAuthModule(fastify);
 await registerSchoolsModule(fastify);
 await registerStudentsModule(fastify);
 await registerAcademicStructureModule(fastify);
+await registerTeachersModule(fastify);
 
 const port = Number(process.env.PORT ?? 4000);
 
