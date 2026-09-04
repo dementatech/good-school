@@ -12,6 +12,12 @@ const nextConfig: NextConfig = {
         source: "/api/v1/:path*",
         destination: `${backendUrl}/api/v1/:path*`,
       },
+      // Uploaded files (staff photos, ...) served straight off the
+      // backend's local disk store — see backend/src/shared/uploads.ts.
+      {
+        source: "/uploads/:path*",
+        destination: `${backendUrl}/uploads/:path*`,
+      },
     ];
   },
 };

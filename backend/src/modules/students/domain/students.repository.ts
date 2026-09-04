@@ -1,6 +1,6 @@
 import { pool } from "../../../shared/db/index.js";
 import { generateTempPassword, hashPassword } from "../../auth/index.js";
-import { nextSystemId } from "./system-id.js";
+import { nextSystemId } from "../../../shared/system-id.js";
 import {
   createEnrollment,
   getActiveEnrollment,

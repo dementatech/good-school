@@ -1,5 +1,10 @@
 import type { PoolClient } from "pg";
 
+// Generic across roles — originally lived under students/domain since that
+// was the only caller, moved here once the teachers module needed the same
+// "TCH-0001"-style sequence (docs/design/teachers-module.md §1) against the
+// same `users.system_id` column.
+//
 // Locks the current highest system_id for this school+prefix so two
 // concurrent creates don't hand out the same sequence number. Doesn't help
 // on the very first row (nothing to lock yet) — an acceptable gap for the

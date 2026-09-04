@@ -18,6 +18,7 @@ import {
   CalendarDays,
   NotebookPen,
   BookOpen,
+  Network,
 } from 'lucide-react';
 import type { Role } from '@/lib/auth/session';
 
@@ -29,6 +30,7 @@ const NAV = [
   { href: '/school-admin/classes', label: 'Classes & Streams', icon: Layers },
   { href: '/school-admin/subjects', label: 'Subjects & Combinations', icon: BookOpen },
   { href: '/school-admin/staff', label: 'Staff', icon: UserCog },
+  { href: '/school-admin/organisation-studio', label: 'Organisation Studio', icon: Network },
   { href: '/school-admin/students', label: 'Students', icon: GraduationCap },
   { href: '/school-admin/attendance', label: 'Attendance', icon: ClipboardCheck },
   { href: '/school-admin/lessons', label: 'Lessons', icon: NotebookPen },

@@ -1,4 +1,5 @@
 import { pool } from "../../../shared/db/index.js";
+import { ensureAcademicDepartment } from "../../organization/index.js";
 
 // A school's O-Level subject offering — which catalog subjects (super_admin's
 // "constants", from `subject`) it runs this year, and which of those are
@@ -146,8 +147,8 @@ export async function setSubjectOffering(
   academicYearId: string,
   input: SubjectOfferingInput,
 ): Promise<SubjectOfferingRecord> {
-  const owned = await pool.query<{ category: string }>(
-    `select s.category from subject s
+  const owned = await pool.query<{ category: string; name: string }>(
+    `select s.category, s.name from subject s
      join school_curriculum sc on sc.curriculum_id = s.curriculum_id
      where s.id = $1 and sc.school_id = $2`,
     [input.subjectId, schoolId],
@@ -182,6 +183,14 @@ export async function setSubjectOffering(
   const row = await pool.query<SubjectOfferingRow>(`${SELECT_OFFERING} where o.id = $1`, [
     result.rows[0].id,
   ]);
+
+  // "The moment a subject is enabled" (departments-module.md §3) — not
+  // gated on this being the *first* time, since ensureAcademicDepartment is
+  // itself idempotent (checked via department_subject, not a flag here).
+  if (input.isOffered) {
+    await ensureAcademicDepartment(schoolId, input.subjectId, owned.rows[0].name);
+  }
+
   return mapRow(row.rows[0]);
 }
 

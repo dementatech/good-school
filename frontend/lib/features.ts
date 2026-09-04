@@ -24,11 +24,14 @@ export type FeatureKey =
   | "academic_structure"
   | "schools"
   | "students"
+  | "staff"
+  | "organization"
   | "accounts"
   | "student_portal"
   | "parent_portal"
   | "notifications"
-  | "account_settings";
+  | "account_settings"
+  | "staff_account";
 
 interface FeatureMeta {
   label: string;
@@ -51,11 +54,25 @@ export const FEATURES: Record<FeatureKey, FeatureMeta> = {
   // School-scoped student enrollment (Phase 3A). Distinct from `accounts`
   // (staff/parent/super-admin login management) — that's still unwired.
   students: { label: "Students", ready: true },
+  // School-scoped staff identity, assignment, and subject-teacher allocation
+  // (docs/design/teachers-module.md). Distinct from `accounts`, which is the
+  // super_admin-only cross-tenant staff *account* screen at
+  // /admin/system/staff — still unwired, and a separate concern from the
+  // school_admin's own staff roster below (same split as `students`/`accounts`).
+  staff: { label: "Staff", ready: true },
+  // Departments + the position/staff_position org chart (docs/design/
+  // departments-module.md, organization-studio.md) — the Organisation
+  // Studio route.
+  organization: { label: "Organisation Studio", ready: true },
   accounts: { label: "Account Management", ready: false },
   student_portal: { label: "Student Portal", ready: false },
   parent_portal: { label: "Parent Portal", ready: false },
   notifications: { label: "Notifications", ready: false },
   account_settings: { label: "My Account", ready: false },
+  // A staff member's own profile + self-service academic document upload
+  // (docs/design/teacher-staff-module.md) — distinct from `account_settings`,
+  // which also governs the unrelated, still-unwired /admin/account page.
+  staff_account: { label: "My Account", ready: true },
 };
 
 export function isFeatureReady(key: FeatureKey): boolean {
@@ -87,6 +104,7 @@ const ROUTE_FEATURES: { prefix: string; key: FeatureKey }[] = [
   { prefix: "/admin/performance", key: "performance" },
   { prefix: "/admin/lessons", key: "lessons" },
 
+  { prefix: "/staff/account", key: "staff_account" },
   { prefix: "/staff/assessments", key: "assessments" },
   { prefix: "/staff/marking", key: "marking" },
   { prefix: "/staff/library", key: "library" },
@@ -102,7 +120,8 @@ const ROUTE_FEATURES: { prefix: string; key: FeatureKey }[] = [
   { prefix: "/school-admin/academic-years", key: "academic_structure" },
   { prefix: "/school-admin/terms", key: "academic_structure" },
   { prefix: "/school-admin/school", key: "schools" },
-  { prefix: "/school-admin/staff", key: "accounts" },
+  { prefix: "/school-admin/staff", key: "staff" },
+  { prefix: "/school-admin/organisation-studio", key: "organization" },
   { prefix: "/school-admin/students", key: "students" },
   { prefix: "/school-admin/attendance", key: "attendance" },
   { prefix: "/school-admin/lessons", key: "lessons" },

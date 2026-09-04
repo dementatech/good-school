@@ -11,6 +11,9 @@ import { Loader } from '@/components/ui/loader';
 import { fetchList, submitJson } from '@/lib/api/envelope';
 import { Pencil, Plus, Trash2 } from 'lucide-react';
 import { SchoolCombinationFormModal } from '@/components/admin/subjects/SchoolCombinationFormModal';
+import { SubjectTeacherAssignmentModal } from '@/components/admin/subjects/SubjectTeacherAssignmentModal';
+import { AlertTriangle, UserCog } from 'lucide-react';
+import type { AllocationGap } from '@/components/admin/staff/types';
 import {
   CATEGORY_LABEL,
   type AcademicYear,
@@ -41,6 +44,8 @@ export default function SchoolAdminSubjectsPage() {
   const [offerings, setOfferings] = useState<SubjectOffering[]>([]);
   const [combinations, setCombinations] = useState<SchoolCombination[]>([]);
   const [comboModal, setComboModal] = useState<{ combination?: SchoolCombination } | null>(null);
+  const [gaps, setGaps] = useState<AllocationGap[]>([]);
+  const [teacherModal, setTeacherModal] = useState<{ subjectId: string; subjectName: string } | null>(null);
 
   const currentYear = years.find((y) => y.isCurrent) ?? years[0];
   const effectiveYearId = yearId || currentYear?.id || '';
@@ -63,12 +68,14 @@ export default function SchoolAdminSubjectsPage() {
 
   const load = useCallback(async () => {
     if (!effectiveYearId) return;
-    const [offeringsRes, combosRes] = await Promise.all([
+    const [offeringsRes, combosRes, gapsRes] = await Promise.all([
       fetchList<SubjectOffering>(`/api/v1/academic/subject-offerings?academicYearId=${effectiveYearId}`),
       fetchList<SchoolCombination>(`/api/v1/academic/school-combinations?academicYearId=${effectiveYearId}`),
+      fetchList<AllocationGap>(`/api/v1/subject-teacher-assignments/gaps?academicYearId=${effectiveYearId}`),
     ]);
     setOfferings(offeringsRes);
     setCombinations(combosRes);
+    setGaps(gapsRes);
   }, [effectiveYearId]);
 
   useEffect(() => {
@@ -165,6 +172,30 @@ export default function SchoolAdminSubjectsPage() {
         />
       ),
     },
+    {
+      // docs/design/teachers-module.md §4 — allocate right on this screen,
+      // not a separate forgettable step.
+      key: 'teacher',
+      header: 'Teacher',
+      value: (r) => (gaps.some((g) => g.subjectId === r.subjectId) ? 0 : 1),
+      render: (r) =>
+        r.isOffered ? (
+          <button
+            type="button"
+            onClick={() => setTeacherModal({ subjectId: r.subjectId, subjectName: r.name })}
+            className="inline-flex items-center gap-1.5 text-xs font-medium text-primary-700 hover:underline"
+          >
+            <UserCog className="w-3.5 h-3.5" aria-hidden />
+            {gaps.some((g) => g.subjectId === r.subjectId) ? (
+              <Badge variant="accent">Unassigned</Badge>
+            ) : (
+              'Assigned'
+            )}
+          </button>
+        ) : (
+          <span className="text-text-faint">—</span>
+        ),
+    },
   ];
 
   const combinationColumns: DataTableColumn<SchoolCombination>[] = [
@@ -237,6 +268,17 @@ export default function SchoolAdminSubjectsPage() {
         <p className="text-sm text-text-muted">Set up an academic year first.</p>
       ) : (
         <>
+          {gaps.length > 0 && (
+            <div className="flex items-start gap-2.5 rounded-xl border border-accent-light bg-accent-lighter p-3 text-sm text-accent-dark">
+              <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" aria-hidden />
+              <span>
+                <strong>{gaps.length}</strong> subject{gaps.length > 1 ? 's' : ''} offered here with nobody
+                assigned to teach {gaps.length > 1 ? 'them' : 'it'} yet: {gaps.map((g) => g.subjectName).join(', ')}.
+                Click <em>Unassigned</em> in the Teacher column below to fix it.
+              </span>
+            </div>
+          )}
+
           <div className="space-y-2">
             <h2 className="text-sm font-bold text-primary-900">O-Level subjects</h2>
             <DataTable
@@ -293,6 +335,17 @@ export default function SchoolAdminSubjectsPage() {
           academicYearId={effectiveYearId}
           curriculumId={curriculumId}
           combination={comboModal.combination}
+        />
+      )}
+
+      {teacherModal && effectiveYearId && (
+        <SubjectTeacherAssignmentModal
+          open
+          onClose={() => setTeacherModal(null)}
+          onChanged={load}
+          academicYearId={effectiveYearId}
+          subjectId={teacherModal.subjectId}
+          subjectName={teacherModal.subjectName}
         />
       )}
     </div>
