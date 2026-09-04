@@ -1,12 +1,13 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
+import { DataTable, type DataTableColumn } from '@/components/ui/DataTable';
+import { type DropdownMenuItem } from '@/components/ui/DropdownMenu';
 import { Input } from '@/components/ui/Input';
 import { Modal } from '@/components/ui/Modal';
 import { Select } from '@/components/ui/Select';
-import { DropdownMenu, type DropdownMenuItem } from '@/components/ui/DropdownMenu';
 import { useToast } from '@/components/ui/ToastProvider';
 import { fetchList, submitJson } from '@/lib/api/envelope';
 import { Crown, Pencil, Plus, Star, Trash2, UserPlus, X } from 'lucide-react';
@@ -14,20 +15,24 @@ import type { AcademicYear, Staff } from '@/components/admin/staff/types';
 import {
   POSITION_CATEGORIES,
   POSITION_CATEGORY_LABEL,
-  orderAsTree,
   type Department,
   type Position,
   type PositionCategory,
 } from './types';
 
-// docs/design/organization-studio.md §1 — the org chart is just this tree,
-// rendered. No separate chart data structure: walk parent_position_id,
-// show each node's title and its current occupant(s).
+// One professional table per department (plus a "Leadership" table for
+// positions with no department) instead of one long tree — the tabs are
+// purely a display grouping over the same flat `position` rows; the
+// underlying tree (parent_position_id) is unchanged and still shown via the
+// "Reports to" column.
+
+const LEADERSHIP_TAB = '__leadership__';
 
 function PositionFormModal({
   position,
   positions,
   departments,
+  defaultDepartmentId,
   onSaved,
   onClose,
 }: {
@@ -35,6 +40,7 @@ function PositionFormModal({
   position?: Position;
   positions: Position[];
   departments: Department[];
+  defaultDepartmentId?: string | null;
   onSaved: () => Promise<void> | void;
   onClose: () => void;
 }) {
@@ -43,7 +49,7 @@ function PositionFormModal({
   const [title, setTitle] = useState(position?.title ?? '');
   const [category, setCategory] = useState<PositionCategory>(position?.category ?? 'non_teaching');
   const [parentPositionId, setParentPositionId] = useState(position?.parentPositionId ?? '');
-  const [departmentId, setDepartmentId] = useState(position?.departmentId ?? '');
+  const [departmentId, setDepartmentId] = useState(position?.departmentId ?? defaultDepartmentId ?? '');
   const [isUnique, setIsUnique] = useState(position?.isUnique ?? false);
   const [saving, setSaving] = useState(false);
 
@@ -90,9 +96,9 @@ function PositionFormModal({
         />
         <Select
           label="Department (optional)"
-          value={departmentId}
+          value={departmentId ?? ''}
           onChange={(e) => setDepartmentId(e.target.value)}
-          options={[{ value: '', label: 'None' }, ...departments.map((d) => ({ value: d.id, label: d.name }))]}
+          options={[{ value: '', label: 'None (leadership)' }, ...departments.map((d) => ({ value: d.id, label: d.name }))]}
         />
         <label className="flex items-center gap-2 text-sm text-[#12333F]">
           <input type="checkbox" checked={isUnique} onChange={(e) => setIsUnique(e.target.checked)} className="rounded border-[#E5E5E5]" />
@@ -171,7 +177,7 @@ function AssignHolderModal({ position, onSaved, onClose }: { position: Position;
   );
 }
 
-export function PositionTree({
+export function DepartmentPositionsTabs({
   positions,
   departments,
   onChanged,
@@ -181,11 +187,31 @@ export function PositionTree({
   onChanged: () => Promise<void> | void;
 }) {
   const toast = useToast();
+  const [activeTab, setActiveTab] = useState<string>(LEADERSHIP_TAB);
   const [formModal, setFormModal] = useState<{ position?: Position } | null>(null);
   const [assignModal, setAssignModal] = useState<Position | null>(null);
-
-  const hasLeadership = positions.some((p) => p.category === 'executive');
   const [seeding, setSeeding] = useState(false);
+
+  const positionsById = useMemo(() => new Map(positions.map((p) => [p.id, p])), [positions]);
+  const hasLeadership = positions.some((p) => p.category === 'executive');
+
+  const tabs = useMemo(() => {
+    const leadershipCount = positions.filter((p) => !p.departmentId).length;
+    const departmentTabs = departments.map((d) => ({
+      key: d.id,
+      label: d.name,
+      count: positions.filter((p) => p.departmentId === d.id).length,
+    }));
+    return [{ key: LEADERSHIP_TAB, label: 'Leadership', count: leadershipCount }, ...departmentTabs];
+  }, [positions, departments]);
+
+  // Derived, not stored: falls back to the first real tab whenever the
+  // clicked-on `activeTab` no longer exists (e.g. its department was just
+  // removed) rather than defaulting to a possibly-empty Leadership tab.
+  const effectiveActiveTab = tabs.some((t) => t.key === activeTab) ? activeTab : (tabs[0]?.key ?? LEADERSHIP_TAB);
+
+  const currentDepartmentId = effectiveActiveTab === LEADERSHIP_TAB ? null : effectiveActiveTab;
+  const rows = positions.filter((p) => (p.departmentId ?? null) === currentDepartmentId);
 
   async function seedTemplate() {
     setSeeding(true);
@@ -231,7 +257,86 @@ export function PositionTree({
     }
   }
 
-  const rows = orderAsTree(positions);
+  const columns: DataTableColumn<Position>[] = [
+    {
+      key: 'title',
+      header: 'Position',
+      value: (p) => p.title,
+      render: (p) => (
+        <span className="flex flex-wrap items-center gap-1.5">
+          <span className="font-medium">{p.title}</span>
+          {p.isAcademicRoot && (
+            <Badge variant="success">
+              <Crown className="w-3 h-3 mr-1 inline" aria-hidden />
+              Academics lead
+            </Badge>
+          )}
+          {p.isUnique && p.holders.length === 0 && <span className="text-text-faint text-xs italic">Vacant</span>}
+        </span>
+      ),
+    },
+    {
+      key: 'category',
+      header: 'Category',
+      value: (p) => POSITION_CATEGORY_LABEL[p.category],
+      render: (p) => <Badge variant={p.category === 'executive' ? 'accent' : 'muted'}>{POSITION_CATEGORY_LABEL[p.category]}</Badge>,
+    },
+    {
+      key: 'reportsTo',
+      header: 'Reports to',
+      value: (p) => (p.parentPositionId ? (positionsById.get(p.parentPositionId)?.title ?? '') : ''),
+      hideOnMobile: true,
+      render: (p) => {
+        const parent = p.parentPositionId ? positionsById.get(p.parentPositionId) : null;
+        return parent ? parent.title : <span className="text-text-faint">Top of the tree</span>;
+      },
+    },
+    {
+      key: 'holders',
+      header: 'Holder(s)',
+      value: (p) => p.holders.map((h) => h.staffName).join(', '),
+      render: (p) =>
+        p.holders.length === 0 ? (
+          <span className="text-text-faint">—</span>
+        ) : (
+          <span className="flex flex-wrap gap-1">
+            {p.holders.map((h) => (
+              <span key={h.staffPositionId} className="inline-flex items-center gap-1 rounded-full bg-bg-subtle px-2 py-0.5 text-xs">
+                {h.staffName}
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    void endHolder(h.staffPositionId);
+                  }}
+                  className="text-text-faint hover:text-red-600"
+                  aria-label={`End ${h.staffName}'s term`}
+                >
+                  <X className="w-3 h-3" aria-hidden />
+                </button>
+              </span>
+            ))}
+          </span>
+        ),
+    },
+  ];
+
+  const rowActions = (p: Position): DropdownMenuItem[] => {
+    const items: DropdownMenuItem[] = [
+      { label: 'Assign holder', icon: UserPlus, onClick: () => setAssignModal(p) },
+      { label: 'Edit', icon: Pencil, onClick: () => setFormModal({ position: p }) },
+    ];
+    if (p.category === 'executive') {
+      items.push({
+        label: p.isAcademicRoot ? 'Academics lead (current)' : 'Set as academics lead',
+        icon: Star,
+        disabled: p.isAcademicRoot,
+        onClick: () => void setAcademicRoot(p.id),
+      });
+    }
+    items.push({ label: 'Remove', icon: Trash2, danger: true, separatorBefore: true, onClick: () => void remove(p) });
+    return items;
+  };
 
   return (
     <div className="space-y-4">
@@ -247,82 +352,48 @@ export function PositionTree({
         </div>
       )}
 
-      {rows.length === 0 ? (
-        <p className="text-sm text-text-faint italic">No positions yet.</p>
-      ) : (
-        <div className="space-y-1">
-          {rows.map(({ position: p, depth }) => {
-            const items: DropdownMenuItem[] = [
-              { label: 'Edit', icon: Pencil, onClick: () => setFormModal({ position: p }) },
-              { label: 'Assign holder', icon: UserPlus, onClick: () => setAssignModal(p) },
-            ];
-            if (p.category === 'executive') {
-              items.push({
-                label: p.isAcademicRoot ? 'Academics lead (current)' : 'Set as academics lead',
-                icon: Star,
-                disabled: p.isAcademicRoot,
-                onClick: () => void setAcademicRoot(p.id),
-              });
-            }
-            items.push({
-              label: 'Remove',
-              icon: Trash2,
-              danger: true,
-              separatorBefore: true,
-              onClick: () => void remove(p),
-            });
+      <div className="flex flex-wrap gap-2 border-b border-border">
+        {tabs.map((tab) => {
+          const selected = effectiveActiveTab === tab.key;
+          return (
+            <button
+              key={tab.key}
+              type="button"
+              onClick={() => setActiveTab(tab.key)}
+              className={`-mb-px px-3 py-2 text-sm font-medium border-b-2 transition-colors ${
+                selected ? 'border-primary-700 text-primary-900' : 'border-transparent text-text-muted hover:text-primary-900'
+              }`}
+            >
+              {tab.label}
+              <span className={`ml-1.5 text-xs ${selected ? 'text-primary-700' : 'text-text-muted/70'}`}>{tab.count}</span>
+            </button>
+          );
+        })}
+      </div>
 
-            return (
-              <div
-                key={p.id}
-                className="flex items-center justify-between gap-3 rounded-xl border border-border p-3 text-sm"
-                style={{ marginLeft: depth * 24 }}
-              >
-                <div className="min-w-0">
-                  <span className="flex flex-wrap items-center gap-1.5">
-                    <span className="font-medium">{p.title}</span>
-                    <Badge variant={p.category === 'executive' ? 'accent' : 'muted'}>
-                      {POSITION_CATEGORY_LABEL[p.category]}
-                    </Badge>
-                    {p.isAcademicRoot && (
-                      <Badge variant="success">
-                        <Crown className="w-3 h-3 mr-1 inline" aria-hidden />
-                        Academics lead
-                      </Badge>
-                    )}
-                    {p.isUnique && p.holders.length === 0 && <span className="text-text-faint text-xs">Vacant</span>}
-                  </span>
-                  {p.departmentName && <div className="text-text-faint text-xs">{p.departmentName}</div>}
-                  {p.holders.length > 0 && (
-                    <div className="flex flex-wrap gap-1.5 mt-1">
-                      {p.holders.map((h) => (
-                        <span key={h.staffPositionId} className="inline-flex items-center gap-1 rounded-full bg-bg-subtle px-2 py-0.5 text-xs">
-                          {h.staffName}
-                          <button type="button" onClick={() => void endHolder(h.staffPositionId)} className="text-text-faint hover:text-red-600">
-                            <X className="w-3 h-3" aria-hidden />
-                          </button>
-                        </span>
-                      ))}
-                    </div>
-                  )}
-                </div>
-                <DropdownMenu items={items} />
-              </div>
-            );
-          })}
-        </div>
-      )}
-
-      <Button type="button" variant="outline" onClick={() => setFormModal({})}>
-        <Plus className="w-4 h-4 mr-1.5" aria-hidden />
-        Add a position
-      </Button>
+      <DataTable
+        rows={rows}
+        columns={columns}
+        rowActions={rowActions}
+        rowKey={(p) => p.id}
+        initialSort={{ key: 'category', direction: 'asc' }}
+        searchPlaceholder="Search this department…"
+        emptyMessage="No positions here yet."
+        exportFileName={`positions-${effectiveActiveTab === LEADERSHIP_TAB ? 'leadership' : effectiveActiveTab}`}
+        actions={
+          <Button onClick={() => setFormModal({ position: undefined })}>
+            <Plus className="w-4 h-4 mr-1.5" aria-hidden />
+            Add position
+          </Button>
+        }
+      />
 
       {formModal && (
         <PositionFormModal
           position={formModal.position}
           positions={positions}
           departments={departments}
+          defaultDepartmentId={currentDepartmentId}
           onSaved={onChanged}
           onClose={() => setFormModal(null)}
         />

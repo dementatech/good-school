@@ -3,6 +3,8 @@
 import { useState } from 'react';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
+import { DataTable, type DataTableColumn } from '@/components/ui/DataTable';
+import { type DropdownMenuItem } from '@/components/ui/DropdownMenu';
 import { Input } from '@/components/ui/Input';
 import { Modal } from '@/components/ui/Modal';
 import { Select } from '@/components/ui/Select';
@@ -23,29 +25,58 @@ import {
 // secondary path, each one asking "who does this report to?" as part of
 // turning it on (organization-studio.md §3).
 
-function ReportsToModal({
-  title,
+function headOfDepartment(department: Department, positions: Position[]): string {
+  const head = positions.find((p) => p.id === department.headOfDepartmentPositionId);
+  if (!head || head.holders.length === 0) return 'Vacant';
+  return head.holders.map((h) => h.staffName).join(', ');
+}
+
+function AddFromCatalogModal({
+  available,
   positions,
-  onConfirm,
+  onSaved,
   onClose,
 }: {
-  title: string;
+  available: DepartmentCatalogEntry[];
   positions: Position[];
-  onConfirm: (reportsToPositionId: string | null) => Promise<void>;
+  onSaved: () => Promise<void> | void;
   onClose: () => void;
 }) {
+  const toast = useToast();
+  const [catalogId, setCatalogId] = useState('');
   const [reportsTo, setReportsTo] = useState('');
   const [saving, setSaving] = useState(false);
 
-  async function confirm() {
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!catalogId) {
+      toast.error('Pick a department.');
+      return;
+    }
     setSaving(true);
-    await onConfirm(reportsTo || null);
+    const res = await submitJson('/api/v1/organization/departments/non-academic', 'POST', {
+      catalogId,
+      reportsToPositionId: reportsTo || null,
+    });
     setSaving(false);
+    if (res.ok) {
+      toast.success('Department added.');
+      await onSaved();
+      onClose();
+    } else {
+      toast.error(res.error!);
+    }
   }
 
   return (
-    <Modal open onClose={onClose} title={title}>
-      <div className="space-y-4">
+    <Modal open onClose={onClose} title="Add a department from the catalog">
+      <form onSubmit={submit} className="space-y-4">
+        <Select
+          label="Department"
+          value={catalogId}
+          onChange={(e) => setCatalogId(e.target.value)}
+          options={[{ value: '', label: 'Select…' }, ...available.map((c) => ({ value: c.id, label: c.name }))]}
+        />
         <Select
           label="Reports to (optional)"
           value={reportsTo}
@@ -55,15 +86,10 @@ function ReportsToModal({
             ...positions.map((p) => ({ value: p.id, label: p.title })),
           ]}
         />
-        <div className="flex gap-2">
-          <Button type="button" isLoading={saving} onClick={() => void confirm()}>
-            Add department
-          </Button>
-          <Button type="button" variant="outline" onClick={onClose}>
-            Cancel
-          </Button>
-        </div>
-      </div>
+        <Button type="submit" isLoading={saving}>
+          Add department
+        </Button>
+      </form>
     </Modal>
   );
 }
@@ -135,12 +161,11 @@ export function DepartmentsPanel({
   onChanged: () => Promise<void> | void;
 }) {
   const toast = useToast();
-  const [addingCatalogEntry, setAddingCatalogEntry] = useState<DepartmentCatalogEntry | null>(null);
+  const [catalogModal, setCatalogModal] = useState(false);
   const [customModal, setCustomModal] = useState(false);
 
-  const byCatalogId = new Map(departments.filter((d) => d.catalogId).map((d) => [d.catalogId, d]));
-  const academic = departments.filter((d) => d.departmentType === 'academic');
-  const customNonAcademic = departments.filter((d) => d.departmentType === 'non_academic' && !d.catalogId);
+  const usedCatalogIds = new Set(departments.filter((d) => d.catalogId).map((d) => d.catalogId));
+  const availableCatalog = catalog.filter((c) => !usedCatalogIds.has(c.id));
 
   async function remove(id: string, name: string) {
     if (!confirm(`Remove ${name}? This only works if nobody currently holds a position in it.`)) return;
@@ -153,100 +178,72 @@ export function DepartmentsPanel({
     }
   }
 
-  async function addNonAcademic(catalogId: string, reportsToPositionId: string | null) {
-    const res = await submitJson('/api/v1/organization/departments/non-academic', 'POST', {
-      catalogId,
-      reportsToPositionId,
-    });
-    if (res.ok) {
-      toast.success('Department added.');
-      await onChanged();
-      setAddingCatalogEntry(null);
-    } else {
-      toast.error(res.error!);
-    }
-  }
+  const columns: DataTableColumn<Department>[] = [
+    {
+      key: 'name',
+      header: 'Department',
+      value: (d) => d.name,
+      render: (d) => (
+        <span className="flex flex-wrap items-center gap-1.5">
+          <span className="font-medium">{d.name}</span>
+          {d.catalogId === null && d.subjects.length === 0 && <Badge variant="muted">Custom</Badge>}
+        </span>
+      ),
+    },
+    {
+      key: 'departmentType',
+      header: 'Type',
+      value: (d) => DEPARTMENT_TYPE_LABEL[d.departmentType],
+      render: (d) => <Badge variant={d.departmentType === 'academic' ? 'default' : 'muted'}>{DEPARTMENT_TYPE_LABEL[d.departmentType]}</Badge>,
+    },
+    {
+      key: 'subjects',
+      header: 'Subject(s)',
+      value: (d) => d.subjects.map((s) => s.subjectName).join(', '),
+      hideOnMobile: true,
+      render: (d) => (d.subjects.length > 0 ? d.subjects.map((s) => s.subjectCode).join(', ') : <span className="text-text-faint">—</span>),
+    },
+    {
+      key: 'head',
+      header: 'Head of department',
+      value: (d) => headOfDepartment(d, positions),
+      render: (d) => {
+        const label = headOfDepartment(d, positions);
+        return label === 'Vacant' ? <span className="text-text-faint italic">Vacant</span> : label;
+      },
+    },
+  ];
+
+  const rowActions = (d: Department): DropdownMenuItem[] => [
+    { label: 'Remove', icon: Trash2, danger: true, onClick: () => void remove(d.id, d.name) },
+  ];
 
   return (
-    <div className="space-y-6">
-      <div className="space-y-2">
-        <h3 className="text-sm font-bold text-primary-900">Academic departments</h3>
-        <p className="text-xs text-text-muted">
-          One per offered subject, created automatically the moment it&rsquo;s enabled on the Subjects
-          &amp; Combinations page.
-        </p>
-        {academic.length === 0 ? (
-          <p className="text-sm text-text-faint italic">None yet — offer a subject to get one.</p>
-        ) : (
-          <div className="space-y-1.5">
-            {academic.map((d) => (
-              <div key={d.id} className="flex items-center justify-between rounded-xl border border-border p-3 text-sm">
-                <span>
-                  <span className="font-medium">{d.name}</span>
-                  <span className="text-text-faint"> — {d.subjects.map((s) => s.subjectName).join(', ')}</span>
-                </span>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
+    <div className="space-y-2">
+      <DataTable
+        rows={departments}
+        columns={columns}
+        rowActions={rowActions}
+        rowKey={(d) => d.id}
+        initialSort={{ key: 'name', direction: 'asc' }}
+        searchPlaceholder="Search departments…"
+        emptyMessage="No departments yet — offer a subject, or add one below."
+        exportFileName="departments"
+        actions={
+          <Button onClick={() => setCatalogModal(true)} disabled={availableCatalog.length === 0}>
+            <Plus className="w-4 h-4 mr-1.5" aria-hidden />
+            Add from catalog
+          </Button>
+        }
+        secondaryActions={[{ label: 'Add a custom department', icon: Plus, onClick: () => setCustomModal(true) }]}
+      />
 
-      <div className="space-y-2">
-        <h3 className="text-sm font-bold text-primary-900">Non-academic departments</h3>
-        <p className="text-xs text-text-muted">Tick which ones this school runs.</p>
-        <div className="flex flex-wrap gap-2">
-          {catalog.map((c) => {
-            const existing = byCatalogId.get(c.id);
-            return (
-              <label
-                key={c.id}
-                className="inline-flex items-center gap-2 rounded-xl border border-border px-3 py-2 text-sm cursor-pointer"
-              >
-                <input
-                  type="checkbox"
-                  checked={Boolean(existing)}
-                  onChange={() => {
-                    if (existing) void remove(existing.id, existing.name);
-                    else setAddingCatalogEntry(c);
-                  }}
-                  className="rounded border-[#E5E5E5]"
-                />
-                {c.name}
-              </label>
-            );
-          })}
-        </div>
-      </div>
-
-      {customNonAcademic.length > 0 && (
-        <div className="space-y-2">
-          <h3 className="text-sm font-bold text-primary-900">Custom departments</h3>
-          <div className="space-y-1.5">
-            {customNonAcademic.map((d) => (
-              <div key={d.id} className="flex items-center justify-between rounded-xl border border-border p-3 text-sm">
-                <span>
-                  {d.name} <Badge variant="muted">{DEPARTMENT_TYPE_LABEL[d.departmentType]}</Badge>
-                </span>
-                <button type="button" onClick={() => void remove(d.id, d.name)} className="text-text-faint hover:text-red-600">
-                  <Trash2 className="w-4 h-4" aria-hidden />
-                </button>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      <Button type="button" variant="outline" onClick={() => setCustomModal(true)}>
-        <Plus className="w-4 h-4 mr-1.5" aria-hidden />
-        Add a custom department
-      </Button>
-
-      {addingCatalogEntry && (
-        <ReportsToModal
-          title={`Add ${addingCatalogEntry.name}`}
+      {catalogModal && (
+        <AddFromCatalogModal
+          available={availableCatalog}
           positions={positions}
-          onClose={() => setAddingCatalogEntry(null)}
-          onConfirm={(reportsTo) => addNonAcademic(addingCatalogEntry.id, reportsTo)}
+          onSaved={onChanged}
+          onClose={() => setCatalogModal(false)}
         />
       )}
       {customModal && (

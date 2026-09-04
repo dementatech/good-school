@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Loader } from '@/components/ui/loader';
 import { fetchList } from '@/lib/api/envelope';
 import { DepartmentsPanel } from '@/components/admin/organization/DepartmentsPanel';
-import { PositionTree } from '@/components/admin/organization/PositionTree';
+import { DepartmentPositionsTabs } from '@/components/admin/organization/DepartmentPositionsTabs';
 import type { Department, DepartmentCatalogEntry, Position } from '@/components/admin/organization/types';
 
 // docs/design/departments-module.md + organization-studio.md — the school's
@@ -60,7 +60,11 @@ export default function OrganisationStudioPage() {
 
       <div className="space-y-2">
         <h2 className="text-sm font-bold text-primary-900">Org chart</h2>
-        <PositionTree positions={positions} departments={departments} onChanged={load} />
+        <p className="text-xs text-text-muted -mt-1">
+          One table per department — including Leadership, for the positions that don&rsquo;t belong to
+          any department.
+        </p>
+        <DepartmentPositionsTabs positions={positions} departments={departments} onChanged={load} />
       </div>
     </div>
   );
