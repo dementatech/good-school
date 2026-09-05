@@ -7,12 +7,16 @@ import { DataTable, type DataTableColumn } from '@/components/ui/DataTable';
 import { type DropdownMenuItem } from '@/components/ui/DropdownMenu';
 import { useToast } from '@/components/ui/ToastProvider';
 import { Loader } from '@/components/ui/loader';
-import { Pencil, Plus, Trash2 } from 'lucide-react';
+import { BadgeCheck, Pencil, Plus, Trash2, X } from 'lucide-react';
+import { Modal } from '@/components/ui/Modal';
 import { CurriculumFormModal } from '@/components/admin/curriculum/CurriculumFormModal';
 import { StageFormModal } from '@/components/admin/curriculum/StageFormModal';
 import { SubjectFormModal } from '@/components/admin/curriculum/SubjectFormModal';
 import { CombinationFormModal } from '@/components/admin/curriculum/CombinationFormModal';
 import {
+  A_LEVEL_CATEGORIES,
+  CATEGORY_LABEL,
+  O_LEVEL_CATEGORIES,
   submitJson,
   type Combination,
   type Curriculum,
@@ -48,7 +52,10 @@ export default function CurriculumPage() {
   const [stages, setStages] = useState<Stage[]>([]);
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [combinations, setCombinations] = useState<Combination[]>([]);
+  const [schoolName, setSchoolName] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
+  const [rejecting, setRejecting] = useState<Subject | null>(null);
+  const [rejectReason, setRejectReason] = useState('');
 
   // modal targets — `null` closed, `{}` = add, an object = edit
   const [curriculumModal, setCurriculumModal] = useState<{ initial?: Curriculum } | null>(null);
@@ -78,7 +85,17 @@ export default function CurriculumPage() {
     const controller = new AbortController();
     void (async () => {
       try {
-        const list = await loadCurricula();
+        const [list] = await Promise.all([
+          loadCurricula(),
+          fetch('/api/v1/schools')
+            .then((r) => r.json())
+            .then((res) => {
+              if (res.success && !controller.signal.aborted) {
+                setSchoolName(Object.fromEntries(res.data.map((s: { id: string; name: string }) => [s.id, s.name])));
+              }
+            })
+            .catch(() => {}),
+        ]);
         if (!controller.signal.aborted && list.length) {
           setCurriculumId(list[0].id);
           await reloadForCurriculum(list[0].id);
@@ -124,9 +141,40 @@ export default function CurriculumPage() {
 
   const oLevelStages = stages.filter((s) => s.phase === 'O_LEVEL');
   const aLevelStages = stages.filter((s) => s.phase === 'A_LEVEL');
-  const oLevelSubjects = subjects.filter((s) => s.phase === 'O_LEVEL');
-  const aLevelSubjects = subjects.filter((s) => s.phase === 'A_LEVEL');
+  const approvedSubjects = subjects.filter((s) => s.status === 'approved');
+  const pendingSubjects = subjects.filter((s) => s.status === 'pending');
+  const oLevelSubjects = approvedSubjects.filter((s) => s.phase === 'O_LEVEL');
+  const aLevelSubjects = approvedSubjects.filter((s) => s.phase === 'A_LEVEL');
   const comboSubjects = aLevelSubjects.filter((s) => s.stageIds.length > 0);
+
+  async function approve(s: Subject) {
+    const res = await submitJson(`/api/v1/academic/subjects/${s.id}/approve`, 'POST');
+    if (res.ok) {
+      toast.success(`${s.name} approved.`);
+      await reloadAll();
+    } else {
+      toast.error(res.error!);
+    }
+  }
+
+  async function reject() {
+    if (!rejecting) return;
+    if (!rejectReason.trim()) {
+      toast.error('A rejection needs a reason.');
+      return;
+    }
+    const res = await submitJson(`/api/v1/academic/subjects/${rejecting.id}/reject`, 'POST', {
+      reason: rejectReason.trim(),
+    });
+    if (res.ok) {
+      toast.success(`${rejecting.name} rejected.`);
+      setRejecting(null);
+      setRejectReason('');
+      await reloadAll();
+    } else {
+      toast.error(res.error!);
+    }
+  }
 
   // ── column defs ──────────────────────────────────────────────────────────
   const curriculumCols: DataTableColumn<Curriculum>[] = [
@@ -176,8 +224,20 @@ export default function CurriculumPage() {
 
   const subjectCols: DataTableColumn<Subject>[] = [
     { key: 'name', header: 'Subject', value: (s) => s.name, render: (s) => <span className="font-medium">{s.name}</span> },
+    { key: 'shortName', header: 'Short name', value: (s) => s.shortName, hideOnMobile: true },
     { key: 'code', header: 'Code', value: (s) => s.code, render: (s) => <Badge variant="muted">{s.code}</Badge> },
-    { key: 'category', header: 'Category', value: (s) => s.category, hideOnMobile: true },
+    {
+      key: 'category',
+      header: 'Category',
+      value: (s) => CATEGORY_LABEL[s.category] ?? s.category,
+      hideOnMobile: true,
+      render: (s) => (
+        <span className="flex items-center gap-1.5">
+          {CATEGORY_LABEL[s.category] ?? s.category}
+          {s.isGeneralPaper && <Badge variant="accent">Constant</Badge>}
+        </span>
+      ),
+    },
     {
       key: 'stages',
       header: 'Offered at',
@@ -203,12 +263,47 @@ export default function CurriculumPage() {
   ];
   const subjectActions = (phase: Phase) => (s: Subject): DropdownMenuItem[] => [
     { label: 'Edit', icon: Pencil, onClick: () => setSubjectModal({ phase, initial: s }) },
+    // General Paper is a system constant — never deletable (backend rejects
+    // it too; this just keeps the option from appearing at all).
+    ...(s.isGeneralPaper
+      ? []
+      : [
+          {
+            label: 'Delete',
+            icon: Trash2,
+            danger: true,
+            separatorBefore: true,
+            onClick: () => void del(`/api/v1/academic/subjects/${s.id}`, `Delete ${s.name}?`, s.name),
+          },
+        ]),
+  ];
+
+  const pendingCols: DataTableColumn<Subject>[] = [
+    { key: 'name', header: 'Subject', value: (s) => s.name, render: (s) => <span className="font-medium">{s.name}</span> },
+    { key: 'shortName', header: 'Short name', value: (s) => s.shortName },
     {
-      label: 'Delete',
-      icon: Trash2,
+      key: 'category',
+      header: 'Category',
+      value: (s) => CATEGORY_LABEL[s.category] ?? s.category,
+    },
+    { key: 'phase', header: 'Phase', value: (s) => s.phase },
+    {
+      key: 'proposedBy',
+      header: 'Proposed by',
+      value: (s) => (s.proposedBySchoolId && schoolName[s.proposedBySchoolId]) || '—',
+    },
+  ];
+  const pendingActions = (s: Subject): DropdownMenuItem[] => [
+    { label: 'Approve', icon: BadgeCheck, onClick: () => void approve(s) },
+    {
+      label: 'Reject',
+      icon: X,
       danger: true,
       separatorBefore: true,
-      onClick: () => void del(`/api/v1/academic/subjects/${s.id}`, `Delete ${s.name}?`, s.name),
+      onClick: () => {
+        setRejecting(s);
+        setRejectReason('');
+      },
     },
   ];
 
@@ -309,6 +404,23 @@ export default function CurriculumPage() {
         />
       </Section>
 
+      {pendingSubjects.length > 0 && (
+        <Section
+          title="Pending subjects"
+          description={`${pendingSubjects.length} school-proposed subject${pendingSubjects.length === 1 ? '' : 's'} awaiting review.`}
+        >
+          <DataTable
+            rows={pendingSubjects}
+            columns={pendingCols}
+            rowActions={pendingActions}
+            rowKey={(s) => s.id}
+            initialSort={{ key: 'name', direction: 'asc' }}
+            emptyMessage="No pending subjects."
+            exportFileName="pending-subjects"
+          />
+        </Section>
+      )}
+
       <Section
         title="O-Level subjects"
         description="The NLSC catalog — a learner sits 8–10 of these across Senior 1–4."
@@ -394,8 +506,31 @@ export default function CurriculumPage() {
           curriculumId={curriculumId}
           phase={subjectModal.phase}
           stages={subjectModal.phase === 'O_LEVEL' ? oLevelStages : aLevelStages}
+          categories={subjectModal.phase === 'O_LEVEL' ? O_LEVEL_CATEGORIES : A_LEVEL_CATEGORIES}
           initial={subjectModal.initial}
         />
+      )}
+      {rejecting && (
+        <Modal open onClose={() => setRejecting(null)} title={`Reject ${rejecting.name}`}>
+          <div className="space-y-3">
+            <textarea
+              autoFocus
+              placeholder="Reason for rejection (shown to the school)"
+              value={rejectReason}
+              onChange={(e) => setRejectReason(e.target.value)}
+              rows={3}
+              className="w-full border border-border rounded-lg px-3 py-2 text-sm"
+            />
+            <div className="flex gap-2">
+              <Button variant="outline" onClick={() => void reject()}>
+                Confirm rejection
+              </Button>
+              <Button variant="outline" onClick={() => setRejecting(null)}>
+                Cancel
+              </Button>
+            </div>
+          </div>
+        </Modal>
       )}
       {combinationModal && (
         <CombinationFormModal

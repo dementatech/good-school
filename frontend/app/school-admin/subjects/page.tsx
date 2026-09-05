@@ -12,15 +12,30 @@ import { fetchList, submitJson } from '@/lib/api/envelope';
 import { Pencil, Plus, Trash2 } from 'lucide-react';
 import { SchoolCombinationFormModal } from '@/components/admin/subjects/SchoolCombinationFormModal';
 import { SubjectTeacherAssignmentModal } from '@/components/admin/subjects/SubjectTeacherAssignmentModal';
+import { SubjectFormModal } from '@/components/admin/curriculum/SubjectFormModal';
 import { AlertTriangle, UserCog } from 'lucide-react';
 import type { AllocationGap } from '@/components/admin/staff/types';
+import type { Phase, Stage } from '@/components/admin/curriculum/types';
+import { A_LEVEL_CATEGORIES, O_LEVEL_CATEGORIES } from '@/components/admin/curriculum/types';
 import {
   CATEGORY_LABEL,
+  STATUS_LABEL,
+  STATUS_VARIANT,
   type AcademicYear,
   type CatalogSubject,
   type SchoolCombination,
   type SubjectOffering,
 } from '@/components/admin/subjects/types';
+
+// A school can never propose 'core' (O-Level) — that's platform-only. There's
+// no A-Level equivalent to exclude: General Paper is protected by the
+// `isGeneralPaper` flag (never settable through this form), not by category —
+// a school can freely propose a Science, Art, or ordinary Subsidiary subject.
+// See backend routes.ts POST /subjects.
+const PROPOSABLE_CATEGORIES: Record<Phase, typeof O_LEVEL_CATEGORIES> = {
+  O_LEVEL: O_LEVEL_CATEGORIES.filter((c) => c !== 'core'),
+  A_LEVEL: A_LEVEL_CATEGORIES,
+};
 
 // A school's O-Level offering, one row per catalog subject (super_admin's
 // "constants") whether or not the school has toggled it on yet — a subject
@@ -41,14 +56,26 @@ export default function SchoolAdminSubjectsPage() {
   const [yearId, setYearId] = useState('');
   const [curriculumId, setCurriculumId] = useState('');
   const [catalogSubjects, setCatalogSubjects] = useState<CatalogSubject[]>([]);
+  const [stages, setStages] = useState<Stage[]>([]);
   const [offerings, setOfferings] = useState<SubjectOffering[]>([]);
   const [combinations, setCombinations] = useState<SchoolCombination[]>([]);
   const [comboModal, setComboModal] = useState<{ combination?: SchoolCombination } | null>(null);
   const [gaps, setGaps] = useState<AllocationGap[]>([]);
   const [teacherModal, setTeacherModal] = useState<{ subjectId: string; subjectName: string } | null>(null);
+  const [proposeModal, setProposeModal] = useState<{ phase: Phase } | null>(null);
 
   const currentYear = years.find((y) => y.isCurrent) ?? years[0];
   const effectiveYearId = yearId || currentYear?.id || '';
+
+  const loadSubjects = useCallback(async (curId: string) => {
+    if (!curId) return;
+    const [subjectsRes, stagesRes] = await Promise.all([
+      fetchList<CatalogSubject>(`/api/v1/academic/subjects?curriculumId=${curId}`),
+      fetchList<Stage>(`/api/v1/academic/stages?curriculumId=${curId}`),
+    ]);
+    setCatalogSubjects(subjectsRes);
+    setStages(stagesRes);
+  }, []);
 
   useEffect(() => {
     void (async () => {
@@ -59,12 +86,10 @@ export default function SchoolAdminSubjectsPage() {
       setYears(yearsRes);
       const curId = schoolCurricula[0]?.curriculumId ?? '';
       setCurriculumId(curId);
-      if (curId) {
-        setCatalogSubjects(await fetchList<CatalogSubject>(`/api/v1/academic/subjects?curriculumId=${curId}`));
-      }
+      await loadSubjects(curId);
       setLoading(false);
     })();
-  }, []);
+  }, [loadSubjects]);
 
   const load = useCallback(async () => {
     if (!effectiveYearId) return;
@@ -111,7 +136,7 @@ export default function SchoolAdminSubjectsPage() {
 
   function subjectRows(phase: 'O_LEVEL' | 'A_LEVEL'): OfferingRow[] {
     return catalogSubjects
-      .filter((s) => s.phase === phase && s.isActive)
+      .filter((s) => s.phase === phase && s.isActive && s.status === 'approved')
       .map((s) => {
         const o = offeringByCode.get(s.id);
         return {
@@ -214,10 +239,10 @@ export default function SchoolAdminSubjectsPage() {
     {
       key: 'subjects',
       header: 'Subjects',
-      value: (c) => c.subjects.map((s) => s.subjectCode).join(', '),
+      value: (c) => c.subjects.map((s) => s.subjectShortName).join(', '),
       render: (c) => (
         <span className="text-xs text-text-muted">
-          {c.subjects.map((s) => `${s.subjectCode}${s.role === 'principal' ? '' : ` (${s.role})`}`).join(', ')}
+          {c.subjects.map((s) => `${s.subjectShortName}${s.role === 'principal' ? '' : ` (${s.role})`}`).join(', ')}
         </span>
       ),
     },
@@ -233,6 +258,8 @@ export default function SchoolAdminSubjectsPage() {
     { label: 'Edit', icon: Pencil, onClick: () => setComboModal({ combination: c }) },
     { label: 'Remove', icon: Trash2, danger: true, separatorBefore: true, onClick: () => void removeCombination(c) },
   ];
+
+  const proposedSubjects = catalogSubjects.filter((s) => s.status !== 'approved');
 
   if (loading) {
     return (
@@ -289,6 +316,12 @@ export default function SchoolAdminSubjectsPage() {
               searchPlaceholder="Search subjects…"
               emptyMessage="No O-Level subjects in the catalog yet — a super-admin sets those up."
               exportFileName="o-level-subjects"
+              actions={
+                <Button variant="outline" onClick={() => setProposeModal({ phase: 'O_LEVEL' })} disabled={!curriculumId}>
+                  <Plus className="w-4 h-4 mr-1.5" aria-hidden />
+                  Propose a subject
+                </Button>
+              }
             />
           </div>
 
@@ -302,8 +335,54 @@ export default function SchoolAdminSubjectsPage() {
               searchPlaceholder="Search subjects…"
               emptyMessage="No A-Level subjects in the catalog yet — a super-admin sets those up."
               exportFileName="a-level-subjects"
+              actions={
+                <Button variant="outline" onClick={() => setProposeModal({ phase: 'A_LEVEL' })} disabled={!curriculumId}>
+                  <Plus className="w-4 h-4 mr-1.5" aria-hidden />
+                  Propose a subject
+                </Button>
+              }
             />
           </div>
+
+          {proposedSubjects.length > 0 && (
+            <div className="space-y-2">
+              <h2 className="text-sm font-bold text-primary-900">Your proposed subjects</h2>
+              <DataTable
+                rows={proposedSubjects}
+                columns={[
+                  {
+                    key: 'name',
+                    header: 'Subject',
+                    value: (s) => s.name,
+                    render: (s) => <span className="font-medium">{s.name}</span>,
+                  },
+                  { key: 'phase', header: 'Phase', value: (s) => s.phase },
+                  {
+                    key: 'category',
+                    header: 'Category',
+                    value: (s) => CATEGORY_LABEL[s.category] ?? s.category,
+                  },
+                  {
+                    key: 'status',
+                    header: 'Status',
+                    value: (s) => s.status,
+                    render: (s) => (
+                      <span className="flex items-center gap-2">
+                        <Badge variant={STATUS_VARIANT[s.status]}>{STATUS_LABEL[s.status]}</Badge>
+                        {s.status === 'rejected' && s.rejectionReason && (
+                          <span className="text-xs text-text-faint">{s.rejectionReason}</span>
+                        )}
+                      </span>
+                    ),
+                  },
+                ]}
+                rowKey={(s) => s.id}
+                initialSort={{ key: 'name', direction: 'asc' }}
+                emptyMessage="No proposed subjects."
+                exportFileName="proposed-subjects"
+              />
+            </div>
+          )}
 
           <div className="space-y-2">
             <h2 className="text-sm font-bold text-primary-900">A-Level combinations</h2>
@@ -335,6 +414,19 @@ export default function SchoolAdminSubjectsPage() {
           academicYearId={effectiveYearId}
           curriculumId={curriculumId}
           combination={comboModal.combination}
+        />
+      )}
+
+      {proposeModal && (
+        <SubjectFormModal
+          open
+          onClose={() => setProposeModal(null)}
+          onSaved={() => loadSubjects(curriculumId)}
+          curriculumId={curriculumId}
+          phase={proposeModal.phase}
+          stages={stages.filter((s) => s.phase === proposeModal.phase)}
+          categories={PROPOSABLE_CATEGORIES[proposeModal.phase]}
+          isProposal
         />
       )}
 

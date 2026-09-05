@@ -1,4 +1,5 @@
 import { pool } from "../../../shared/db/index.js";
+import { nextSequentialCode } from "./sequential-code.js";
 
 // A-Level subject combinations (PCM, HEG, …) and their member subjects with a
 // role — `principal` subjects drive UACE points, `subsidiary`/`compulsory`
@@ -34,9 +35,10 @@ export interface CombinationRecord {
 }
 
 export interface CombinationInput {
-  /** Omit to derive it from the principal subjects' codes (PCM, HEG …). */
+  /** Omit to auto-assign the next sequential code (C001, C002, …). */
   code?: string;
-  name: string;
+  /** Omit to derive it from the chosen subjects' short names (PhyChemMath/ICT/GP). */
+  name?: string;
   description?: string | null;
   isActive?: boolean;
   subjects?: CombinationMember[];
@@ -116,8 +118,8 @@ async function replaceMembers(
   // combination that quietly loses a subject is exactly the kind of surprise
   // this check exists to prevent.
   const ids = members.map((m) => m.subjectId);
-  const found = await client.query<{ id: string; category: string }>(
-    `select id, category from subject where curriculum_id = $1 and id = any($2::uuid[])`,
+  const found = await client.query<{ id: string; category: string; status: string; is_general_paper: boolean }>(
+    `select id, category, status, is_general_paper from subject where curriculum_id = $1 and id = any($2::uuid[])`,
     [curriculumId, ids],
   );
   if (found.rowCount !== new Set(ids).size) {
@@ -125,13 +127,30 @@ async function replaceMembers(
       "One or more chosen subjects don't exist in this curriculum. Add the subject first, then build the combination.",
     );
   }
-  // General Paper (category 'general') is implicit for every A-Level student
-  // the moment they're placed into ANY combination — it's never a per-
-  // combination choice, so it never appears as a member. See
-  // docs/design/subject-selection-module.md §3.1.
-  if (found.rows.some((r) => r.category === "general")) {
+  // General Paper is implicit for every A-Level student the moment they're
+  // placed into ANY combination — it's never a per-combination choice, so it
+  // never appears as a member. See docs/design/subject-selection-module.md §3.1.
+  if (found.rows.some((r) => r.is_general_paper)) {
     throw new InvalidCombinationError(
       "General Paper is automatic for every A-Level student — don't add it to a combination.",
+    );
+  }
+  if (found.rows.some((r) => r.status !== "approved")) {
+    throw new InvalidCombinationError(
+      "One or more chosen subjects haven't been approved yet.",
+    );
+  }
+
+  // General Paper is a must in the system — it's seeded automatically when a
+  // curriculum is created (see curricula.repository.ts), so this only ever
+  // trips for a curriculum that predates that, or whose GP was deactivated.
+  const gp = await client.query(
+    `select 1 from subject where curriculum_id = $1 and is_general_paper and status = 'approved' and is_active`,
+    [curriculumId],
+  );
+  if (gp.rowCount === 0) {
+    throw new InvalidCombinationError(
+      "This curriculum has no approved General Paper subject yet — add one before creating combinations.",
     );
   }
 
@@ -147,32 +166,31 @@ async function replaceMembers(
 }
 
 /**
- * "PCM/ICT" — first letter of each principal's code, in the order they were
- * picked (Physics, Chemistry, Maths -> "PCM"; there's no single "correct"
- * alphabetical order for these, so we don't impose one), then the
- * subsidiary's own code after a slash. A combination with no subsidiary
- * member is just "PCM". General Paper never appears — it's excluded from
- * `members` entirely by `replaceMembers` above.
+ * "PhyChemMath/ICT/GP" — each principal's `short_name`, in the order they
+ * were picked (there's no single "correct" alphabetical order for these, so
+ * we don't impose one), concatenated with no separator, then the
+ * subsidiary's own `short_name` after a slash if there is one, then "/GP" —
+ * always, since General Paper is automatic for every A-Level student the
+ * moment they're placed into ANY combination (never a member here, see
+ * `replaceMembers` above; this is display text only).
  */
-async function deriveCode(
+async function deriveName(
   client: import("pg").PoolClient,
   members: CombinationMember[],
 ): Promise<string> {
   const principalIds = members.filter((m) => m.role === "principal").map((m) => m.subjectId);
   const subsidiaryIds = members.filter((m) => m.role === "subsidiary").map((m) => m.subjectId);
-  const { rows } = await client.query<{ id: string; code: string }>(
-    `select id, code from subject where id = any($1::uuid[])`,
+  const { rows } = await client.query<{ id: string; short_name: string }>(
+    `select id, short_name from subject where id = any($1::uuid[])`,
     [[...principalIds, ...subsidiaryIds]],
   );
-  const byId = new Map(rows.map((r) => [r.id, r.code]));
+  const byId = new Map(rows.map((r) => [r.id, r.short_name]));
 
-  const principalLetters = principalIds
-    .map((id) => byId.get(id)?.[0]?.toUpperCase() ?? "")
-    .join("");
-  const subsidiaryCode = subsidiaryIds.map((id) => byId.get(id) ?? "").join("+");
+  const principalNames = principalIds.map((id) => byId.get(id) ?? "").join("");
+  const subsidiaryName = subsidiaryIds.map((id) => byId.get(id) ?? "").join("+");
 
-  const code = principalLetters || "COMB";
-  return subsidiaryCode ? `${code}/${subsidiaryCode}` : code;
+  const name = principalNames || "Combination";
+  return `${name}${subsidiaryName ? `/${subsidiaryName}` : ""}/GP`;
 }
 
 export async function createCombination(
@@ -188,11 +206,20 @@ export async function createCombination(
       return null;
     }
     const members = input.subjects ?? [];
-    const code = input.code?.trim().toUpperCase() || (await deriveCode(client, members));
+    const code =
+      input.code?.trim().toUpperCase() ||
+      (await nextSequentialCode(client, {
+        table: "subject_combination",
+        column: "code",
+        prefix: "C",
+        where: "curriculum_id = $1",
+        params: [curriculumId],
+      }));
+    const name = input.name?.trim() || (await deriveName(client, members));
     const { rows } = await client.query<{ id: string }>(
       `insert into subject_combination (curriculum_id, code, name, description, is_active)
        values ($1, $2, $3, $4, $5) returning id`,
-      [curriculumId, code, input.name, input.description ?? null, input.isActive ?? true],
+      [curriculumId, code, name, input.description ?? null, input.isActive ?? true],
     );
     await replaceMembers(client, rows[0].id, curriculumId, members);
     await client.query("COMMIT");
@@ -212,8 +239,8 @@ export async function updateCombination(
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
-    const existing = await client.query<{ curriculum_id: string; code: string }>(
-      `select curriculum_id, code from subject_combination where id = $1`,
+    const existing = await client.query<{ curriculum_id: string; code: string; name: string }>(
+      `select curriculum_id, code, name from subject_combination where id = $1`,
       [id],
     );
     if (existing.rows.length === 0) {
@@ -226,15 +253,19 @@ export async function updateCombination(
       await replaceMembers(client, id, curriculumId, input.subjects);
     }
 
-    const code =
-      input.code?.trim().toUpperCase() ||
-      (input.subjects ? await deriveCode(client, input.subjects) : existing.rows[0].code);
+    // The code is assigned once at creation and stays fixed — it's a system
+    // id, not something that should shift under a combination just because
+    // its membership changed. An explicit override is still respected.
+    const code = input.code?.trim().toUpperCase() || existing.rows[0].code;
+    const name =
+      input.name?.trim() ||
+      (input.subjects ? await deriveName(client, input.subjects) : existing.rows[0].name);
 
     await client.query(
       `update subject_combination
        set code = $1, name = $2, description = $3, is_active = $4, updated_at = now()
        where id = $5`,
-      [code, input.name, input.description ?? null, input.isActive ?? true, id],
+      [code, name, input.description ?? null, input.isActive ?? true, id],
     );
     await client.query("COMMIT");
     return getCombination(id);

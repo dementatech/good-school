@@ -3,10 +3,15 @@
 import { useMemo, useState } from 'react';
 import { Modal } from '@/components/ui/Modal';
 import { Input } from '@/components/ui/Input';
+import { Select } from '@/components/ui/Select';
 import { Button } from '@/components/ui/Button';
 import { useToast } from '@/components/ui/ToastProvider';
-import { submitJson, type Combination, type Role, type Subject } from './types';
+import { submitJson, type Combination, type Subject } from './types';
 
+// docs/design/subject-selection-module.md §3.1/§3.3: core (principal) subjects
+// and the one subsidiary are picked separately, and General Paper is never a
+// pick — it's automatic for every A-Level student. Code and name are
+// system-assigned (C001, "PhyChemMath/ICT/GP") unless explicitly overridden.
 export function CombinationFormModal({
   open,
   onClose,
@@ -24,53 +29,51 @@ export function CombinationFormModal({
   initial?: Combination;
 }) {
   const toast = useToast();
-  const [form, setForm] = useState<{
-    code: string;
-    name: string;
-    description: string;
-    members: { subjectId: string; role: Role }[];
-  }>({
-    code: initial?.code ?? '',
-    name: initial?.name ?? '',
-    description: initial?.description ?? '',
-    members: initial?.subjects.map((m) => ({ subjectId: m.subjectId, role: m.role })) ?? [],
-  });
+  const [coreIds, setCoreIds] = useState<string[]>(
+    initial?.subjects.filter((m) => m.role === 'principal').map((m) => m.subjectId) ?? [],
+  );
+  const [subsidiaryId, setSubsidiaryId] = useState(
+    initial?.subjects.find((m) => m.role === 'subsidiary')?.subjectId ?? '',
+  );
+  const [overrideName, setOverrideName] = useState(false);
+  const [name, setName] = useState(initial?.name ?? '');
+  const [description, setDescription] = useState(initial?.description ?? '');
   const [saving, setSaving] = useState(false);
 
-  const subjectById = useMemo(
-    () => Object.fromEntries(subjects.map((s) => [s.id, s])),
-    [subjects],
-  );
-  const principals = form.members.filter((m) => m.role === 'principal');
-  const canSubmit = principals.length > 0 && form.name.trim().length > 0;
+  // Core (principal) picks come from Science/Art — General Paper is never
+  // among them (it's category 'subsidiary'). The subsidiary pick comes from
+  // 'subsidiary'-category subjects, minus GP itself (automatic, never a pick).
+  const coreOptions = subjects.filter((s) => s.category === 'science' || s.category === 'art');
+  const subsidiaryOptions = subjects.filter((s) => s.category === 'subsidiary' && !s.isGeneralPaper);
+  const allPickable = [...coreOptions, ...subsidiaryOptions];
+  const subjectById = useMemo(() => Object.fromEntries(allPickable.map((s) => [s.id, s])), [allPickable]);
 
-  function setRole(subjectId: string, role: Role | '') {
-    setForm((f) => ({
-      ...f,
-      members: role
-        ? [...f.members.filter((m) => m.subjectId !== subjectId), { subjectId, role }]
-        : f.members.filter((m) => m.subjectId !== subjectId),
-    }));
+  const preview = useMemo(() => {
+    const coreNames = coreIds.map((id) => subjectById[id]?.shortName ?? '').join('');
+    const subsidiaryName = subsidiaryId ? subjectById[subsidiaryId]?.shortName : '';
+    return `${coreNames || 'Combination'}${subsidiaryName ? `/${subsidiaryName}` : ''}/GP`;
+  }, [coreIds, subsidiaryId, subjectById]);
+
+  function toggleCore(id: string) {
+    setCoreIds((ids) => (ids.includes(id) ? ids.filter((i) => i !== id) : [...ids, id]));
+    if (subsidiaryId === id) setSubsidiaryId('');
   }
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
-    if (principals.length === 0) {
-      toast.error('Choose at least one principal subject.');
+    if (coreIds.length === 0) {
+      toast.error('Choose at least one core subject.');
       return;
     }
     setSaving(true);
-    const code =
-      form.code.trim() ||
-      principals
-        .map((m) => subjectById[m.subjectId]?.code?.[0] ?? '')
-        .join('')
-        .toUpperCase();
+    const members = [
+      ...coreIds.map((subjectId) => ({ subjectId, role: 'principal' as const })),
+      ...(subsidiaryId ? [{ subjectId: subsidiaryId, role: 'subsidiary' as const }] : []),
+    ];
     const payload = {
-      code,
-      name: form.name.trim(),
-      description: form.description.trim() || null,
-      subjects: form.members,
+      name: overrideName ? name.trim() || undefined : undefined,
+      description: description.trim() || null,
+      subjects: members,
     };
     const res = initial
       ? await submitJson(`/api/v1/academic/combinations/${initial.id}`, 'PATCH', payload)
@@ -98,57 +101,72 @@ export function CombinationFormModal({
     >
       <form onSubmit={submit} className="space-y-4">
         <div>
-          <p className="text-xs font-medium text-text-muted tracking-wide mb-1.5">
-            Subjects and their role
-          </p>
-          <div className="space-y-1.5 max-h-64 overflow-y-auto pr-1">
-            {subjects.map((s) => {
-              const current = form.members.find((m) => m.subjectId === s.id)?.role ?? '';
-              return (
-                <div key={s.id} className="flex items-center gap-2 text-sm">
-                  <span className="w-48 truncate">{s.name}</span>
-                  <select
-                    value={current}
-                    onChange={(e) => setRole(s.id, e.target.value as Role | '')}
-                    className="border border-border rounded-lg px-2 py-1 text-xs"
-                  >
-                    <option value="">not in this combination</option>
-                    <option value="principal">principal</option>
-                    <option value="subsidiary">subsidiary</option>
-                    <option value="compulsory">compulsory</option>
-                  </select>
-                </div>
-              );
-            })}
+          <p className="text-xs font-medium text-text-muted tracking-wide mb-1.5">Core subjects</p>
+          <div className="flex flex-wrap gap-2 max-h-40 overflow-y-auto pr-1">
+            {coreOptions.map((s) => (
+              <label
+                key={s.id}
+                className={`cursor-pointer rounded-lg px-2.5 py-1.5 text-sm border ${
+                  coreIds.includes(s.id)
+                    ? 'bg-primary-700 text-white border-primary-700'
+                    : 'border-border text-text-secondary'
+                }`}
+              >
+                <input
+                  type="checkbox"
+                  className="sr-only"
+                  checked={coreIds.includes(s.id)}
+                  onChange={() => toggleCore(s.id)}
+                />
+                {s.name}
+              </label>
+            ))}
           </div>
-          {principals.length === 0 && (
-            <p className="text-xs text-[#C26565] mt-1.5">Choose at least one principal subject.</p>
+          {coreIds.length === 0 && (
+            <p className="text-xs text-[#C26565] mt-1.5">Choose at least one core subject.</p>
           )}
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-          <Input
-            label="Code (optional)"
-            placeholder="auto: PCM"
-            value={form.code}
-            onChange={(e) => setForm({ ...form, code: e.target.value })}
-          />
-          <Input
-            label="Name"
-            placeholder="Physics, Chemistry, Maths"
-            value={form.name}
-            onChange={(e) => setForm({ ...form, name: e.target.value })}
-            required
-          />
-          <Input
-            label="Description (optional)"
-            value={form.description}
-            onChange={(e) => setForm({ ...form, description: e.target.value })}
-          />
+        <Select
+          label="Subsidiary subject (optional)"
+          value={subsidiaryId}
+          onChange={(e) => setSubsidiaryId(e.target.value)}
+          options={[
+            { value: '', label: 'None' },
+            ...subsidiaryOptions.map((s) => ({ value: s.id, label: s.name })),
+          ]}
+        />
+
+        <div className="rounded-lg bg-[#FAFAFA] px-3 py-2 text-sm">
+          <span className="text-text-faint">Name and code are assigned automatically — </span>
+          <span className="font-medium">{preview}</span>
         </div>
 
+        {initial && (
+          <div>
+            <label className="flex items-center gap-2 text-sm text-[#12333F] mb-1.5">
+              <input
+                type="checkbox"
+                checked={overrideName}
+                onChange={(e) => setOverrideName(e.target.checked)}
+                className="rounded border-[#E5E5E5]"
+              />
+              Override the name
+            </label>
+            {overrideName && (
+              <Input value={name} onChange={(e) => setName(e.target.value)} placeholder={preview} />
+            )}
+          </div>
+        )}
+
+        <Input
+          label="Description (optional)"
+          value={description}
+          onChange={(e) => setDescription(e.target.value)}
+        />
+
         <div className="flex gap-2 pt-1">
-          <Button type="submit" isLoading={saving} disabled={!canSubmit}>
+          <Button type="submit" isLoading={saving} disabled={coreIds.length === 0}>
             {initial ? 'Save changes' : 'Add combination'}
           </Button>
           <Button type="button" variant="outline" onClick={onClose}>

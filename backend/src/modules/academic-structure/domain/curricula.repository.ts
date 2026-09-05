@@ -1,4 +1,5 @@
 import { pool } from "../../../shared/db/index.js";
+import { ensureGeneralPaperSubject } from "./subjects.repository.js";
 
 // Reference data — global, super_admin-managed. `curriculum` + its ordered
 // `curriculum_stage` ladder (Senior 1–6 for UNEB). See
@@ -102,14 +103,29 @@ export async function getCurriculumByCode(code: string): Promise<CurriculumRecor
   return rows[0] ? mapCurriculum(rows[0]) : null;
 }
 
+// Every curriculum needs its own General Paper subject the moment it exists —
+// a system constant, seeded here rather than left for an admin to create
+// (and forget) through the ordinary subject form. See
+// subjects.repository.ts's `ensureGeneralPaperSubject`.
 export async function createCurriculum(input: CurriculumInput): Promise<CurriculumRecord> {
-  const { rows } = await pool.query<CurriculumRow>(
-    `insert into curriculum (code, name, awarding_body, is_active)
-     values ($1, $2, $3, $4)
-     returning id, code, name, awarding_body, is_active, created_at, updated_at`,
-    [input.code.toUpperCase(), input.name, input.awardingBody ?? null, input.isActive ?? true],
-  );
-  return mapCurriculum(rows[0]);
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const { rows } = await client.query<CurriculumRow>(
+      `insert into curriculum (code, name, awarding_body, is_active)
+       values ($1, $2, $3, $4)
+       returning id, code, name, awarding_body, is_active, created_at, updated_at`,
+      [input.code.toUpperCase(), input.name, input.awardingBody ?? null, input.isActive ?? true],
+    );
+    await ensureGeneralPaperSubject(client, rows[0].id);
+    await client.query("COMMIT");
+    return mapCurriculum(rows[0]);
+  } catch (err) {
+    await client.query("ROLLBACK");
+    throw err;
+  } finally {
+    client.release();
+  }
 }
 
 export async function updateCurriculum(

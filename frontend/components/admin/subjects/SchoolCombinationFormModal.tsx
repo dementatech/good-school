@@ -1,14 +1,13 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Modal } from '@/components/ui/Modal';
 import { Input } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
 import { Button } from '@/components/ui/Button';
 import { useToast } from '@/components/ui/ToastProvider';
 import { fetchList, submitJson } from '@/lib/api/envelope';
-import { Plus, Trash2 } from 'lucide-react';
-import type { CatalogCombination, CombinationRole, SchoolCombination, SubjectOffering } from './types';
+import type { CatalogCombination, SchoolCombination, SubjectOffering } from './types';
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
@@ -19,15 +18,13 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   );
 }
 
-interface MemberRow {
-  subjectId: string;
-  role: CombinationRole;
-}
-
 // docs/design/subject-selection-module.md §3.2b: lead with picking from the
 // national catalog (finite, known, pre-tagged) — a build-your-own picker is
 // the secondary path, for the minority of schools running a non-standard
-// bundle, not the default.
+// bundle, not the default. Core (principal) subjects and the one subsidiary
+// are picked separately, and General Paper is never a pick — it's automatic
+// for every A-Level student. Code and name are system-assigned unless
+// explicitly overridden.
 export function SchoolCombinationFormModal({
   open,
   onClose,
@@ -52,15 +49,16 @@ export function SchoolCombinationFormModal({
   const [catalogId, setCatalogId] = useState('');
 
   const [offeredSubjects, setOfferedSubjects] = useState<SubjectOffering[]>([]);
+  const [coreIds, setCoreIds] = useState<string[]>(
+    combination?.subjects.filter((s) => s.role === 'principal').map((s) => s.subjectId) ?? [],
+  );
+  const [subsidiaryId, setSubsidiaryId] = useState(
+    combination?.subjects.find((s) => s.role === 'subsidiary')?.subjectId ?? '',
+  );
+  const [overrideName, setOverrideName] = useState(false);
   const [name, setName] = useState(combination?.name ?? '');
-  const [code, setCode] = useState(combination?.code ?? '');
   const [description, setDescription] = useState(combination?.description ?? '');
   const [minClassSize, setMinClassSize] = useState(combination?.minClassSize?.toString() ?? '');
-  const [members, setMembers] = useState<MemberRow[]>(
-    combination?.subjects.map((s) => ({ subjectId: s.subjectId, role: s.role })) ?? [
-      { subjectId: '', role: 'principal' },
-    ],
-  );
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -76,23 +74,49 @@ export function SchoolCombinationFormModal({
     ).then((rows) => setOfferedSubjects(rows.filter((r) => r.isOffered)));
   }, [academicYearId]);
 
-  function updateMember(i: number, patch: Partial<MemberRow>) {
-    setMembers((rows) => rows.map((r, idx) => (idx === i ? { ...r, ...patch } : r)));
+  const offeringById = useMemo(
+    () => Object.fromEntries(offeredSubjects.map((s) => [s.subjectId, s])),
+    [offeredSubjects],
+  );
+
+  // Core (principal) picks come from Science/Art — General Paper is never
+  // among them (it's category 'subsidiary'). The subsidiary pick comes from
+  // 'subsidiary'-category subjects, minus GP itself (automatic, never a pick).
+  const coreOptions = offeredSubjects.filter((s) => s.subjectCategory === 'science' || s.subjectCategory === 'art');
+  const subsidiaryOptions = offeredSubjects.filter(
+    (s) => s.subjectCategory === 'subsidiary' && !s.subjectIsGeneralPaper,
+  );
+
+  const preview = useMemo(() => {
+    const coreNames = coreIds.map((id) => offeringById[id]?.subjectShortName ?? '').join('');
+    const subsidiaryName = subsidiaryId ? offeringById[subsidiaryId]?.subjectShortName : '';
+    return `${coreNames || 'Combination'}${subsidiaryName ? `/${subsidiaryName}` : ''}/GP`;
+  }, [coreIds, subsidiaryId, offeringById]);
+
+  function toggleCore(id: string) {
+    setCoreIds((ids) => (ids.includes(id) ? ids.filter((i) => i !== id) : [...ids, id]));
+    if (subsidiaryId === id) setSubsidiaryId('');
   }
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
+    if (mode === 'custom' && coreIds.length === 0) {
+      toast.error('Choose at least one core subject.');
+      return;
+    }
     setSaving(true);
 
     const body =
       mode === 'catalog' && !isEdit
         ? { catalogCombinationId: catalogId }
         : {
-            name: name.trim(),
-            code: code.trim() || undefined,
+            name: overrideName ? name.trim() || undefined : undefined,
             description: description.trim() || null,
             minClassSize: minClassSize ? Number(minClassSize) : null,
-            subjects: members.filter((m) => m.subjectId).map((m) => ({ subjectId: m.subjectId, role: m.role })),
+            subjects: [
+              ...coreIds.map((subjectId) => ({ subjectId, role: 'principal' as const })),
+              ...(subsidiaryId ? [{ subjectId: subsidiaryId, role: 'subsidiary' as const }] : []),
+            ],
           };
 
     const res = isEdit
@@ -143,11 +167,68 @@ export function SchoolCombinationFormModal({
           </Section>
         ) : (
           <>
-            <Section title="Identity">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <Input label="Name" value={name} onChange={(e) => setName(e.target.value)} required />
-                <Input label="Code (optional — derived if blank)" value={code} onChange={(e) => setCode(e.target.value)} />
+            <Section title="Core subjects">
+              <div className="flex flex-wrap gap-2 max-h-40 overflow-y-auto pr-1">
+                {coreOptions.length === 0 && (
+                  <p className="text-xs text-text-faint">No Science/Art A-Level subjects offered yet — set those up first.</p>
+                )}
+                {coreOptions.map((s) => (
+                  <label
+                    key={s.subjectId}
+                    className={`cursor-pointer rounded-lg px-2.5 py-1.5 text-sm border ${
+                      coreIds.includes(s.subjectId)
+                        ? 'bg-primary-700 text-white border-primary-700'
+                        : 'border-border text-text-secondary'
+                    }`}
+                  >
+                    <input
+                      type="checkbox"
+                      className="sr-only"
+                      checked={coreIds.includes(s.subjectId)}
+                      onChange={() => toggleCore(s.subjectId)}
+                    />
+                    {s.subjectName}
+                  </label>
+                ))}
               </div>
+              {mode === 'custom' && coreIds.length === 0 && (
+                <p className="text-xs text-[#C26565]">Choose at least one core subject.</p>
+              )}
+            </Section>
+
+            <Section title="Subsidiary subject">
+              <Select
+                label="Subsidiary (optional)"
+                value={subsidiaryId}
+                onChange={(e) => setSubsidiaryId(e.target.value)}
+                options={[
+                  { value: '', label: 'None' },
+                  ...subsidiaryOptions.map((s) => ({ value: s.subjectId, label: s.subjectName })),
+                ]}
+              />
+            </Section>
+
+            <Section title="Identity">
+              <div className="rounded-lg bg-[#FAFAFA] px-3 py-2 text-sm">
+                <span className="text-text-faint">Name and code are assigned automatically — </span>
+                <span className="font-medium">{preview}</span>
+              </div>
+              {isEdit && (
+                <div>
+                  <label className="flex items-center gap-2 text-sm text-[#12333F] mb-1.5">
+                    <input
+                      type="checkbox"
+                      checked={overrideName}
+                      onChange={(e) => setOverrideName(e.target.checked)}
+                      className="rounded border-[#E5E5E5]"
+                    />
+                    Override the name
+                  </label>
+                  {overrideName && (
+                    <Input value={name} onChange={(e) => setName(e.target.value)} placeholder={preview} />
+                  )}
+                </div>
+              )}
               <Input label="Description (optional)" value={description} onChange={(e) => setDescription(e.target.value)} />
               <Input
                 label="Minimum class size (optional)"
@@ -156,51 +237,6 @@ export function SchoolCombinationFormModal({
                 value={minClassSize}
                 onChange={(e) => setMinClassSize(e.target.value)}
               />
-            </Section>
-
-            <Section title="Subjects">
-              <div className="space-y-3">
-                {members.map((m, i) => (
-                  <div key={i} className="flex gap-2 items-end">
-                    <div className="flex-1">
-                      <Select
-                        label={i === 0 ? 'Subject' : undefined}
-                        value={m.subjectId}
-                        onChange={(e) => updateMember(i, { subjectId: e.target.value })}
-                        options={[
-                          { value: '', label: offeredSubjects.length ? 'Select a subject…' : 'No A-Level subjects offered yet — set those up first' },
-                          ...offeredSubjects.map((s) => ({ value: s.subjectId, label: `${s.subjectCode} — ${s.subjectName}` })),
-                        ]}
-                      />
-                    </div>
-                    <div className="w-40">
-                      <Select
-                        label={i === 0 ? 'Role' : undefined}
-                        value={m.role}
-                        onChange={(e) => updateMember(i, { role: e.target.value as CombinationRole })}
-                        options={[
-                          { value: 'principal', label: 'Principal' },
-                          { value: 'subsidiary', label: 'Subsidiary' },
-                          { value: 'compulsory', label: 'Compulsory (e.g. GP)' },
-                        ]}
-                      />
-                    </div>
-                    {members.length > 1 && (
-                      <button
-                        type="button"
-                        onClick={() => setMembers((rows) => rows.filter((_, idx) => idx !== i))}
-                        className="h-11 sm:h-9 px-2 text-text-faint hover:text-red-600"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    )}
-                  </div>
-                ))}
-                <Button type="button" variant="outline" inline onClick={() => setMembers((rows) => [...rows, { subjectId: '', role: 'principal' }])}>
-                  <Plus className="w-4 h-4 mr-1.5" aria-hidden />
-                  Add subject
-                </Button>
-              </div>
             </Section>
           </>
         )}

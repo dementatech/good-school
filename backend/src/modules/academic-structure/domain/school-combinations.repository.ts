@@ -1,6 +1,7 @@
 import type { PoolClient } from "pg";
 import { pool } from "../../../shared/db/index.js";
 import type { CombinationRole } from "./combinations.repository.js";
+import { nextSequentialCode } from "./sequential-code.js";
 
 // A school's own A-Level combinations — either adopted from the platform
 // catalog (`subject_combination`, super_admin's "constants") or fully
@@ -12,6 +13,7 @@ import type { CombinationRole } from "./combinations.repository.js";
 export interface SchoolCombinationMember {
   subjectId: string;
   subjectCode: string;
+  subjectShortName: string;
   subjectName: string;
   role: CombinationRole;
 }
@@ -74,7 +76,8 @@ const SELECT_SCHOOL_COMBINATION = `
          c.description, c.is_offered, c.min_class_size,
          coalesce(
            jsonb_agg(jsonb_build_object(
-             'subjectId', s.id, 'subjectCode', s.code, 'subjectName', s.name, 'role', cs.role
+             'subjectId', s.id, 'subjectCode', s.code, 'subjectShortName', s.short_name,
+             'subjectName', s.name, 'role', cs.role
            )) filter (where cs.subject_id is not null),
            '[]'
          ) as subjects,
@@ -139,22 +142,47 @@ async function replaceMembers(
   }
 
   const ids = members.map((m) => m.subjectId);
-  const found = await client.query<{ id: string; category: string }>(
-    `select id, category from subject where id = any($1::uuid[])`,
-    [ids],
-  );
+  const found = await client.query<{
+    id: string;
+    category: string;
+    status: string;
+    curriculum_id: string;
+    is_general_paper: boolean;
+  }>(`select id, category, status, curriculum_id, is_general_paper from subject where id = any($1::uuid[])`, [ids]);
   if (found.rowCount !== new Set(ids).size) {
     throw new InvalidSchoolCombinationError(
       "One or more chosen subjects don't exist. Add the subject to the catalog first.",
     );
   }
-  // General Paper (category 'general') is automatic for every A-Level
-  // student the moment they're placed into any combination — never a member
-  // of one. See docs/design/subject-selection-module.md §3.1.
-  if (found.rows.some((r) => r.category === "general")) {
+  // General Paper is automatic for every A-Level student the moment they're
+  // placed into any combination — never a member of one. See
+  // docs/design/subject-selection-module.md §3.1.
+  if (found.rows.some((r) => r.is_general_paper)) {
     throw new InvalidSchoolCombinationError(
       "General Paper is automatic for every A-Level student — don't add it to a combination.",
     );
+  }
+  if (found.rows.some((r) => r.status !== "approved")) {
+    throw new InvalidSchoolCombinationError(
+      "One or more chosen subjects haven't been approved yet.",
+    );
+  }
+
+  // General Paper is a must in the system — it's seeded automatically when a
+  // curriculum is created, so this only ever trips for a curriculum that
+  // predates that. `school_combination` doesn't carry curriculum_id itself,
+  // so it's derived from any member subject here (they share one curriculum).
+  const curriculumId = found.rows[0]?.curriculum_id;
+  if (curriculumId) {
+    const gp = await client.query(
+      `select 1 from subject where curriculum_id = $1 and is_general_paper and status = 'approved' and is_active`,
+      [curriculumId],
+    );
+    if (gp.rowCount === 0) {
+      throw new InvalidSchoolCombinationError(
+        "This curriculum has no approved General Paper subject yet — add one before creating combinations.",
+      );
+    }
   }
 
   await client.query(`delete from school_combination_subject where school_combination_id = $1`, [
@@ -208,25 +236,32 @@ export async function createSchoolCombination(
     }
 
     if (!code) {
-      // "PCM/ICT" — principal-first-letters (in pick order) + "/" + the
-      // subsidiary's own code, matching the catalog's deriveCode. No
-      // alphabetical re-sort — there's no single "correct" order for these.
-      const principalIds = members.filter((m) => m.role === "principal").map((m) => m.subjectId);
-      const subsidiaryIds = members.filter((m) => m.role === "subsidiary").map((m) => m.subjectId);
-      const derived = await client.query<{ id: string; code: string }>(
-        `select id, code from subject where id = any($1::uuid[])`,
-        [[...principalIds, ...subsidiaryIds]],
-      );
-      const byId = new Map(derived.rows.map((r) => [r.id, r.code]));
-      const principalLetters = principalIds.map((id) => byId.get(id)?.[0]?.toUpperCase() ?? "").join("");
-      const subsidiaryCode = subsidiaryIds.map((id) => byId.get(id) ?? "").join("+");
-      code = (principalLetters || "COMB") + (subsidiaryCode ? `/${subsidiaryCode}` : "");
+      // System-assigned, unique per school per year — never typed.
+      code = await nextSequentialCode(client, {
+        table: "school_combination",
+        column: "code",
+        prefix: "C",
+        where: "school_id = $1 and academic_year_id = $2",
+        params: [schoolId, academicYearId],
+      });
     }
 
     if (!name) {
-      throw new InvalidSchoolCombinationError(
-        "Give the combination a name, or adopt one from the catalog to fill it in automatically.",
+      // "PhyChemMath/ICT/GP" — each principal's short_name (pick order, no
+      // re-sort), then the subsidiary's short_name after a slash if any,
+      // then "/GP" always — General Paper is automatic for every A-Level
+      // student the moment they're placed into ANY combination (never a
+      // member here — see `replaceMembers` above), so it's display-only.
+      const principalIds = members.filter((m) => m.role === "principal").map((m) => m.subjectId);
+      const subsidiaryIds = members.filter((m) => m.role === "subsidiary").map((m) => m.subjectId);
+      const derived = await client.query<{ id: string; short_name: string }>(
+        `select id, short_name from subject where id = any($1::uuid[])`,
+        [[...principalIds, ...subsidiaryIds]],
       );
+      const byId = new Map(derived.rows.map((r) => [r.id, r.short_name]));
+      const principalNames = principalIds.map((id) => byId.get(id) ?? "").join("");
+      const subsidiaryName = subsidiaryIds.map((id) => byId.get(id) ?? "").join("+");
+      name = `${principalNames || "Combination"}${subsidiaryName ? `/${subsidiaryName}` : ""}/GP`;
     }
 
     const result = await client.query<{ id: string }>(
