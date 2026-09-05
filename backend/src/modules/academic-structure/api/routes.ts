@@ -16,11 +16,15 @@ import {
   type StageInput,
 } from "../domain/curricula.repository.js";
 import {
+  approveSubject,
   createSubject,
   deleteSubject,
   InvalidSubjectError,
   listSubjects,
+  rejectSubject,
+  SubjectNotPendingError,
   updateSubject,
+  type SubjectApprovalStatus,
   type SubjectInput,
 } from "../domain/subjects.repository.js";
 import {
@@ -71,6 +75,7 @@ import {
   listSubjectOfferings,
   removeSubjectOffering,
   setSubjectOffering,
+  SubjectNotApprovedError,
   UnknownSubjectError,
   type SubjectOfferingInput,
 } from "../domain/subject-offering.repository.js";
@@ -191,12 +196,19 @@ export async function academicStructureRoutes(fastify: FastifyInstance) {
   );
 
   // -- Subjects ----------------------------------------------------------
-  fastify.get<{ Querystring: { curriculumId?: string; phase?: "O_LEVEL" | "A_LEVEL" } }>(
-    "/subjects",
-    { preHandler: SCHOOL },
-    async (request) =>
-      ok(await listSubjects(request.query.curriculumId, request.query.phase)),
-  );
+  fastify.get<{
+    Querystring: { curriculumId?: string; phase?: "O_LEVEL" | "A_LEVEL"; status?: SubjectApprovalStatus };
+  }>("/subjects", { preHandler: SCHOOL }, async (request) => {
+    const isSuperAdmin = request.authUser!.role === "super_admin";
+    return ok(
+      await listSubjects({
+        curriculumId: request.query.curriculumId,
+        phase: request.query.phase,
+        status: request.query.status,
+        visibleToSchoolId: isSuperAdmin ? undefined : request.authUser!.school_id ?? undefined,
+      }),
+    );
+  });
 
   // Schools can add their own subjects too (docs/design/subject-selection-module.md
   // — a school running a genuinely non-standard subject), not just super_admin's
@@ -204,7 +216,8 @@ export async function academicStructureRoutes(fastify: FastifyInstance) {
   // are a platform truth, not a school's to declare) or 'general' (General
   // Paper's category means "always-on for every A-Level student" — a school
   // minting a second one would silently double up that rule), and only into a
-  // curriculum their own school actually runs.
+  // curriculum their own school actually runs. A school's own subject starts
+  // `pending` and isn't usable until a super_admin approves it.
   fastify.post<{ Querystring: { curriculumId?: string }; Body: SubjectInput }>(
     "/subjects",
     { preHandler: SCHOOL, schema: { body: subjectBodySchema } },
@@ -213,11 +226,10 @@ export async function academicStructureRoutes(fastify: FastifyInstance) {
         return reply.status(400).send(fail("curriculumId query param required"));
       }
       const isSuperAdmin = request.authUser!.role === "super_admin";
+      let proposedBySchoolId: string | null = null;
       if (!isSuperAdmin) {
-        if (request.body.category === "core" || request.body.category === "general") {
-          return reply
-            .status(400)
-            .send(fail("Only a platform admin can add a core or General Paper subject."));
+        if (request.body.category === "core") {
+          return reply.status(400).send(fail("Only a platform admin can add a core subject."));
         }
         const schoolId = schoolOf(request, reply);
         if (!schoolId) return;
@@ -228,14 +240,56 @@ export async function academicStructureRoutes(fastify: FastifyInstance) {
         if (runsCurriculum.rowCount === 0) {
           return reply.status(400).send(fail("Your school doesn't run that curriculum."));
         }
+        proposedBySchoolId = schoolId;
       }
       try {
-        const subject = await createSubject(request.query.curriculumId, request.body);
+        const subject = await createSubject(request.query.curriculumId, request.body, {
+          proposedBySchoolId,
+        });
         return subject
           ? reply.status(201).send(ok(subject))
           : reply.status(404).send(fail("curriculum_not_found"));
       } catch (err) {
         if (err instanceof InvalidSubjectError) {
+          return reply.status(400).send(fail(err.message));
+        }
+        throw err;
+      }
+    },
+  );
+
+  fastify.post<{ Params: { id: string } }>(
+    "/subjects/:id/approve",
+    { preHandler: REFERENCE },
+    async (request, reply) => {
+      try {
+        const updated = await approveSubject(request.params.id, request.authUser!.user_id);
+        return updated ? ok(updated) : reply.status(404).send(fail("not_found"));
+      } catch (err) {
+        if (err instanceof SubjectNotPendingError) {
+          return reply.status(400).send(fail(err.message));
+        }
+        throw err;
+      }
+    },
+  );
+
+  fastify.post<{ Params: { id: string }; Body: { reason: string } }>(
+    "/subjects/:id/reject",
+    {
+      preHandler: REFERENCE,
+      schema: { body: { type: "object", required: ["reason"], properties: { reason: { type: "string", minLength: 1 } }, additionalProperties: false } },
+    },
+    async (request, reply) => {
+      try {
+        const updated = await rejectSubject(
+          request.params.id,
+          request.authUser!.user_id,
+          request.body.reason.trim(),
+        );
+        return updated ? ok(updated) : reply.status(404).send(fail("not_found"));
+      } catch (err) {
+        if (err instanceof SubjectNotPendingError) {
           return reply.status(400).send(fail(err.message));
         }
         throw err;
@@ -263,8 +317,15 @@ export async function academicStructureRoutes(fastify: FastifyInstance) {
     "/subjects/:id",
     { preHandler: REFERENCE },
     async (request, reply) => {
-      const deleted = await deleteSubject(request.params.id);
-      return deleted ? ok(null) : reply.status(404).send(fail("not_found"));
+      try {
+        const deleted = await deleteSubject(request.params.id);
+        return deleted ? ok(null) : reply.status(404).send(fail("not_found"));
+      } catch (err) {
+        if (err instanceof InvalidSubjectError) {
+          return reply.status(400).send(fail(err.message));
+        }
+        throw err;
+      }
     },
   );
 
@@ -579,7 +640,8 @@ export async function academicStructureRoutes(fastify: FastifyInstance) {
         if (
           err instanceof UnknownSubjectError ||
           err instanceof AlwaysOnSubjectError ||
-          err instanceof LastReligiousSubjectError
+          err instanceof LastReligiousSubjectError ||
+          err instanceof SubjectNotApprovedError
         ) {
           return reply.status(400).send(fail(err.message));
         }

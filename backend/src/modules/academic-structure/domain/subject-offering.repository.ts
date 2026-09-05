@@ -12,8 +12,10 @@ export interface SubjectOfferingRecord {
   academicYearId: string;
   subjectId: string;
   subjectCode: string;
+  subjectShortName: string;
   subjectName: string;
   subjectCategory: string;
+  subjectIsGeneralPaper: boolean;
   subjectPhase: "O_LEVEL" | "A_LEVEL";
   isOffered: boolean;
   isCompulsory: boolean;
@@ -33,8 +35,10 @@ interface SubjectOfferingRow {
   academic_year_id: string;
   subject_id: string;
   subject_code: string;
+  subject_short_name: string;
   subject_name: string;
   subject_category: string;
+  subject_is_general_paper: boolean;
   subject_phase: "O_LEVEL" | "A_LEVEL";
   is_offered: boolean;
   is_compulsory: boolean;
@@ -44,7 +48,8 @@ interface SubjectOfferingRow {
 
 const SELECT_OFFERING = `
   select o.id, o.school_id, o.academic_year_id, o.subject_id,
-         s.code as subject_code, s.name as subject_name, s.category as subject_category,
+         s.code as subject_code, s.short_name as subject_short_name, s.name as subject_name,
+         s.category as subject_category, s.is_general_paper as subject_is_general_paper,
          s.phase as subject_phase, o.is_offered, o.is_compulsory, o.created_at, o.updated_at
   from subject_offering o
   join subject s on s.id = o.subject_id
@@ -57,8 +62,10 @@ function mapRow(row: SubjectOfferingRow): SubjectOfferingRecord {
     academicYearId: row.academic_year_id,
     subjectId: row.subject_id,
     subjectCode: row.subject_code,
+    subjectShortName: row.subject_short_name,
     subjectName: row.subject_name,
     subjectCategory: row.subject_category,
+    subjectIsGeneralPaper: row.subject_is_general_paper,
     subjectPhase: row.subject_phase,
     isOffered: row.is_offered,
     isCompulsory: row.is_compulsory,
@@ -71,6 +78,13 @@ export class UnknownSubjectError extends Error {
   constructor() {
     super("Unknown subject, or not part of a curriculum this school runs");
     this.name = "UnknownSubjectError";
+  }
+}
+
+export class SubjectNotApprovedError extends Error {
+  constructor() {
+    super("This subject hasn't been approved yet.");
+    this.name = "SubjectNotApprovedError";
   }
 }
 
@@ -93,11 +107,12 @@ export class LastReligiousSubjectError extends Error {
 
 // A subject the platform itself decides can never be turned off, once it's
 // offered: O-Level 'core' (the 7 nationally-mandated subjects — see
-// docs/design/subject-selection-module.md §2.1) and A-Level 'general'
-// (General Paper — compulsory for every A-Level student, §3.1). Neither is
-// a school's choice to make.
-function isAlwaysOnCategory(category: string): boolean {
-  return category === "core" || category === "general";
+// docs/design/subject-selection-module.md §2.1) and General Paper
+// (compulsory for every A-Level student, §3.1 — identified by the
+// `isGeneralPaper` flag, not category, since ordinary 'subsidiary' subjects
+// share that category but aren't always-on). Neither is a school's choice.
+function isAlwaysOnCategory(category: string, isGeneralPaper: boolean): boolean {
+  return category === "core" || isGeneralPaper;
 }
 
 // Seeds a subject_offering row (offered + compulsory) for every always-on
@@ -111,7 +126,7 @@ async function seedAlwaysOnOfferings(schoolId: string, academicYearId: string): 
      select $1, s.id, $2, true, true
      from subject s
      join school_curriculum sc on sc.curriculum_id = s.curriculum_id and sc.school_id = $1
-     where s.category in ('core', 'general') and s.is_active
+     where (s.category = 'core' or s.is_general_paper) and s.is_active
      on conflict (school_id, subject_id, academic_year_id) do nothing`,
     [schoolId, academicYearId],
   );
@@ -147,16 +162,17 @@ export async function setSubjectOffering(
   academicYearId: string,
   input: SubjectOfferingInput,
 ): Promise<SubjectOfferingRecord> {
-  const owned = await pool.query<{ category: string; name: string }>(
-    `select s.category, s.name from subject s
+  const owned = await pool.query<{ category: string; name: string; status: string; is_general_paper: boolean }>(
+    `select s.category, s.name, s.status, s.is_general_paper from subject s
      join school_curriculum sc on sc.curriculum_id = s.curriculum_id
      where s.id = $1 and sc.school_id = $2`,
     [input.subjectId, schoolId],
   );
   if (owned.rowCount === 0) throw new UnknownSubjectError();
+  if (owned.rows[0].status !== "approved") throw new SubjectNotApprovedError();
   const category = owned.rows[0].category;
 
-  if (isAlwaysOnCategory(category) && (!input.isOffered || !input.isCompulsory)) {
+  if (isAlwaysOnCategory(category, owned.rows[0].is_general_paper) && (!input.isOffered || !input.isCompulsory)) {
     throw new AlwaysOnSubjectError();
   }
 

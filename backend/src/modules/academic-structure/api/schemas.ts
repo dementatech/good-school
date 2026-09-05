@@ -31,22 +31,24 @@ export const stageBodySchema = {
 
 export const subjectBodySchema = {
   type: "object",
-  required: ["phase", "code", "name"],
+  required: ["phase", "shortName", "name"],
   properties: {
     phase: { type: "string", enum: ["O_LEVEL", "A_LEVEL"] },
-    code: { type: "string", minLength: 1 },
+    // Short, human-typed abbreviation (e.g. "Phy") — combination names
+    // concatenate this. `code` (S001, ...) is system-assigned, never in the body.
+    shortName: { type: "string", minLength: 1 },
     name: { type: "string", minLength: 1 },
     category: {
       type: "string",
       enum: [
         "language",
         "science",
-        "humanity",
+        "art",
+        "subsidiary",
         "vocational",
         "core",
         "religion",
         "special",
-        "general",
       ],
     },
     isExaminable: { type: "boolean" },
@@ -58,10 +60,11 @@ export const subjectBodySchema = {
 
 export const combinationBodySchema = {
   type: "object",
-  required: ["name"],
+  required: [],
   properties: {
-    // Optional — derived from the principal subjects' codes when omitted, so
-    // the code always reflects real picks rather than a typed guess.
+    // Both optional — system-assigned (code: C001, ...) / auto-derived from
+    // the chosen subjects' short names (name) when omitted. An explicit value
+    // still overrides, e.g. when editing.
     code: { type: "string" },
     name: { type: "string", minLength: 1 },
     description: { type: ["string", "null"] },

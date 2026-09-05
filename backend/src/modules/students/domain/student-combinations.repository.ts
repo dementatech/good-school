@@ -163,24 +163,33 @@ async function syncStudentSubjects(
   subsidiarySubjectId: string | null,
   changedBy: string,
 ): Promise<void> {
-  const members = await client.query<{ subject_id: string; role: CombinationRole }>(
-    `select subject_id, role from school_combination_subject where school_combination_id = $1`,
+  const members = await client.query<{ subject_id: string; role: CombinationRole; curriculum_id: string }>(
+    `select cs.subject_id, cs.role, s.curriculum_id
+     from school_combination_subject cs
+     join subject s on s.id = cs.subject_id
+     where cs.school_combination_id = $1`,
     [schoolCombinationId],
   );
   const combinationSubjectIds = members.rows
     .filter((m) => m.role !== "subsidiary" || m.subject_id === subsidiarySubjectId)
     .map((m) => m.subject_id);
 
-  // General Paper (category 'general') is never a combination member (see
+  // General Paper is never a combination member (see
   // combinations.repository.ts) — it's implicit the moment a student is
-  // placed into ANY combination, so it's added here directly, independent
-  // of which one. docs/design/subject-selection-module.md §3.1, §3.4.
-  const gp = await client.query<{ id: string }>(
-    `select s.id from subject s
-     join school_combination sc on sc.id = $1
-     where s.curriculum_id = sc.curriculum_id... this line unused`,
-  );
-  const activeSubjectIds = [...combinationSubjectIds];
+  // placed into ANY combination, so it's added here directly, independent of
+  // which one. Identified by the `is_general_paper` flag, not category —
+  // ordinary 'subsidiary' subjects share that category. Its curriculum is the
+  // combination's own (shared by all its members — `school_combination`
+  // doesn't carry curriculum_id itself). docs/design/subject-selection-module.md §3.1, §3.4.
+  const curriculumId = members.rows[0]?.curriculum_id;
+  const gp = curriculumId
+    ? await client.query<{ id: string }>(
+        `select id from subject
+         where curriculum_id = $1 and is_general_paper and status = 'approved' and is_active`,
+        [curriculumId],
+      )
+    : { rows: [] as { id: string }[] };
+  const activeSubjectIds = [...combinationSubjectIds, ...gp.rows.map((r) => r.id)];
 
   for (const subjectId of activeSubjectIds) {
     await client.query(

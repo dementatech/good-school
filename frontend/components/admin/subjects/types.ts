@@ -4,15 +4,21 @@
 
 export type SubjectPhase = 'O_LEVEL' | 'A_LEVEL';
 export type CombinationRole = 'principal' | 'subsidiary' | 'compulsory';
+export type SubjectApprovalStatus = 'pending' | 'approved' | 'rejected';
 
 export interface CatalogSubject {
   id: string;
   curriculumId: string;
   phase: SubjectPhase;
   code: string;
+  shortName: string;
   name: string;
   category: string;
   isActive: boolean;
+  status: SubjectApprovalStatus;
+  proposedBySchoolId: string | null;
+  rejectionReason: string | null;
+  isGeneralPaper: boolean;
 }
 
 export interface SubjectOffering {
@@ -21,8 +27,10 @@ export interface SubjectOffering {
   academicYearId: string;
   subjectId: string;
   subjectCode: string;
+  subjectShortName: string;
   subjectName: string;
   subjectCategory: string;
+  subjectIsGeneralPaper: boolean;
   subjectPhase: SubjectPhase;
   isOffered: boolean;
   isCompulsory: boolean;
@@ -39,6 +47,7 @@ export interface CatalogCombination {
 export interface SchoolCombinationMember {
   subjectId: string;
   subjectCode: string;
+  subjectShortName: string;
   subjectName: string;
   role: CombinationRole;
 }
@@ -66,8 +75,20 @@ export const CATEGORY_LABEL: Record<string, string> = {
   core: 'Core',
   religion: 'Religious Education',
   vocational: 'Vocational / Practical',
+  special: 'Special',
   science: 'Science',
-  humanity: 'Humanity',
+  art: 'Art',
+  subsidiary: 'Subsidiary',
   language: 'Language',
-  general: 'General',
+};
+
+export const STATUS_LABEL: Record<SubjectApprovalStatus, string> = {
+  pending: 'Pending approval',
+  approved: 'Approved',
+  rejected: 'Rejected',
+};
+export const STATUS_VARIANT: Record<SubjectApprovalStatus, 'default' | 'accent' | 'success' | 'muted'> = {
+  pending: 'accent',
+  approved: 'success',
+  rejected: 'muted',
 };

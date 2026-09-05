@@ -4,11 +4,14 @@ import { useState } from 'react';
 import { Modal } from '@/components/ui/Modal';
 import { Input } from '@/components/ui/Input';
 import { Button } from '@/components/ui/Button';
+import { Badge } from '@/components/ui/Badge';
 import { useToast } from '@/components/ui/ToastProvider';
 import {
-  CATEGORIES,
+  CATEGORY_LABEL,
   PHASE_LABEL,
   PHASE_RANGE,
+  STATUS_LABEL,
+  STATUS_VARIANT,
   submitJson,
   type Phase,
   type Stage,
@@ -23,7 +26,14 @@ export function SubjectFormModal({
   curriculumId,
   phase,
   stages,
+  /** Scoped by the caller — the full phase list for a super_admin, or that
+   * list minus core/general for a school proposing its own subject. */
+  categories,
   initial,
+  /** True when a school (not a super_admin) is proposing this subject — it
+   * won't be usable until a super_admin approves it. Changes the success
+   * message only; the approval itself happens server-side. */
+  isProposal = false,
 }: {
   open: boolean;
   onClose: () => void;
@@ -32,18 +42,26 @@ export function SubjectFormModal({
   phase: Phase;
   /** Already scoped to `phase` by the caller. */
   stages: Stage[];
+  categories: SubjectCategory[];
   initial?: Subject;
+  isProposal?: boolean;
 }) {
   const toast = useToast();
   const [form, setForm] = useState({
-    code: initial?.code ?? '',
+    shortName: initial?.shortName ?? '',
     name: initial?.name ?? '',
-    category: (initial?.category ?? 'core') as SubjectCategory,
+    category: (initial?.category ?? categories[0]) as SubjectCategory,
     isExaminable: initial?.isExaminable ?? true,
     isActive: initial?.isActive ?? true,
     stageIds: initial?.stageIds ?? ([] as string[]),
   });
   const [saving, setSaving] = useState(false);
+
+  // A subject saved under an older rule set can carry a category no longer in
+  // `categories` (e.g. legacy data) — keep it selectable on edit rather than
+  // silently defaulting away from it.
+  const categoryOptions =
+    initial && !categories.includes(initial.category) ? [initial.category, ...categories] : categories;
 
   function toggleStage(id: string) {
     setForm((f) => ({
@@ -59,7 +77,7 @@ export function SubjectFormModal({
     setSaving(true);
     const payload = {
       phase,
-      code: form.code.trim(),
+      shortName: form.shortName.trim(),
       name: form.name.trim(),
       category: form.category,
       isExaminable: form.isExaminable,
@@ -75,7 +93,13 @@ export function SubjectFormModal({
         );
     setSaving(false);
     if (res.ok) {
-      toast.success(initial ? 'Subject updated.' : `${PHASE_LABEL[phase]} subject added.`);
+      toast.success(
+        initial
+          ? 'Subject updated.'
+          : isProposal
+            ? `${PHASE_LABEL[phase]} subject submitted for approval.`
+            : `${PHASE_LABEL[phase]} subject added.`,
+      );
       await onSaved();
       onClose();
     } else {
@@ -94,6 +118,15 @@ export function SubjectFormModal({
       }
     >
       <form onSubmit={submit} className="space-y-4">
+        {initial && (
+          <div className="flex items-center gap-2">
+            <Badge variant={STATUS_VARIANT[initial.status]}>{STATUS_LABEL[initial.status]}</Badge>
+            {initial.status === 'rejected' && initial.rejectionReason && (
+              <span className="text-xs text-text-faint">Reason: {initial.rejectionReason}</span>
+            )}
+          </div>
+        )}
+
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <Input
             label="Name"
@@ -103,13 +136,24 @@ export function SubjectFormModal({
             required
           />
           <Input
-            label="Code"
-            placeholder={phase === 'A_LEVEL' ? 'PHY' : 'MTC'}
-            value={form.code}
-            onChange={(e) => setForm({ ...form, code: e.target.value })}
+            label="Short name"
+            placeholder={phase === 'A_LEVEL' ? 'Phy' : 'Maths'}
+            value={form.shortName}
+            onChange={(e) => setForm({ ...form, shortName: e.target.value })}
             required
           />
         </div>
+
+        {initial ? (
+          <div>
+            <p className="text-xs font-medium text-text-muted tracking-wide mb-1">Code</p>
+            <Badge variant="muted">{initial.code}</Badge>
+          </div>
+        ) : (
+          <p className="text-xs text-text-faint">
+            Code will be assigned automatically once saved (S001, S002, …).
+          </p>
+        )}
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
@@ -121,9 +165,9 @@ export function SubjectFormModal({
               onChange={(e) => setForm({ ...form, category: e.target.value as SubjectCategory })}
               className="w-full border border-border rounded-lg px-3 py-2.5 text-sm"
             >
-              {CATEGORIES.map((c) => (
+              {categoryOptions.map((c) => (
                 <option key={c} value={c}>
-                  {c}
+                  {CATEGORY_LABEL[c] ?? c}
                 </option>
               ))}
             </select>
