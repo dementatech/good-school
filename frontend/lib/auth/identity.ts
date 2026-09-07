@@ -17,6 +17,39 @@ export interface Identity {
 
 const SIGNED_OUT: Identity = { user: null, mustChangePassword: false };
 
+/**
+ * How long to wait for `/api/v1/auth/me` before giving up. A frozen/backgrounded
+ * tab drops its keep-alive socket to the dev server and backend; on resume the
+ * next request can stall indefinitely. Without a ceiling here the promise never
+ * settles, `AuthProvider.loading` never clears, and every screen sits on the
+ * full-page loader until a hard reload.
+ */
+const IDENTITY_TIMEOUT_MS = 8000;
+
+/**
+ * An AbortSignal that fires when `external` aborts OR after `ms`, whichever is
+ * first. Hand-rolled rather than `AbortSignal.any` / `AbortSignal.timeout` so it
+ * works on the older Safari/WebKit builds some school devices still run.
+ */
+function deadline(external: AbortSignal | undefined, ms: number): AbortSignal {
+  const controller = new AbortController();
+  const abort = () => controller.abort();
+  const timer = setTimeout(abort, ms);
+  if (external) {
+    if (external.aborted) abort();
+    else external.addEventListener("abort", abort, { once: true });
+  }
+  controller.signal.addEventListener(
+    "abort",
+    () => {
+      clearTimeout(timer);
+      external?.removeEventListener("abort", abort);
+    },
+    { once: true },
+  );
+  return controller.signal;
+}
+
 interface MeResponse {
   id: string;
   name: string | null;
@@ -42,12 +75,19 @@ export function meToUser(me: MeResponse): User {
 }
 
 export async function endSession(): Promise<void> {
-  await fetch("/api/v1/auth/logout", { method: "POST", credentials: "include" }).catch(() => {});
+  await fetch("/api/v1/auth/logout", {
+    method: "POST",
+    credentials: "include",
+    signal: deadline(undefined, IDENTITY_TIMEOUT_MS),
+  }).catch(() => {});
 }
 
-export async function loadIdentity(): Promise<Identity> {
+export async function loadIdentity(signal?: AbortSignal): Promise<Identity> {
   try {
-    const res = await fetch("/api/v1/auth/me", { credentials: "include" });
+    const res = await fetch("/api/v1/auth/me", {
+      credentials: "include",
+      signal: deadline(signal, IDENTITY_TIMEOUT_MS),
+    });
     if (!res.ok) {
       // A cookie can exist but fail real verification (wrong/rotated secret,
       // expired, tampered) while `proxy.ts` — which only base64-decodes the
@@ -63,6 +103,13 @@ export async function loadIdentity(): Promise<Identity> {
     const me = (await res.json()) as MeResponse;
     return { user: meToUser(me), mustChangePassword: !!me.mustChangePassword };
   } catch {
+    // Timed out, offline, aborted, or the backend never answered. We can't
+    // confirm the session, so treat it as signed out and send the visitor to
+    // /auth to sign in again rather than leaving them stuck on the loader.
+    // Clear the cookie too: otherwise proxy.ts still reads a role out of it and
+    // bounces every /auth visit straight back into the portal, so PortalGate
+    // and proxy.ts ping-pong on the loader instead of showing the login form.
+    await endSession();
     return SIGNED_OUT;
   }
 }
