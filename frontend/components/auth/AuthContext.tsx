@@ -1,6 +1,6 @@
 'use client'
 
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 
 import { endSession, loadIdentity } from '@/lib/auth/identity';
 
@@ -35,18 +35,25 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [mustChangePassword, setMustChangePassword] = useState(false);
   const [loading, setLoading] = useState(true);
 
+  const lastCheckRef = useRef(0);
+
   // In a browser the session lives server-side (real Supabase Auth cookies, set
   // by /api/auth/login) and this rehydrates React state from it on load. In
   // TERECO Collect there is no network to ask, so the identity comes from the
   // local database instead — see lib/auth/identity.ts.
-  const refresh = useCallback(async () => {
+  //
+  // `loadIdentity` has its own timeout, so this always settles: a stalled
+  // request resolves to signed-out and PortalGate sends the visitor to /auth.
+  const refresh = useCallback(async (signal?: AbortSignal) => {
     try {
-      const { user: nextUser, mustChangePassword: mustChange } = await loadIdentity();
+      const { user: nextUser, mustChangePassword: mustChange } = await loadIdentity(signal);
+      if (signal?.aborted) return;
+      lastCheckRef.current = Date.now();
       setUser(nextUser);
       setIsAuthenticated(nextUser !== null);
       setMustChangePassword(mustChange);
     } finally {
-      setLoading(false);
+      if (!signal?.aborted) setLoading(false);
     }
   }, []);
 
@@ -56,12 +63,39 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     // body — `loading` already starts true and is cleared when the request
     // settles.
     void (async () => {
-      if (!controller.signal.aborted) await refresh();
+      if (!controller.signal.aborted) await refresh(controller.signal);
     })();
     return () => controller.abort();
   }, [refresh]);
 
+  // Re-check the session whenever the tab comes back to the foreground or is
+  // restored from the bfcache. A backgrounded tab drops its connection to the
+  // server; on resume the in-flight `/me` (if any) can be dead, so without this
+  // a stuck loader never clears itself, and a session that expired while away
+  // keeps rendering the portal shell until the next navigation. This does NOT
+  // set `loading`, so a healthy session revalidates silently in the background.
+  useEffect(() => {
+    const REVALIDATE_AFTER_MS = 10_000;
+    const maybeRefresh = () => {
+      if (document.visibilityState !== 'visible') return;
+      if (Date.now() - lastCheckRef.current < REVALIDATE_AFTER_MS) return;
+      void refresh();
+    };
+    const onPageShow = (e: PageTransitionEvent) => {
+      if (e.persisted) void refresh();
+    };
+    document.addEventListener('visibilitychange', maybeRefresh);
+    window.addEventListener('focus', maybeRefresh);
+    window.addEventListener('pageshow', onPageShow);
+    return () => {
+      document.removeEventListener('visibilitychange', maybeRefresh);
+      window.removeEventListener('focus', maybeRefresh);
+      window.removeEventListener('pageshow', onPageShow);
+    };
+  }, [refresh]);
+
   const login = (loggedInUser: User & { mustChangePassword?: boolean }) => {
+    lastCheckRef.current = Date.now();
     setUser(loggedInUser);
     setIsAuthenticated(true);
     setMustChangePassword(!!loggedInUser.mustChangePassword);
