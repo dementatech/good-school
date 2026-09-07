@@ -20,6 +20,20 @@ import {
 
 const COOKIE_NAME = "school_os_token";
 
+// Shared so `clearCookie` on logout carries the same attributes the cookie was
+// set with. A browser only drops a cookie when the clearing Set-Cookie matches
+// on name + path (+ domain); a mismatch leaves the stale cookie in place, which
+// `proxy.ts` then keeps trusting — the redirect loop the frontend guards
+// against. `secure` isn't part of the match but is kept in step anyway.
+const AUTH_COOKIE_OPTS = {
+  httpOnly: true,
+  // Independent of NODE_ENV: containerized deploys behind a plain-http reverse
+  // proxy still need this off, so it's an explicit opt-in.
+  secure: process.env.COOKIE_SECURE === "true",
+  sameSite: "lax",
+  path: "/",
+} as const;
+
 export async function authRoutes(fastify: FastifyInstance) {
   // Any authenticated role — this is how the UI (e.g. the topbar user menu)
   // finds out who's actually logged in beyond the bare user_id/role/school_id
@@ -49,7 +63,7 @@ export async function authRoutes(fastify: FastifyInstance) {
   // Clears the auth cookie. The JWT itself is stateless, so "logout" is just
   // dropping the cookie client-side; the frontend calls this on sign-out.
   fastify.post("/logout", async (_request, reply) => {
-    reply.clearCookie(COOKIE_NAME, { path: "/" });
+    reply.clearCookie(COOKIE_NAME, AUTH_COOKIE_OPTS);
     return reply.status(204).send();
   });
 
@@ -77,12 +91,7 @@ export async function authRoutes(fastify: FastifyInstance) {
       }
 
       reply.setCookie(COOKIE_NAME, result.token, {
-        httpOnly: true,
-        // Independent of NODE_ENV: containerized deploys behind a plain-http
-        // reverse proxy still need this off, so it's an explicit opt-in.
-        secure: process.env.COOKIE_SECURE === "true",
-        sameSite: "lax",
-        path: "/",
+        ...AUTH_COOKIE_OPTS,
         maxAge: 60 * 60 * 24 * 7,
       });
 
