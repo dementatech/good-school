@@ -50,7 +50,13 @@ export function proxy(request: NextRequest) {
     }
   }
 
-  if ((pathname === "/auth" || pathname === "/") && role) {
+  // Send a signed-in visitor from the bare entry point to their portal. NOT
+  // from /auth: the cookie here is unverified, so if it is actually stale the
+  // client clears it and redirects to /auth — and if proxy.ts still bounced
+  // /auth back to the portal on that same dead cookie, the two would loop
+  // forever on the loader. /auth must stay reachable; its own page component
+  // redirects an already-signed-in user on to their portal.
+  if (pathname === "/" && role) {
     const home = PORTAL_FOR_ROLE[role];
     if (home) return NextResponse.redirect(new URL(home, request.url));
   }

@@ -89,15 +89,16 @@ export async function loadIdentity(signal?: AbortSignal): Promise<Identity> {
       signal: deadline(signal, IDENTITY_TIMEOUT_MS),
     });
     if (!res.ok) {
-      // A cookie can exist but fail real verification (wrong/rotated secret,
-      // expired, tampered) while `proxy.ts` — which only base64-decodes the
-      // JWT payload, unverified, for its optimistic routing — still reads a
-      // role out of it and keeps sending an unauthenticated visitor back into
-      // a protected portal. That portal's PortalGate then bounces them to
-      // /auth, proxy.ts sends them right back, forever. Clearing the cookie
-      // here (the one place every failed-session path funnels through) is
-      // what breaks that loop instead of just reporting "signed out".
-      if (res.status === 401) await endSession();
+      // A cookie can exist but not resolve to a usable identity — the JWT
+      // fails real verification (rotated secret, expired, tampered → 401), or
+      // the user it points to is gone (→ 404), or the backend is unhealthy
+      // (→ 5xx). Meanwhile `proxy.ts` only base64-decodes the JWT payload,
+      // unverified, and keeps routing that visitor into a protected portal;
+      // PortalGate bounces them to /auth, proxy.ts sends them right back,
+      // forever. Clear the cookie on ANY non-OK response (not just 401) — this
+      // is the one place every failed-session path funnels through, and a
+      // "signed out" that leaves the cookie in place is exactly the loop.
+      await endSession();
       return SIGNED_OUT;
     }
     const me = (await res.json()) as MeResponse;
