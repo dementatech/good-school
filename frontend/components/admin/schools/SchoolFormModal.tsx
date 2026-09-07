@@ -6,6 +6,7 @@ import { Input } from '@/components/ui/Input';
 import { Button } from '@/components/ui/Button';
 import { useToast } from '@/components/ui/ToastProvider';
 import { submitJson } from '@/lib/api/envelope';
+import { DEFAULT_PRIMARY, isHex } from '@/lib/theme/school-theme';
 import { SchoolLogo } from './SchoolLogo';
 import {
   GENDERS,
@@ -136,6 +137,11 @@ export function SchoolFormModal({
 
   const logoPreview = logoObjectUrl ?? (removeLogo ? null : (school?.logoUrl ?? null));
 
+  // Brand colour — a separate PATCH /schools/:id/theme, also after the row exists.
+  const initialPrimary = school?.primaryColor ?? DEFAULT_PRIMARY;
+  const [primaryColor, setPrimaryColor] = useState(initialPrimary);
+  const primaryChanged = primaryColor.toLowerCase() !== initialPrimary.toLowerCase();
+
   function pickLogo(file: File | null) {
     if (!file) return;
     if (!/^image\/(jpeg|png|webp)$/.test(file.type)) {
@@ -187,7 +193,7 @@ export function SchoolFormModal({
     // The row is saved; the logo is best-effort from here — a failed upload
     // shouldn't undo a successful registration.
     const schoolId = school?.id ?? res.data?.id;
-    let logoWarning: string | null = null;
+    let brandingWarning: string | null = null;
     if (schoolId && logoFile) {
       const body = new FormData();
       body.append('file', logoFile);
@@ -199,18 +205,27 @@ export function SchoolFormModal({
         });
         const json = await up.json().catch(() => ({}));
         if (!up.ok || json.success === false) {
-          logoWarning = json.error ?? 'the logo could not be uploaded';
+          brandingWarning = json.error ?? 'the logo could not be uploaded';
         }
       } catch {
-        logoWarning = 'the logo could not be uploaded (network error)';
+        brandingWarning = 'the logo could not be uploaded (network error)';
       }
     } else if (schoolId && removeLogo && school?.logoUrl) {
       await submitJson(`/api/v1/schools/${schoolId}/logo`, 'DELETE');
     }
 
+    if (schoolId && primaryChanged && isHex(primaryColor)) {
+      const themeRes = await submitJson(`/api/v1/schools/${schoolId}/theme`, 'PATCH', {
+        primaryColor: primaryColor.toLowerCase(),
+      });
+      if (!themeRes.ok && !brandingWarning) {
+        brandingWarning = themeRes.error ?? 'the brand colour could not be saved';
+      }
+    }
+
     setSaving(false);
-    if (logoWarning) {
-      toast.error(`School saved, but ${logoWarning}. Edit the school to try again.`);
+    if (brandingWarning) {
+      toast.error(`School saved, but ${brandingWarning}. Edit the school to try again.`);
     } else {
       toast.success(school ? 'School updated.' : 'School registered — pending verification.');
     }
@@ -276,6 +291,40 @@ export function SchoolFormModal({
               </div>
               <p className="text-xs text-text-faint">JPEG, PNG, or WebP — up to 5 MB.</p>
             </div>
+          </div>
+
+          <div>
+            <label className="block text-xs font-medium text-text-muted tracking-wide mb-1">
+              Brand colour
+            </label>
+            <div className="flex items-center gap-2">
+              <input
+                type="color"
+                value={isHex(primaryColor) ? primaryColor : DEFAULT_PRIMARY}
+                onChange={(e) => setPrimaryColor(e.target.value)}
+                className="h-9 w-12 rounded-lg border border-border bg-bg-card p-1"
+                aria-label="Brand colour"
+              />
+              <input
+                value={primaryColor}
+                onChange={(e) => setPrimaryColor(e.target.value)}
+                placeholder={DEFAULT_PRIMARY}
+                spellCheck={false}
+                className="w-28 rounded-lg border border-border bg-bg-card px-2.5 py-2 text-sm font-mono focus:border-primary-700 focus:outline-none"
+              />
+              {primaryColor.toLowerCase() !== DEFAULT_PRIMARY && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setPrimaryColor(DEFAULT_PRIMARY)}
+                >
+                  Reset
+                </Button>
+              )}
+            </div>
+            <p className="text-xs text-text-faint mt-1">
+              Applied across the school&apos;s portals. Leave as {DEFAULT_PRIMARY} for the default.
+            </p>
           </div>
         </Section>
 

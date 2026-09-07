@@ -6,6 +6,7 @@ import { Badge } from '@/components/ui/Badge';
 import { useToast } from '@/components/ui/ToastProvider';
 import { Loader } from '@/components/ui/loader';
 import { STATUS_LABEL, STATUS_VARIANT, type School } from '@/components/admin/schools/types';
+import { SchoolBrandingCard } from '@/components/school-admin/SchoolBrandingCard';
 
 function Row({ label, value }: { label: string; value: React.ReactNode }) {
   return (
@@ -56,9 +57,18 @@ export default function SchoolAdminSchoolPage() {
       <div>
         <h1 className="text-2xl font-bold text-primary-900 mb-1">My School</h1>
         <p className="text-sm text-text-muted">
-          Read-only — changes to your school&apos;s record are made by a Good School administrator.
+          Your school&apos;s record is maintained by a Good School administrator — only branding is
+          yours to change.
         </p>
       </div>
+
+      {!loading && school && (
+        <SchoolBrandingCard
+          schoolName={school.name}
+          logoUrl={school.logoUrl}
+          primaryColor={school.primaryColor}
+        />
+      )}
 
       <Card>
         {loading ? (

@@ -74,6 +74,16 @@ export const createSchoolAdminBodySchema = {
   additionalProperties: false,
 } as const;
 
+export const updateThemeBodySchema = {
+  type: "object",
+  properties: {
+    // #rgb or #rrggbb — the same shape isHexColor() enforces in the repo.
+    primaryColor: { type: "string", pattern: "^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$" },
+  },
+  required: ["primaryColor"],
+  additionalProperties: false,
+} as const;
+
 export const themeResponseSchema = {
   200: {
     type: "object",
