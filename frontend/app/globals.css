@@ -5,16 +5,14 @@
    Lock colors to palette — immune to dark mode
 ───────────────────────────────────────────────  */
 
-@theme inline {
-  /* Neutral surfaces + near-black text (Vercel-like); blue is the ACCENT
-     only — the primary scale below. */
-  --color-background: #FFFFFF;
-  --color-foreground: #171717;
-
-  /* ── Primary scale (BLUE — brand accent, #1e3a8a) ── */
-  /* 900 is text-only (headings) — neutralised to near-black so headings read
-     black; 700 is the main brand color (buttons, active nav, the sidebar
-     fill); 400–800 form one coherent blue ramp around it. */
+/* ── Primary scale (BLUE — brand accent, #1e3a8a) ── */
+/* NON-inline on purpose: `bg-primary-*` / `text-primary-*` / `border-primary-*`
+   compile to `var(--color-primary-N)`, not the literal hex, so a school's
+   custom brand colour can override the 50–700 stops at runtime on :root
+   (see components/theme/SchoolThemeApplier.tsx + lib/theme/school-theme.ts).
+   800/900 stay here only — 900 is heading text, kept near-black regardless of
+   brand; 700 is the main brand colour (buttons, active nav, sidebar fill). */
+@theme {
   --color-primary-900: #171717;
   --color-primary-800: #172554;
   --color-primary-700: #1e3a8a;
@@ -24,6 +22,13 @@
   --color-primary-200: #93c5fd;
   --color-primary-100: #dbeafe;
   --color-primary-50:  #eff6ff;
+}
+
+@theme inline {
+  /* Neutral surfaces + near-black text (Vercel-like); blue is the ACCENT
+     only — the primary scale above. */
+  --color-background: #FFFFFF;
+  --color-foreground: #171717;
 
   /* ── Accent scale (gold) ── */
   --color-accent-dark:    #C4952A;

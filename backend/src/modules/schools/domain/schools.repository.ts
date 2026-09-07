@@ -6,6 +6,7 @@ import {
   UnsupportedFileTypeError,
   type StorageProvider,
 } from "../../../shared/media.js";
+import { DEFAULT_PRIMARY_COLOR } from "./theme.repository.js";
 
 // The school tenant record — see frontend/components/school-onboarding-enrollment.md §2.
 
@@ -53,6 +54,9 @@ export interface SchoolRecord {
   offersALevel: boolean;
   /** Served URL for the school's logo, or null for the initials-tile fallback. */
   logoUrl: string | null;
+  /** The school's brand colour (theme_config.primaryColor); equals the
+   *  design-system default when the school hasn't customised it. */
+  primaryColor: string;
   onboardingStatus: OnboardingStatus;
   verifiedAt: string | null;
   dataImportSource: DataImportSource | null;
@@ -120,6 +124,7 @@ interface SchoolRow {
   offers_a_level: boolean;
   logo_path: string | null;
   logo_provider: StorageProvider | null;
+  theme_config: { primaryColor?: string } | null;
   onboarding_status: OnboardingStatus;
   verified_at: string | null;
   data_import_source: DataImportSource | null;
@@ -160,6 +165,7 @@ function mapRow(r: SchoolRow): SchoolRecord {
     logoUrl: r.logo_path
       ? fileUrl({ provider: r.logo_provider ?? "local", ref: r.logo_path, mimeType: "image/jpeg" })
       : null,
+    primaryColor: r.theme_config?.primaryColor || DEFAULT_PRIMARY_COLOR,
     onboardingStatus: r.onboarding_status,
     verifiedAt: r.verified_at,
     dataImportSource: r.data_import_source,

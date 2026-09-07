@@ -4,6 +4,7 @@ import React from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/components/auth/AuthContext';
 import { PortalGate } from '@/components/auth/PortalGate';
+import { SchoolThemeApplier } from '@/components/theme/SchoolThemeApplier';
 import { FeatureGate } from '@/components/FeatureGate';
 import { NotificationBell } from '@/components/ui/NotificationBell';
 import { MobileNavDrawer } from '@/components/ui/MobileNavDrawer';
@@ -68,6 +69,7 @@ function StaffShell({ children }: { children: React.ReactNode }) {
 export default function StaffLayout({ children }: { children: React.ReactNode }) {
   return (
     <PortalGate roles={STAFF_ROLES}>
+      <SchoolThemeApplier />
       <StaffShell>{children}</StaffShell>
     </PortalGate>
   );
