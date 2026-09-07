@@ -1,11 +1,12 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Modal } from '@/components/ui/Modal';
 import { Input } from '@/components/ui/Input';
 import { Button } from '@/components/ui/Button';
 import { useToast } from '@/components/ui/ToastProvider';
 import { submitJson } from '@/lib/api/envelope';
+import { SchoolLogo } from './SchoolLogo';
 import {
   GENDERS,
   OWNERSHIP,
@@ -119,6 +120,36 @@ export function SchoolFormModal({
   const [saving, setSaving] = useState(false);
   const set = <K extends keyof FormState>(k: K, v: FormState[K]) => setForm((f) => ({ ...f, [k]: v }));
 
+  // Logo is a separate multipart upload (POST /schools/:id/logo), done after
+  // the school row exists — so on create we save the row first, then upload.
+  const fileInput = useRef<HTMLInputElement>(null);
+  const [logoFile, setLogoFile] = useState<File | null>(null);
+  const [removeLogo, setRemoveLogo] = useState(false);
+  const logoObjectUrl = useMemo(
+    () => (logoFile ? URL.createObjectURL(logoFile) : null),
+    [logoFile],
+  );
+  useEffect(() => {
+    if (!logoObjectUrl) return;
+    return () => URL.revokeObjectURL(logoObjectUrl);
+  }, [logoObjectUrl]);
+
+  const logoPreview = logoObjectUrl ?? (removeLogo ? null : (school?.logoUrl ?? null));
+
+  function pickLogo(file: File | null) {
+    if (!file) return;
+    if (!/^image\/(jpeg|png|webp)$/.test(file.type)) {
+      toast.error('Logo must be a JPEG, PNG, or WebP image.');
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error('Logo must be 5 MB or smaller.');
+      return;
+    }
+    setLogoFile(file);
+    setRemoveLogo(false);
+  }
+
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setSaving(true);
@@ -144,16 +175,47 @@ export function SchoolFormModal({
       offersALevel: form.offersALevel,
     };
     const res = school
-      ? await submitJson(`/api/v1/schools/${school.id}`, 'PATCH', payload)
-      : await submitJson('/api/v1/schools', 'POST', payload);
-    setSaving(false);
-    if (res.ok) {
-      toast.success(school ? 'School updated.' : 'School registered — pending verification.');
-      await onSaved();
-      onClose();
-    } else {
+      ? await submitJson<School>(`/api/v1/schools/${school.id}`, 'PATCH', payload)
+      : await submitJson<School>('/api/v1/schools', 'POST', payload);
+
+    if (!res.ok) {
+      setSaving(false);
       toast.error(res.error!);
+      return;
     }
+
+    // The row is saved; the logo is best-effort from here — a failed upload
+    // shouldn't undo a successful registration.
+    const schoolId = school?.id ?? res.data?.id;
+    let logoWarning: string | null = null;
+    if (schoolId && logoFile) {
+      const body = new FormData();
+      body.append('file', logoFile);
+      try {
+        const up = await fetch(`/api/v1/schools/${schoolId}/logo`, {
+          method: 'POST',
+          body,
+          credentials: 'include',
+        });
+        const json = await up.json().catch(() => ({}));
+        if (!up.ok || json.success === false) {
+          logoWarning = json.error ?? 'the logo could not be uploaded';
+        }
+      } catch {
+        logoWarning = 'the logo could not be uploaded (network error)';
+      }
+    } else if (schoolId && removeLogo && school?.logoUrl) {
+      await submitJson(`/api/v1/schools/${schoolId}/logo`, 'DELETE');
+    }
+
+    setSaving(false);
+    if (logoWarning) {
+      toast.error(`School saved, but ${logoWarning}. Edit the school to try again.`);
+    } else {
+      toast.success(school ? 'School updated.' : 'School registered — pending verification.');
+    }
+    await onSaved();
+    onClose();
   }
 
   return (
@@ -178,6 +240,42 @@ export function SchoolFormModal({
               value={form.legalName}
               onChange={(e) => set('legalName', e.target.value)}
             />
+          </div>
+        </Section>
+
+        <Section title="Branding">
+          <div className="flex items-center gap-4">
+            <SchoolLogo logoUrl={logoPreview} name={form.name || 'School'} size="lg" />
+            <div className="flex flex-col gap-1.5">
+              <input
+                ref={fileInput}
+                type="file"
+                accept="image/jpeg,image/png,image/webp"
+                className="hidden"
+                onChange={(e) => {
+                  pickLogo(e.target.files?.[0] ?? null);
+                  e.target.value = '';
+                }}
+              />
+              <div className="flex gap-2">
+                <Button type="button" variant="outline" onClick={() => fileInput.current?.click()}>
+                  {logoPreview ? 'Replace logo' : 'Add logo'}
+                </Button>
+                {logoPreview && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => {
+                      setLogoFile(null);
+                      setRemoveLogo(true);
+                    }}
+                  >
+                    Remove
+                  </Button>
+                )}
+              </div>
+              <p className="text-xs text-text-faint">JPEG, PNG, or WebP — up to 5 MB.</p>
+            </div>
           </div>
         </Section>
 

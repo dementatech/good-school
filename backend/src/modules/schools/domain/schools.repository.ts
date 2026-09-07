@@ -1,4 +1,11 @@
 import { pool } from "../../../shared/db/index.js";
+import {
+  deleteStoredFile,
+  fileUrl,
+  storeFile,
+  UnsupportedFileTypeError,
+  type StorageProvider,
+} from "../../../shared/media.js";
 
 // The school tenant record — see frontend/components/school-onboarding-enrollment.md §2.
 
@@ -44,6 +51,8 @@ export interface SchoolRecord {
   genderComposition: GenderComposition | null;
   offersOLevel: boolean;
   offersALevel: boolean;
+  /** Served URL for the school's logo, or null for the initials-tile fallback. */
+  logoUrl: string | null;
   onboardingStatus: OnboardingStatus;
   verifiedAt: string | null;
   dataImportSource: DataImportSource | null;
@@ -109,6 +118,8 @@ interface SchoolRow {
   gender_composition: GenderComposition | null;
   offers_o_level: boolean;
   offers_a_level: boolean;
+  logo_path: string | null;
+  logo_provider: StorageProvider | null;
   onboarding_status: OnboardingStatus;
   verified_at: string | null;
   data_import_source: DataImportSource | null;
@@ -143,6 +154,12 @@ function mapRow(r: SchoolRow): SchoolRecord {
     genderComposition: r.gender_composition,
     offersOLevel: r.offers_o_level,
     offersALevel: r.offers_a_level,
+    // Logos are always images by construction (setSchoolLogo only accepts
+    // image/*), so the mimeType passed here only needs to be image-ish for
+    // fileUrl() to pick Cloudinary's "image" resource type.
+    logoUrl: r.logo_path
+      ? fileUrl({ provider: r.logo_provider ?? "local", ref: r.logo_path, mimeType: "image/jpeg" })
+      : null,
     onboardingStatus: r.onboarding_status,
     verifiedAt: r.verified_at,
     dataImportSource: r.data_import_source,
@@ -287,6 +304,42 @@ export async function setOnboardingStatus(
   );
   return rowCount ? getSchool(id) : null;
 }
+
+// Uploads a new logo (replacing and deleting any prior one — via Cloudinary
+// when configured, local disk otherwise, see shared/media.ts) or, given `null`,
+// clears it back to the initials-tile fallback the frontend renders when
+// logoUrl is null. Same shape as teachers' setStaffPhoto.
+export async function setSchoolLogo(
+  id: string,
+  file: { mimeType: string; data: Buffer } | null,
+): Promise<SchoolRecord | null> {
+  const existing = await pool.query<{
+    logo_path: string | null;
+    logo_provider: StorageProvider | null;
+  }>(`select logo_path, logo_provider from schools where id = $1`, [id]);
+  if (!existing.rows[0]) return null;
+  const prior = existing.rows[0];
+
+  // Each school's media under its own folder, mirroring staff-documents/<id>.
+  const stored = file ? await storeFile(`school-logos/${id}`, file.mimeType, file.data) : null;
+
+  await pool.query(
+    `update schools set logo_path = $1, logo_provider = $2, updated_at = now() where id = $3`,
+    [stored?.ref ?? null, stored?.provider ?? null, id],
+  );
+
+  if (prior.logo_path) {
+    await deleteStoredFile({
+      provider: prior.logo_provider ?? "local",
+      ref: prior.logo_path,
+      mimeType: "image/jpeg",
+    });
+  }
+
+  return getSchool(id);
+}
+
+export { UnsupportedFileTypeError };
 
 /** Refuses (returns 'has_users') if the school still has any user accounts. */
 export async function deleteSchool(id: string): Promise<"deleted" | "not_found" | "has_users"> {

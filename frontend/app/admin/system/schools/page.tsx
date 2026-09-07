@@ -14,6 +14,7 @@ import { Loader } from '@/components/ui/loader';
 import { BadgeCheck, KeyRound, Layers, Pause, Pencil, Play, Plus, Trash2 } from 'lucide-react';
 import { SchoolFormModal } from '@/components/admin/schools/SchoolFormModal';
 import { SchoolCurriculaModal } from '@/components/admin/schools/SchoolCurriculaModal';
+import { SchoolLogo } from '@/components/admin/schools/SchoolLogo';
 import {
   STATUS_LABEL,
   STATUS_VARIANT,
@@ -136,6 +137,7 @@ export default function SystemSchoolsPage() {
       value: (s) => s.name,
       render: (s) => (
         <span className="flex flex-wrap items-center gap-1.5">
+          <SchoolLogo logoUrl={s.logoUrl} name={s.name} />
           <span className="font-medium">{s.name}</span>
           {s.emisCode && <Badge variant="muted">EMIS {s.emisCode}</Badge>}
           {s.curricula.map((c) => (

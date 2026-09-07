@@ -8,7 +8,9 @@ import {
   getSchool,
   listSchools,
   setOnboardingStatus,
+  setSchoolLogo,
   UniqueViolationError,
+  UnsupportedFileTypeError,
   updateSchool,
   type OnboardingStatus,
   type SchoolInput,
@@ -79,6 +81,40 @@ export async function schoolsRoutes(fastify: FastifyInstance) {
         if (err instanceof UniqueViolationError) return reply.status(409).send(fail(err.message));
         throw err;
       }
+    },
+  );
+
+  // Logo upload — multipart, @fastify/multipart is registered globally in
+  // server.ts (5 MB / 1 file cap). A school with no logo shows an initials
+  // tile instead. Same pattern as staff /:id/photo.
+  fastify.post<{ Params: { id: string } }>(
+    "/:id/logo",
+    { preHandler: SUPER },
+    async (request, reply) => {
+      const uploaded = await request.file();
+      if (!uploaded) return reply.status(400).send(fail("No file uploaded"));
+      const data = await uploaded.toBuffer();
+      try {
+        const school = await setSchoolLogo(request.params.id, {
+          mimeType: uploaded.mimetype,
+          data,
+        });
+        return school ? ok(school) : reply.status(404).send(fail("not_found"));
+      } catch (err) {
+        if (err instanceof UnsupportedFileTypeError) {
+          return reply.status(400).send(fail(err.message));
+        }
+        throw err;
+      }
+    },
+  );
+
+  fastify.delete<{ Params: { id: string } }>(
+    "/:id/logo",
+    { preHandler: SUPER },
+    async (request, reply) => {
+      const school = await setSchoolLogo(request.params.id, null);
+      return school ? ok(school) : reply.status(404).send(fail("not_found"));
     },
   );
 

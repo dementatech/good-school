@@ -31,6 +31,12 @@ services:
       RESEND_API_KEY: ${RESEND_API_KEY:-}
       RESEND_FROM: ${RESEND_FROM:-Good School <onboarding@resend.dev>}
       APP_URL: ${APP_URL:-}
+      # Uploads (staff photos, school logos, academic documents). With all
+      # three set, storage goes to Cloudinary; leave them blank to fall back
+      # to the backend-uploads disk volume below.
+      CLOUDINARY_CLOUD_NAME: ${CLOUDINARY_CLOUD_NAME:-}
+      CLOUDINARY_API_KEY: ${CLOUDINARY_API_KEY:-}
+      CLOUDINARY_API_SECRET: ${CLOUDINARY_API_SECRET:-}
       PORT: 4000
     volumes:
       - backend-uploads:/app/uploads

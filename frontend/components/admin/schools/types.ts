@@ -39,6 +39,7 @@ export interface School {
   genderComposition: GenderComposition | null;
   offersOLevel: boolean;
   offersALevel: boolean;
+  logoUrl: string | null;
   onboardingStatus: OnboardingStatus;
   verifiedAt: string | null;
   dataImportSource: 'fresh' | 'migrated' | null;
