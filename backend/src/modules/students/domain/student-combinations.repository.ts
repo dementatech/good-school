@@ -1,5 +1,6 @@
 import type { Pool, PoolClient } from "pg";
 import { pool } from "../../../shared/db/index.js";
+import { derivedNameSql } from "../../../shared/combination-name.js";
 import { isBelowCredit } from "./prior-exams.repository.js";
 
 type Db = Pool | PoolClient;
@@ -61,12 +62,13 @@ interface StudentCombinationRow {
 
 const SELECT_STUDENT_COMBINATION = `
   select sc2.id, sc2.student_user_id, sc2.school_combination_id, c.code as combination_code,
-         c.name as combination_name, sc2.subsidiary_subject_id, sc2.academic_year_id, sc2.status,
+         ${derivedNameSql("s", "cs")} as combination_name,
+         sc2.subsidiary_subject_id, sc2.academic_year_id, sc2.status,
          sc2.selected_at, sc2.confirmed_by, sc2.eligibility_override_reason,
          coalesce(
            jsonb_agg(jsonb_build_object(
              'subjectId', s.id, 'subjectCode', s.code, 'subjectName', s.name, 'role', cs.role
-           )) filter (where cs.subject_id is not null),
+           ) order by cs.sort_order, s.name) filter (where cs.subject_id is not null),
            '[]'
          ) as members
   from student_combination sc2
@@ -166,7 +168,7 @@ export async function getCurrentCombination(
     clause += ` and sc2.academic_year_id = $2`;
   }
   const { rows } = await pool.query<StudentCombinationRow>(
-    `${SELECT_STUDENT_COMBINATION} ${clause} group by sc2.id, c.code, c.name order by sc2.selected_at desc limit 1`,
+    `${SELECT_STUDENT_COMBINATION} ${clause} group by sc2.id, c.code order by sc2.selected_at desc limit 1`,
     params,
   );
   if (!rows[0]) return null;
@@ -181,7 +183,7 @@ export async function getCurrentCombination(
 export async function listCombinationHistory(studentUserId: string): Promise<StudentCombinationRecord[]> {
   const { rows } = await pool.query<StudentCombinationRow>(
     `${SELECT_STUDENT_COMBINATION} where sc2.student_user_id = $1
-     group by sc2.id, c.code, c.name order by sc2.selected_at desc`,
+     group by sc2.id, c.code order by sc2.selected_at desc`,
     [studentUserId],
   );
   return rows.map((r) => mapRow(r));
@@ -363,7 +365,7 @@ async function applyCombinationTx(
   );
 
   const row = await client.query<StudentCombinationRow>(
-    `${SELECT_STUDENT_COMBINATION} where sc2.id = $1 group by sc2.id, c.code, c.name`,
+    `${SELECT_STUDENT_COMBINATION} where sc2.id = $1 group by sc2.id, c.code`,
     [result.rows[0].id],
   );
   const warnings = await computeEligibilityWarnings(client, studentUserId, schoolCombinationId);

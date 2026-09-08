@@ -1,5 +1,5 @@
 import { pool } from "../../../shared/db/index.js";
-import { combinationDisplayName } from "./combination-name.js";
+import { derivedNameSql } from "../../../shared/combination-name.js";
 import { nextSequentialCode } from "./sequential-code.js";
 
 // A-Level subject combinations (PCM, HEG, …) and their member subjects with a
@@ -38,10 +38,9 @@ export interface CombinationRecord {
 export interface CombinationInput {
   /** Omit to auto-assign the next sequential code (C001, C002, …). */
   code?: string;
-  /** Omit to derive it from the chosen subjects' short names (PhyChemMath/ICT/GP). */
-  name?: string;
   description?: string | null;
   isActive?: boolean;
+  /** In pick order — persisted as `sort_order`, which drives the derived name. */
   subjects?: CombinationMember[];
 }
 
@@ -69,16 +68,20 @@ const mapRow = (r: CombinationRow): CombinationRecord => ({
   updatedAt: r.updated_at,
 });
 
+// `name` is derived from the current member subjects here — never stored.
 const SELECT_COMBINATION = `
-  select sc.id, sc.curriculum_id, sc.code, sc.name, sc.description, sc.is_active,
+  select sc.id, sc.curriculum_id, sc.code, sc.description, sc.is_active,
+         ${derivedNameSql("s", "cs")} as name,
          coalesce(
-           jsonb_agg(jsonb_build_object('subjectId', cs.subject_id, 'role', cs.role))
+           jsonb_agg(jsonb_build_object('subjectId', cs.subject_id, 'role', cs.role)
+             order by cs.sort_order, s.name)
              filter (where cs.subject_id is not null),
            '[]'
          ) as subjects,
          sc.created_at, sc.updated_at
   from subject_combination sc
   left join combination_subject cs on cs.combination_id = sc.id
+  left join subject s on s.id = cs.subject_id
 `;
 
 export async function listCombinations(curriculumId?: string): Promise<CombinationRecord[]> {
@@ -156,37 +159,17 @@ async function replaceMembers(
   }
 
   await client.query(`delete from combination_subject where combination_id = $1`, [combinationId]);
-  for (const m of members) {
+  // Array order becomes `sort_order` — this is what the derived name follows.
+  for (let i = 0; i < members.length; i++) {
+    const m = members[i];
     await client.query(
-      `insert into combination_subject (combination_id, subject_id, role)
-       values ($1, $2, $3)
-       on conflict (combination_id, subject_id) do update set role = excluded.role`,
-      [combinationId, m.subjectId, m.role],
+      `insert into combination_subject (combination_id, subject_id, role, sort_order)
+       values ($1, $2, $3, $4)
+       on conflict (combination_id, subject_id)
+         do update set role = excluded.role, sort_order = excluded.sort_order`,
+      [combinationId, m.subjectId, m.role, i],
     );
   }
-}
-
-/**
- * "BCM/SCS/GP" — cores by first letter of the subject name, the subsidiary by
- * its short name, then "/GP" always. See `combinationDisplayName`. Pick order
- * is kept. Display text only.
- */
-async function deriveName(
-  client: import("pg").PoolClient,
-  members: CombinationMember[],
-): Promise<string> {
-  const principalIds = members.filter((m) => m.role === "principal").map((m) => m.subjectId);
-  const subsidiaryIds = members.filter((m) => m.role === "subsidiary").map((m) => m.subjectId);
-  const { rows } = await client.query<{ id: string; name: string; short_name: string }>(
-    `select id, name, short_name from subject where id = any($1::uuid[])`,
-    [[...principalIds, ...subsidiaryIds]],
-  );
-  const byId = new Map(rows.map((r) => [r.id, r]));
-
-  return combinationDisplayName(
-    principalIds.map((id) => ({ name: byId.get(id)?.name ?? "" })),
-    subsidiaryIds.map((id) => ({ shortName: byId.get(id)?.short_name ?? "" })),
-  );
 }
 
 export async function createCombination(
@@ -211,11 +194,10 @@ export async function createCombination(
         where: "curriculum_id = $1",
         params: [curriculumId],
       }));
-    const name = input.name?.trim() || (await deriveName(client, members));
     const { rows } = await client.query<{ id: string }>(
-      `insert into subject_combination (curriculum_id, code, name, description, is_active)
-       values ($1, $2, $3, $4, $5) returning id`,
-      [curriculumId, code, name, input.description ?? null, input.isActive ?? true],
+      `insert into subject_combination (curriculum_id, code, description, is_active)
+       values ($1, $2, $3, $4) returning id`,
+      [curriculumId, code, input.description ?? null, input.isActive ?? true],
     );
     await replaceMembers(client, rows[0].id, curriculumId, members);
     await client.query("COMMIT");
@@ -235,8 +217,8 @@ export async function updateCombination(
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
-    const existing = await client.query<{ curriculum_id: string; code: string; name: string }>(
-      `select curriculum_id, code, name from subject_combination where id = $1`,
+    const existing = await client.query<{ curriculum_id: string; code: string }>(
+      `select curriculum_id, code from subject_combination where id = $1`,
       [id],
     );
     if (existing.rows.length === 0) {
@@ -253,15 +235,12 @@ export async function updateCombination(
     // id, not something that should shift under a combination just because
     // its membership changed. An explicit override is still respected.
     const code = input.code?.trim().toUpperCase() || existing.rows[0].code;
-    const name =
-      input.name?.trim() ||
-      (input.subjects ? await deriveName(client, input.subjects) : existing.rows[0].name);
 
     await client.query(
       `update subject_combination
-       set code = $1, name = $2, description = $3, is_active = $4, updated_at = now()
-       where id = $5`,
-      [code, name, input.description ?? null, input.isActive ?? true, id],
+       set code = $1, description = $2, is_active = $3, updated_at = now()
+       where id = $4`,
+      [code, input.description ?? null, input.isActive ?? true, id],
     );
     await client.query("COMMIT");
     return getCombination(id);

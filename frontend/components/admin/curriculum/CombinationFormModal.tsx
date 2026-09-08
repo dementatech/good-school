@@ -11,8 +11,9 @@ import { submitJson, type Combination, type Subject } from './types';
 
 // docs/design/subject-selection-module.md §3.1/§3.3: core (principal) subjects
 // and the one subsidiary are picked separately, and General Paper is never a
-// pick — it's automatic for every A-Level student. Code and name are
-// system-assigned (C001, "PhyChemMath/ICT/GP") unless explicitly overridden.
+// pick — it's automatic for every A-Level student. Code is system-assigned
+// (C001, ...). The NAME is not editable — it's derived from the member
+// subjects on every read, so it always tracks their current names/short names.
 export function CombinationFormModal({
   open,
   onClose,
@@ -36,8 +37,6 @@ export function CombinationFormModal({
   const [subsidiaryId, setSubsidiaryId] = useState(
     initial?.subjects.find((m) => m.role === 'subsidiary')?.subjectId ?? '',
   );
-  const [overrideName, setOverrideName] = useState(false);
-  const [name, setName] = useState(initial?.name ?? '');
   const [description, setDescription] = useState(initial?.description ?? '');
   const [saving, setSaving] = useState(false);
 
@@ -83,7 +82,6 @@ export function CombinationFormModal({
       ...(subsidiaryId ? [{ subjectId: subsidiaryId, role: 'subsidiary' as const }] : []),
     ];
     const payload = {
-      name: overrideName ? name.trim() || undefined : undefined,
       description: description.trim() || null,
       subjects: members,
     };
@@ -150,26 +148,11 @@ export function CombinationFormModal({
         />
 
         <div className="rounded-lg bg-[#FAFAFA] px-3 py-2 text-sm">
-          <span className="text-text-faint">Name and code are assigned automatically — </span>
+          <span className="text-text-faint">
+            Code is assigned automatically. The name follows the subjects —{' '}
+          </span>
           <span className="font-medium">{preview}</span>
         </div>
-
-        {initial && (
-          <div>
-            <label className="flex items-center gap-2 text-sm text-[#12333F] mb-1.5">
-              <input
-                type="checkbox"
-                checked={overrideName}
-                onChange={(e) => setOverrideName(e.target.checked)}
-                className="rounded border-[#E5E5E5]"
-              />
-              Override the name
-            </label>
-            {overrideName && (
-              <Input value={name} onChange={(e) => setName(e.target.value)} placeholder={preview} />
-            )}
-          </div>
-        )}
 
         <Input
           label="Description (optional)"
