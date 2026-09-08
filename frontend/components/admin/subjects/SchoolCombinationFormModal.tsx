@@ -7,6 +7,7 @@ import { Select } from '@/components/ui/Select';
 import { Button } from '@/components/ui/Button';
 import { useToast } from '@/components/ui/ToastProvider';
 import { fetchList, submitJson } from '@/lib/api/envelope';
+import { combinationDisplayName } from '@/lib/combination-name';
 import type { CatalogCombination, SchoolCombination, SubjectOffering } from './types';
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
@@ -87,11 +88,16 @@ export function SchoolCombinationFormModal({
     (s) => s.subjectCategory === 'subsidiary' && !s.subjectIsGeneralPaper,
   );
 
-  const preview = useMemo(() => {
-    const coreNames = coreIds.map((id) => offeringById[id]?.subjectShortName ?? '').join('');
-    const subsidiaryName = subsidiaryId ? offeringById[subsidiaryId]?.subjectShortName : '';
-    return `${coreNames || 'Combination'}${subsidiaryName ? `/${subsidiaryName}` : ''}/GP`;
-  }, [coreIds, subsidiaryId, offeringById]);
+  const preview = useMemo(
+    () =>
+      combinationDisplayName(
+        coreIds.map((id) => offeringById[id]?.subjectName ?? ''),
+        subsidiaryId && offeringById[subsidiaryId]
+          ? [offeringById[subsidiaryId].subjectShortName]
+          : [],
+      ),
+    [coreIds, subsidiaryId, offeringById],
+  );
 
   function toggleCore(id: string) {
     setCoreIds((ids) => (ids.includes(id) ? ids.filter((i) => i !== id) : [...ids, id]));
