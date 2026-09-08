@@ -2,6 +2,8 @@ import type { FastifyInstance } from "fastify";
 import { login } from "../domain/login.js";
 import { resolveIdentifierKind } from "../domain/identifier.js";
 import { findUserById, findUsersByIdentifierForReset } from "../domain/users.repository.js";
+import { hashPassword, verifyPassword } from "../domain/password.js";
+import { pool } from "../../../shared/db/index.js";
 import {
   consumeResetToken,
   createResetToken,
@@ -10,12 +12,14 @@ import {
 } from "../domain/password-reset.js";
 import { requireAuth } from "./verify.js";
 import {
+  changePasswordBodySchema,
   forgotPasswordBodySchema,
   loginBodySchema,
   loginResponseSchema,
   meResponseSchema,
   messageResponseSchema,
   resetPasswordBodySchema,
+  successResponseSchema,
 } from "./schemas.js";
 
 const COOKIE_NAME = "school_os_token";
@@ -55,8 +59,51 @@ export async function authRoutes(fastify: FastifyInstance) {
         systemId: user.system_id,
         role: user.role,
         schoolId: user.school_id,
-        mustChangePassword: false,
+        mustChangePassword: user.must_change_password,
       };
+    },
+  );
+
+  // Signed-in password change. Two callers: the forced first-login screen
+  // (sends `newPassword` only) and the voluntary My Account form (sends
+  // `currentPassword` too). Clears `must_change_password` either way.
+  fastify.post<{ Body: { currentPassword?: string; newPassword: string } }>(
+    "/change-password",
+    {
+      preHandler: requireAuth(),
+      schema: { body: changePasswordBodySchema, response: successResponseSchema },
+    },
+    async (request, reply) => {
+      const { currentPassword, newPassword } = request.body;
+      const user = await findUserById(request.authUser!.user_id);
+      if (!user) return reply.status(400).send({ success: false, error: "not_found" });
+
+      // A voluntary change must prove knowledge of the current password. The
+      // forced path skips this — the session was just established with the
+      // temp password, and requiring it again adds nothing.
+      if (!user.must_change_password) {
+        if (!currentPassword) {
+          return reply
+            .status(400)
+            .send({ success: false, message: "Enter your current password." });
+        }
+        const valid = await verifyPassword(user.password_hash, currentPassword);
+        if (!valid) {
+          return reply
+            .status(400)
+            .send({ success: false, message: "Current password is incorrect." });
+        }
+      }
+
+      const passwordHash = await hashPassword(newPassword);
+      await pool.query(
+        `update users set password_hash = $1, must_change_password = false, updated_at = now()
+         where id = $2`,
+        [passwordHash, user.id],
+      );
+      await invalidateUserResetTokens(user.id);
+
+      return reply.status(200).send({ success: true });
     },
   );
 
@@ -95,7 +142,11 @@ export async function authRoutes(fastify: FastifyInstance) {
         maxAge: 60 * 60 * 24 * 7,
       });
 
-      return reply.status(200).send({ role: result.role, school_id: result.schoolId });
+      return reply.status(200).send({
+        role: result.role,
+        school_id: result.schoolId,
+        mustChangePassword: result.mustChangePassword,
+      });
     },
   );
 

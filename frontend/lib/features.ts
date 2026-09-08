@@ -24,6 +24,7 @@ export type FeatureKey =
   | "academic_structure"
   | "schools"
   | "students"
+  | "student_import"
   | "staff"
   | "organization"
   | "accounts"
@@ -64,7 +65,13 @@ export const FEATURES: Record<FeatureKey, FeatureMeta> = {
   // departments-module.md, organization-studio.md) — the Organisation
   // Studio route.
   organization: { label: "Organisation Studio", ready: true },
-  accounts: { label: "Account Management", ready: false },
+  // Super-admin cross-tenant Accounts page (/admin/system/accounts) — list,
+  // reset password, activate/deactivate, edit contact, issue parent logins.
+  accounts: { label: "Account Management", ready: true },
+  // Bulk student CSV import — backend never built (deferred, see Phase 3A
+  // notes). No nav entry points here any more; kept gated so a direct visit
+  // shows ComingSoon rather than a page wired to dead routes.
+  student_import: { label: "Student Import", ready: false },
   student_portal: { label: "Student Portal", ready: false },
   parent_portal: { label: "Parent Portal", ready: false },
   notifications: { label: "Notifications", ready: false },
@@ -88,14 +95,10 @@ const ROUTE_FEATURES: { prefix: string; key: FeatureKey }[] = [
   { prefix: "/admin/system/curriculum", key: "academic_structure" },
   { prefix: "/admin/system/academic-years", key: "academic_structure" },
   { prefix: "/admin/system/schools", key: "schools" },
-  { prefix: "/admin/system/staff", key: "accounts" },
-  // Cross-tenant student roster (super_admin, school picker) is deferred —
-  // the students API is school-scoped only as of Phase 3A. school-admin's
-  // own roster below is the real, live page.
-  { prefix: "/admin/system/students", key: "accounts" },
-  // Reconciliation/merge screen — deferred to Phase 3B.
-  { prefix: "/admin/system/parents", key: "accounts" },
-  { prefix: "/admin/system/super-admins", key: "accounts" },
+  // One tabbed page: School Admins / Staff / Students / Parents / Super Admins.
+  // Bulk student CSV import stays its own (still-unwired) sub-route.
+  { prefix: "/admin/system/students/import", key: "student_import" },
+  { prefix: "/admin/system/accounts", key: "accounts" },
   { prefix: "/admin/system/library", key: "library" },
   { prefix: "/admin/system", key: "dashboard" },
   { prefix: "/admin/assessments", key: "assessments" },

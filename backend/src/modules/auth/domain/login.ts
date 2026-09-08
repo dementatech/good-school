@@ -11,10 +11,20 @@ export interface LoginInput {
 }
 
 export type LoginResult =
-  | { ok: true; token: string; role: string; schoolId: string | null }
+  | {
+      ok: true;
+      token: string;
+      role: string;
+      schoolId: string | null;
+      mustChangePassword: boolean;
+    }
   | {
       ok: false;
-      reason: "invalid_identifier_format" | "invalid_credentials" | "school_suspended";
+      reason:
+        | "invalid_identifier_format"
+        | "invalid_credentials"
+        | "school_suspended"
+        | "account_disabled";
     };
 
 export async function login({ identifier, password, schoolId }: LoginInput): Promise<LoginResult> {
@@ -33,6 +43,11 @@ export async function login({ identifier, password, schoolId }: LoginInput): Pro
     return { ok: false, reason: "invalid_credentials" };
   }
 
+  // A super_admin can disable any login from the Accounts page.
+  if (!user.is_active) {
+    return { ok: false, reason: "account_disabled" };
+  }
+
   // Block sign-in for a tenant that's been suspended — but never for a
   // platform-level super_admin (school_id null).
   if (user.school_id) {
@@ -48,5 +63,11 @@ export async function login({ identifier, password, schoolId }: LoginInput): Pro
     school_id: user.school_id,
   });
 
-  return { ok: true, token, role: user.role, schoolId: user.school_id };
+  return {
+    ok: true,
+    token,
+    role: user.role,
+    schoolId: user.school_id,
+    mustChangePassword: user.must_change_password,
+  };
 }

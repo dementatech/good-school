@@ -14,6 +14,7 @@ export const loginResponseSchema = {
     properties: {
       role: { type: "string" },
       school_id: { type: ["string", "null"] },
+      mustChangePassword: { type: "boolean" },
     },
   },
   401: {
@@ -41,6 +42,31 @@ export const resetPasswordBodySchema = {
     newPassword: { type: "string", minLength: 8 },
   },
   additionalProperties: false,
+} as const;
+
+// Signed-in password change. `currentPassword` is only required for a
+// voluntary change (from the My Account screen); the forced first-login
+// screen sends `newPassword` alone, having just authenticated with the temp
+// password this session.
+export const changePasswordBodySchema = {
+  type: "object",
+  required: ["newPassword"],
+  properties: {
+    currentPassword: { type: "string", minLength: 1 },
+    newPassword: { type: "string", minLength: 8 },
+  },
+  additionalProperties: false,
+} as const;
+
+export const successResponseSchema = {
+  200: {
+    type: "object",
+    properties: { success: { type: "boolean" } },
+  },
+  400: {
+    type: "object",
+    properties: { success: { type: "boolean" }, error: { type: "string" }, message: { type: "string" } },
+  },
 } as const;
 
 // Shared by both reset endpoints: 200 carries a human message, 400 an error code.
