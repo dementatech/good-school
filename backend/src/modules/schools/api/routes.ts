@@ -1,14 +1,20 @@
 import type { FastifyInstance } from "fastify";
 import { requireAuth } from "../../auth/index.js";
 import { ok, fail } from "../../../shared/envelope.js";
-import { findThemeConfigBySchoolId } from "../domain/theme.repository.js";
+import {
+  findThemeConfigBySchoolId,
+  isHexColor,
+  updatePrimaryColor,
+} from "../domain/theme.repository.js";
 import {
   createSchool,
   deleteSchool,
   getSchool,
   listSchools,
   setOnboardingStatus,
+  setSchoolLogo,
   UniqueViolationError,
+  UnsupportedFileTypeError,
   updateSchool,
   type OnboardingStatus,
   type SchoolInput,
@@ -32,6 +38,7 @@ import {
   statusBodySchema,
   themeResponseSchema,
   updateSchoolBodySchema,
+  updateThemeBodySchema,
 } from "./schemas.js";
 
 const SUPER = requireAuth(["super_admin"]);
@@ -79,6 +86,40 @@ export async function schoolsRoutes(fastify: FastifyInstance) {
         if (err instanceof UniqueViolationError) return reply.status(409).send(fail(err.message));
         throw err;
       }
+    },
+  );
+
+  // Logo upload — multipart, @fastify/multipart is registered globally in
+  // server.ts (5 MB / 1 file cap). A school with no logo shows an initials
+  // tile instead. Same pattern as staff /:id/photo.
+  fastify.post<{ Params: { id: string } }>(
+    "/:id/logo",
+    { preHandler: SUPER },
+    async (request, reply) => {
+      const uploaded = await request.file();
+      if (!uploaded) return reply.status(400).send(fail("No file uploaded"));
+      const data = await uploaded.toBuffer();
+      try {
+        const school = await setSchoolLogo(request.params.id, {
+          mimeType: uploaded.mimetype,
+          data,
+        });
+        return school ? ok(school) : reply.status(404).send(fail("not_found"));
+      } catch (err) {
+        if (err instanceof UnsupportedFileTypeError) {
+          return reply.status(400).send(fail(err.message));
+        }
+        throw err;
+      }
+    },
+  );
+
+  fastify.delete<{ Params: { id: string } }>(
+    "/:id/logo",
+    { preHandler: SUPER },
+    async (request, reply) => {
+      const school = await setSchoolLogo(request.params.id, null);
+      return school ? ok(school) : reply.status(404).send(fail("not_found"));
     },
   );
 
@@ -169,8 +210,9 @@ export async function schoolsRoutes(fastify: FastifyInstance) {
     },
   );
 
-  // ── The signed-in user's own school theme (any role) ─────────────────────
+  // ── The signed-in user's own school theme ────────────────────────────────
 
+  // Read: any role that belongs to a school (the portal chrome applies it).
   fastify.get(
     "/me/theme",
     { preHandler: requireAuth(), schema: { response: themeResponseSchema } },
@@ -178,6 +220,37 @@ export async function schoolsRoutes(fastify: FastifyInstance) {
       const theme = await findThemeConfigBySchoolId(request.authUser!.school_id);
       if (!theme) return reply.status(404).send({ error: "school_not_found" });
       return reply.status(200).send(theme);
+    },
+  );
+
+  // Write: a school_admin sets their own school's brand colour.
+  fastify.patch<{ Body: { primaryColor: string } }>(
+    "/me/theme",
+    { preHandler: requireAuth(["school_admin"]), schema: { body: updateThemeBodySchema } },
+    async (request, reply) => {
+      const schoolId = request.authUser!.school_id;
+      if (!schoolId) return reply.status(404).send(fail("no_school"));
+      if (!isHexColor(request.body.primaryColor)) {
+        return reply.status(400).send(fail("primaryColor must be a hex colour like #1e3a8a"));
+      }
+      const updated = await updatePrimaryColor(schoolId, request.body.primaryColor.toLowerCase());
+      return updated ? ok(updated) : reply.status(404).send(fail("not_found"));
+    },
+  );
+
+  // Write: a super_admin sets any school's brand colour from the tenant view.
+  fastify.patch<{ Params: { id: string }; Body: { primaryColor: string } }>(
+    "/:id/theme",
+    { preHandler: SUPER, schema: { body: updateThemeBodySchema } },
+    async (request, reply) => {
+      if (!isHexColor(request.body.primaryColor)) {
+        return reply.status(400).send(fail("primaryColor must be a hex colour like #1e3a8a"));
+      }
+      const updated = await updatePrimaryColor(
+        request.params.id,
+        request.body.primaryColor.toLowerCase(),
+      );
+      return updated ? ok(updated) : reply.status(404).send(fail("not_found"));
     },
   );
 }

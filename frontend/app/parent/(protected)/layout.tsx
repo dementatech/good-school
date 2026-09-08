@@ -4,6 +4,7 @@ import React, { Suspense } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/components/auth/AuthContext';
 import { PortalGate } from '@/components/auth/PortalGate';
+import { SchoolThemeApplier } from '@/components/theme/SchoolThemeApplier';
 import { FeatureGate } from '@/components/FeatureGate';
 import { NotificationBell } from '@/components/ui/NotificationBell';
 import { MobileNavDrawer } from '@/components/ui/MobileNavDrawer';
@@ -85,6 +86,7 @@ function ParentShell({ children: nodes }: { children: React.ReactNode }) {
 export default function ParentLayout({ children }: { children: React.ReactNode }) {
   return (
     <PortalGate roles={PARENT_ROLES}>
+      <SchoolThemeApplier />
       <Suspense fallback={null}>
         <ParentChildrenProvider>
           <ParentShell>{children}</ParentShell>

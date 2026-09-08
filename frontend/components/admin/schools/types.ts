@@ -39,6 +39,9 @@ export interface School {
   genderComposition: GenderComposition | null;
   offersOLevel: boolean;
   offersALevel: boolean;
+  logoUrl: string | null;
+  /** theme_config.primaryColor — the design-system default when uncustomised. */
+  primaryColor: string;
   onboardingStatus: OnboardingStatus;
   verifiedAt: string | null;
   dataImportSource: 'fresh' | 'migrated' | null;
