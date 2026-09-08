@@ -4,12 +4,14 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { createPortal } from 'react-dom';
-import { ChevronLeft, ChevronRight, LogOut } from 'lucide-react';
+import { ChevronDown, ChevronLeft, ChevronRight, LogOut } from 'lucide-react';
 import type { NavItem } from './MobileNavDrawer';
 
 const STORAGE_KEY = 'school_os_sidebar_collapsed';
 
 function isActive(item: NavItem, pathname: string): boolean {
+  if (item.children?.length) return item.children.some((child) => isActive(child, pathname));
+  if (!item.href) return false;
   return item.exact
     ? pathname === item.href
     : (item.activePrefixes ?? [item.href]).some((prefix) => pathname.startsWith(prefix));
@@ -58,7 +60,7 @@ function NavLink({
       onMouseLeave={() => setHoverAnchor(null)}
     >
       <Link
-        href={item.href}
+        href={item.href!}
         aria-label={collapsed ? item.label : undefined}
         className={`flex items-center gap-3 rounded-lg text-sm transition-colors ${
           collapsed ? 'justify-center px-0 py-2.5' : 'px-3 py-2.5'
@@ -72,6 +74,113 @@ function NavLink({
       {collapsed && hoverAnchor && <IconTooltip anchor={hoverAnchor} label={item.label} />}
     </div>
   );
+}
+
+/**
+ * A parent nav row holding `children`. Expanded sidebar: a disclosure that
+ * toggles an indented child list (open by default when a child is current).
+ * Collapsed rail: hovering the icon opens a portal flyout listing the
+ * children — same positioning trick as `IconTooltip`.
+ */
+function NavGroupNode({
+  item,
+  collapsed,
+  pathname,
+}: {
+  item: NavItem;
+  collapsed: boolean;
+  pathname: string;
+}) {
+  const Icon = item.icon;
+  const groupActive = isActive(item, pathname);
+  const [open, setOpen] = useState(groupActive);
+  const [hoverAnchor, setHoverAnchor] = useState<HTMLElement | null>(null);
+
+  const childLink = (child: NavItem, onFlyout: boolean) => {
+    const active = isActive(child, pathname);
+    return (
+      <Link
+        key={child.href}
+        href={child.href!}
+        className={
+          onFlyout
+            ? `flex items-center gap-2.5 rounded-md px-2.5 py-2 text-sm transition-colors ${
+                active ? 'bg-primary-50 text-primary-900 font-medium' : 'text-[#334155] hover:bg-primary-50'
+              }`
+            : `flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors ${
+                active ? 'bg-white/15 text-white font-medium' : 'text-primary-100 hover:bg-white/10 hover:text-white'
+              }`
+        }
+      >
+        <child.icon className="w-4 h-4 shrink-0" aria-hidden />
+        <span className="truncate">{child.label}</span>
+      </Link>
+    );
+  };
+
+  if (collapsed) {
+    return (
+      <div
+        className="relative"
+        onMouseEnter={(e) => setHoverAnchor(e.currentTarget)}
+        onMouseLeave={() => setHoverAnchor(null)}
+      >
+        <button
+          type="button"
+          aria-label={item.label}
+          className={`w-full flex items-center justify-center rounded-lg px-0 py-2.5 text-sm transition-colors ${
+            groupActive ? 'bg-white/15 text-white' : 'text-primary-100 hover:bg-white/10 hover:text-white'
+          }`}
+        >
+          <Icon className="w-4.5 h-4.5 shrink-0" aria-hidden />
+        </button>
+        {hoverAnchor &&
+          createPortal(
+            <div
+              className="fixed z-[100] min-w-44 rounded-xl border border-primary-100 bg-white p-1.5 shadow-xl"
+              style={{ top: hoverAnchor.getBoundingClientRect().top, left: hoverAnchor.getBoundingClientRect().right + 8 }}
+            >
+              <p className="px-2.5 pt-1 pb-1.5 text-[10px] font-bold uppercase tracking-widest text-text-faint">
+                {item.label}
+              </p>
+              {item.children!.map((child) => childLink(child, true))}
+            </div>,
+            document.body,
+          )}
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        className={`w-full flex items-center justify-between gap-3 rounded-lg px-3 py-2.5 text-sm transition-colors ${
+          groupActive && !open ? 'bg-white/15 text-white font-medium' : 'text-primary-100 hover:bg-white/10 hover:text-white'
+        }`}
+      >
+        <span className="flex items-center gap-3 min-w-0">
+          <Icon className="w-4.5 h-4.5 shrink-0" aria-hidden />
+          <span className="truncate">{item.label}</span>
+        </span>
+        <ChevronDown className={`w-4 h-4 shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} aria-hidden />
+      </button>
+      {open && (
+        <div className="mt-1 ml-3 space-y-0.5 border-l border-white/10 pl-2">
+          {item.children!.map((child) => childLink(child, false))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function NavNode({ item, collapsed, pathname }: { item: NavItem; collapsed: boolean; pathname: string }) {
+  if (item.children?.length) {
+    return <NavGroupNode item={item} collapsed={collapsed} pathname={pathname} />;
+  }
+  return <NavLink item={item} active={isActive(item, pathname)} collapsed={collapsed} />;
 }
 
 export interface PortalSidebarProps {
@@ -166,7 +275,7 @@ export function PortalSidebar({
 
       <nav className="flex-1 p-3 space-y-1 overflow-y-auto">
         {nav.map((item) => (
-          <NavLink key={item.href} item={item} active={isActive(item, pathname)} collapsed={collapsed} />
+          <NavNode key={item.href ?? item.label} item={item} collapsed={collapsed} pathname={pathname} />
         ))}
 
         {secondaryNav && secondaryNav.items.length > 0 && (
@@ -179,7 +288,7 @@ export function PortalSidebar({
               <div className="my-2 border-t border-white/10" role="separator" aria-label={secondaryNav.label} />
             )}
             {secondaryNav.items.map((item) => (
-              <NavLink key={item.href} item={item} active={isActive(item, pathname)} collapsed={collapsed} />
+              <NavNode key={item.href ?? item.label} item={item} collapsed={collapsed} pathname={pathname} />
             ))}
           </>
         )}
@@ -187,7 +296,7 @@ export function PortalSidebar({
 
       <div className="p-3 border-t border-white/10 space-y-1">
         {footerNav.map((item) => (
-          <NavLink key={item.href} item={item} active={isActive(item, pathname)} collapsed={collapsed} />
+          <NavNode key={item.href ?? item.label} item={item} collapsed={collapsed} pathname={pathname} />
         ))}
 
         <button

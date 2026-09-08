@@ -25,6 +25,7 @@ import {
   type StudentGuardian,
 } from './types';
 import { StudentSubjectsPanel } from './StudentSubjectsPanel';
+import { PriorExamsSection } from './PriorExamsSection';
 
 function statusVariant(status: EnrollmentRecord['status']): 'default' | 'accent' | 'success' | 'muted' {
   if (status === 'active') return 'success';
@@ -254,6 +255,8 @@ export function StudentDetailModal({
             </div>
           )}
         </section>
+
+        <PriorExamsSection studentUserId={student.userId} />
 
         <section>
           <h3 className="text-xs font-bold uppercase tracking-widest text-text-faint mb-2">

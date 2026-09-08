@@ -3,16 +3,19 @@
 import React, { useCallback, useEffect, useId, useRef, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Menu, X, LogOut } from 'lucide-react';
+import { ChevronDown, Menu, X, LogOut } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 
 export type NavItem = {
-  href: string;
+  /** Omitted for a parent that only expands to reveal `children`. */
+  href?: string;
   label: string;
   icon: LucideIcon;
   exact?: boolean;
   /** Extra path prefixes that also count as "on this item" — defaults to just `href`. */
   activePrefixes?: string[];
+  /** A nested group — the parent row expands/flies out instead of navigating. */
+  children?: NavItem[];
 };
 
 type MobileNavDrawerProps = {
@@ -34,6 +37,40 @@ const linkClass = (active: boolean) =>
   `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-colors ${
     active ? 'bg-primary-700 text-white' : 'text-text-secondary hover:bg-bg-muted'
   }`;
+
+/** A parent nav row that expands in place to reveal its children (mobile). */
+function NavGroup({ item, active }: { item: NavItem; active: (i: NavItem) => boolean }) {
+  const Icon = item.icon;
+  const groupActive = active(item);
+  const [open, setOpen] = useState(groupActive);
+
+  return (
+    <div>
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        className={`${linkClass(groupActive && !open)} w-full justify-between`}
+      >
+        <span className="flex items-center gap-3">
+          <Icon className="w-4.5 h-4.5 shrink-0" />
+          {item.label}
+        </span>
+        <ChevronDown className={`w-4 h-4 shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} />
+      </button>
+      {open && (
+        <div className="mt-1 ml-4 space-y-1 border-l border-border pl-2">
+          {item.children!.map((child) => (
+            <Link key={child.href} href={child.href!} className={linkClass(active(child))}>
+              <child.icon className="w-4 h-4 shrink-0" />
+              {child.label}
+            </Link>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
 /**
  * Mobile navigation: a hamburger in the top bar that opens a left slide-in
@@ -110,15 +147,21 @@ export function MobileNavDrawer({
     };
   }, [open]);
 
-  const isActive = (item: NavItem) =>
-    item.exact
+  const isActive = (item: NavItem): boolean => {
+    if (item.children?.length) return item.children.some(isActive);
+    if (!item.href) return false;
+    return item.exact
       ? pathname === item.href
       : (item.activePrefixes ?? [item.href]).some((prefix) => pathname.startsWith(prefix));
+  };
 
   const renderLink = (item: NavItem) => {
     const Icon = item.icon;
+    if (item.children?.length) {
+      return <NavGroup key={item.label} item={item} active={isActive} />;
+    }
     return (
-      <Link key={item.href} href={item.href} className={linkClass(isActive(item))}>
+      <Link key={item.href} href={item.href!} className={linkClass(isActive(item))}>
         <Icon className="w-4.5 h-4.5 shrink-0" />
         {item.label}
       </Link>

@@ -16,6 +16,12 @@ import {
   type NewGuardianInput,
   type StudentGuardianRecord,
 } from "./guardians.repository.js";
+import { addStudentSubject, type StudentSubjectRecord } from "./student-subjects.repository.js";
+import {
+  selectCombinationTx,
+  type StudentCombinationRecord,
+} from "./student-combinations.repository.js";
+import { recordPriorExam, type PriorExamInput, type PriorExamRecord } from "./prior-exams.repository.js";
 
 // Identity only (see docs/design/student-data-model.md §2) — no class,
 // stream, or "current" anything on this table. "Where/when are they
@@ -61,9 +67,22 @@ export interface GuardianRow {
   isEmergencyContact: boolean;
 }
 
+export interface AdmissionCombinationInput {
+  schoolCombinationId: string;
+  subsidiarySubjectId?: string | null;
+  overrideReason?: string | null;
+}
+
 export interface CreateStudentInput extends StudentIdentityInput {
   enrollment: EnrollmentInput;
   guardians: GuardianRow[];
+  // Class-aware admission extras, all optional — the wizard sends whichever
+  // apply to the entry class (PLE for S1, UCE + combination for S5, optional
+  // subjects for S2–S4, combination for S6). See
+  // docs/design/uganda-secondary-school-foundations.md §5.
+  priorExam?: PriorExamInput | null;
+  oLevelSubjectIds?: string[] | null;
+  combination?: AdmissionCombinationInput | null;
 }
 
 interface StudentRow {
@@ -141,11 +160,15 @@ export async function getStudent(schoolId: string, userId: string): Promise<Stud
 // creation time — a student without either isn't meaningfully enrolled yet.
 export async function createStudent(
   schoolId: string,
+  actingUserId: string,
   input: CreateStudentInput,
 ): Promise<{
   student: StudentRecord;
   tempPassword: string;
   guardians: (StudentGuardianRecord & { matchedExisting: boolean })[];
+  priorExam: PriorExamRecord | null;
+  subjects: StudentSubjectRecord[];
+  combination: StudentCombinationRecord | null;
 }> {
   const client = await pool.connect();
   try {
@@ -205,6 +228,49 @@ export async function createStudent(
       });
     }
 
+    // Class-aware admission extras — folded into the same commit so a
+    // validation failure (e.g. an unoffered subject, a combination that isn't
+    // offered) rolls the whole admission back rather than leaving a
+    // half-set-up student.
+    let priorExam: PriorExamRecord | null = null;
+    if (input.priorExam) {
+      priorExam = await recordPriorExam(
+        client,
+        schoolId,
+        userId,
+        input.priorExam,
+        actingUserId,
+        activeEnrollment.id,
+      );
+    }
+
+    const subjects: StudentSubjectRecord[] = [];
+    for (const subjectId of input.oLevelSubjectIds ?? []) {
+      subjects.push(
+        await addStudentSubject(
+          schoolId,
+          userId,
+          input.enrollment.academicYearId,
+          subjectId,
+          actingUserId,
+          client,
+        ),
+      );
+    }
+
+    let combination: StudentCombinationRecord | null = null;
+    if (input.combination) {
+      combination = await selectCombinationTx(client, {
+        schoolId,
+        studentUserId: userId,
+        academicYearId: input.enrollment.academicYearId,
+        schoolCombinationId: input.combination.schoolCombinationId,
+        requestedSubsidiaryId: input.combination.subsidiarySubjectId,
+        confirmedBy: actingUserId,
+        overrideReason: input.combination.overrideReason,
+      });
+    }
+
     await client.query("COMMIT");
 
     const identityRow = await client.query<StudentRow>(`${SELECT_STUDENT} where u.id = $1`, [
@@ -217,6 +283,9 @@ export async function createStudent(
       student: { ...mapRow(identityRow.rows[0]), activeEnrollment },
       tempPassword,
       guardians: guardians.map((g) => ({ ...g, matchedExisting: matchedById.get(g.id) ?? false })),
+      priorExam,
+      subjects,
+      combination,
     };
   } catch (err) {
     await client.query("ROLLBACK");
@@ -389,3 +458,12 @@ export {
   ActiveCombinationExistsError,
   UnknownReferenceError as UnknownCombinationReferenceError,
 } from "./student-combinations.repository.js";
+
+export type { PriorExamRecord, PriorExamInput, PriorExamType } from "./prior-exams.repository.js";
+export {
+  listPriorExams,
+  recordPriorExam,
+  updatePriorExam,
+  deletePriorExam,
+  DuplicatePriorExamError,
+} from "./prior-exams.repository.js";
