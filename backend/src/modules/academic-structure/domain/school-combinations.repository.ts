@@ -1,6 +1,6 @@
 import type { PoolClient } from "pg";
 import { pool } from "../../../shared/db/index.js";
-import { combinationDisplayName } from "./combination-name.js";
+import { derivedNameSql } from "../../../shared/combination-name.js";
 import type { CombinationRole } from "./combinations.repository.js";
 import { nextSequentialCode } from "./sequential-code.js";
 
@@ -39,9 +39,6 @@ export interface SchoolCombinationInput {
    * omit/null for a fully custom combination. */
   catalogCombinationId?: string | null;
   code?: string;
-  /** Required unless adopting from a catalog combination (its name is used
-   * when omitted). */
-  name?: string;
   description?: string | null;
   isOffered?: boolean;
   minClassSize?: number | null;
@@ -72,14 +69,16 @@ interface SchoolCombinationRow {
   updated_at: string;
 }
 
+// `name` is derived from the current member subjects — never stored.
 const SELECT_SCHOOL_COMBINATION = `
-  select c.id, c.school_id, c.academic_year_id, c.catalog_combination_id, c.code, c.name,
+  select c.id, c.school_id, c.academic_year_id, c.catalog_combination_id, c.code,
+         ${derivedNameSql("s", "cs")} as name,
          c.description, c.is_offered, c.min_class_size,
          coalesce(
            jsonb_agg(jsonb_build_object(
              'subjectId', s.id, 'subjectCode', s.code, 'subjectShortName', s.short_name,
              'subjectName', s.name, 'role', cs.role
-           )) filter (where cs.subject_id is not null),
+           ) order by cs.sort_order, s.name) filter (where cs.subject_id is not null),
            '[]'
          ) as subjects,
          c.created_at, c.updated_at
@@ -189,11 +188,13 @@ async function replaceMembers(
   await client.query(`delete from school_combination_subject where school_combination_id = $1`, [
     schoolCombinationId,
   ]);
-  for (const m of members) {
+  // Array order becomes `sort_order` — the derived name follows it.
+  for (let i = 0; i < members.length; i++) {
+    const m = members[i];
     await client.query(
-      `insert into school_combination_subject (school_combination_id, subject_id, role)
-       values ($1, $2, $3)`,
-      [schoolCombinationId, m.subjectId, m.role],
+      `insert into school_combination_subject (school_combination_id, subject_id, role, sort_order)
+       values ($1, $2, $3, $4)`,
+      [schoolCombinationId, m.subjectId, m.role, i],
     );
   }
 }
@@ -203,7 +204,8 @@ async function catalogMembers(
   catalogCombinationId: string,
 ): Promise<{ subjectId: string; role: CombinationRole }[]> {
   const { rows } = await client.query<{ subject_id: string; role: CombinationRole }>(
-    `select subject_id, role from combination_subject where combination_id = $1`,
+    `select subject_id, role from combination_subject
+     where combination_id = $1 order by sort_order`,
     [catalogCombinationId],
   );
   return rows.map((r) => ({ subjectId: r.subject_id, role: r.role }));
@@ -221,11 +223,10 @@ export async function createSchoolCombination(
     let catalogId = input.catalogCombinationId || null;
     let members = input.subjects ?? [];
     let code = input.code?.trim().toUpperCase();
-    let name = input.name;
 
     if (catalogId) {
-      const catalog = await client.query<{ code: string; name: string }>(
-        `select code, name from subject_combination where id = $1`,
+      const catalog = await client.query<{ code: string }>(
+        `select code from subject_combination where id = $1`,
         [catalogId],
       );
       if (catalog.rowCount === 0) {
@@ -233,7 +234,6 @@ export async function createSchoolCombination(
       }
       members = await catalogMembers(client, catalogId);
       code = code || catalog.rows[0].code;
-      name = name || catalog.rows[0].name;
     }
 
     if (!code) {
@@ -247,34 +247,16 @@ export async function createSchoolCombination(
       });
     }
 
-    if (!name) {
-      // "BCM/SCS/GP" — cores by first letter of the subject name, the
-      // subsidiary by its short name, then "/GP" always. See
-      // `combinationDisplayName`. Display-only; pick order kept.
-      const principalIds = members.filter((m) => m.role === "principal").map((m) => m.subjectId);
-      const subsidiaryIds = members.filter((m) => m.role === "subsidiary").map((m) => m.subjectId);
-      const derived = await client.query<{ id: string; name: string; short_name: string }>(
-        `select id, name, short_name from subject where id = any($1::uuid[])`,
-        [[...principalIds, ...subsidiaryIds]],
-      );
-      const byId = new Map(derived.rows.map((r) => [r.id, r]));
-      name = combinationDisplayName(
-        principalIds.map((id) => ({ name: byId.get(id)?.name ?? "" })),
-        subsidiaryIds.map((id) => ({ shortName: byId.get(id)?.short_name ?? "" })),
-      );
-    }
-
     const result = await client.query<{ id: string }>(
       `insert into school_combination
-         (school_id, academic_year_id, catalog_combination_id, code, name, description, is_offered, min_class_size)
-       values ($1, $2, $3, $4, $5, $6, $7, $8)
+         (school_id, academic_year_id, catalog_combination_id, code, description, is_offered, min_class_size)
+       values ($1, $2, $3, $4, $5, $6, $7)
        returning id`,
       [
         schoolId,
         academicYearId,
         catalogId,
         code,
-        name,
         input.description ?? null,
         input.isOffered ?? true,
         input.minClassSize ?? null,
@@ -318,11 +300,10 @@ export async function updateSchoolCombination(
 
     await client.query(
       `update school_combination
-       set name = coalesce($1, name), description = $2, is_offered = $3, min_class_size = $4,
-           code = coalesce($5, code), updated_at = now()
-       where id = $6`,
+       set description = $1, is_offered = $2, min_class_size = $3,
+           code = coalesce($4, code), updated_at = now()
+       where id = $5`,
       [
-        input.name ?? null,
         input.description ?? null,
         input.isOffered ?? true,
         input.minClassSize ?? null,

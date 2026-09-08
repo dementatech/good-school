@@ -1,4 +1,5 @@
 import { pool } from "../../../shared/db/index.js";
+import { derivedNameSql } from "../../../shared/combination-name.js";
 
 // The A-Level student's single atomic combination choice (3 principal + 1
 // subsidiary + General Paper, bundled). Confirming it syncs `student_subject`
@@ -51,12 +52,13 @@ interface StudentCombinationRow {
 
 const SELECT_STUDENT_COMBINATION = `
   select sc2.id, sc2.student_user_id, sc2.school_combination_id, c.code as combination_code,
-         c.name as combination_name, sc2.subsidiary_subject_id, sc2.academic_year_id, sc2.status,
+         ${derivedNameSql("s", "cs")} as combination_name,
+         sc2.subsidiary_subject_id, sc2.academic_year_id, sc2.status,
          sc2.selected_at, sc2.confirmed_by,
          coalesce(
            jsonb_agg(jsonb_build_object(
              'subjectId', s.id, 'subjectCode', s.code, 'subjectName', s.name, 'role', cs.role
-           )) filter (where cs.subject_id is not null),
+           ) order by cs.sort_order, s.name) filter (where cs.subject_id is not null),
            '[]'
          ) as members
   from student_combination sc2
@@ -113,7 +115,7 @@ export async function getCurrentCombination(
     clause += ` and sc2.academic_year_id = $2`;
   }
   const { rows } = await pool.query<StudentCombinationRow>(
-    `${SELECT_STUDENT_COMBINATION} ${clause} group by sc2.id, c.code, c.name order by sc2.selected_at desc limit 1`,
+    `${SELECT_STUDENT_COMBINATION} ${clause} group by sc2.id, c.code order by sc2.selected_at desc limit 1`,
     params,
   );
   return rows[0] ? mapRow(rows[0]) : null;
@@ -122,7 +124,7 @@ export async function getCurrentCombination(
 export async function listCombinationHistory(studentUserId: string): Promise<StudentCombinationRecord[]> {
   const { rows } = await pool.query<StudentCombinationRow>(
     `${SELECT_STUDENT_COMBINATION} where sc2.student_user_id = $1
-     group by sc2.id, c.code, c.name order by sc2.selected_at desc`,
+     group by sc2.id, c.code order by sc2.selected_at desc`,
     [studentUserId],
   );
   return rows.map(mapRow);
@@ -272,7 +274,7 @@ export async function selectCombination(
     await client.query("COMMIT");
 
     const row = await pool.query<StudentCombinationRow>(
-      `${SELECT_STUDENT_COMBINATION} where sc2.id = $1 group by sc2.id, c.code, c.name`,
+      `${SELECT_STUDENT_COMBINATION} where sc2.id = $1 group by sc2.id, c.code`,
       [result.rows[0].id],
     );
     return mapRow(row.rows[0]);
@@ -335,7 +337,7 @@ export async function reassignCombination(
     await client.query("COMMIT");
 
     const row = await pool.query<StudentCombinationRow>(
-      `${SELECT_STUDENT_COMBINATION} where sc2.id = $1 group by sc2.id, c.code, c.name`,
+      `${SELECT_STUDENT_COMBINATION} where sc2.id = $1 group by sc2.id, c.code`,
       [result.rows[0].id],
     );
     return mapRow(row.rows[0]);

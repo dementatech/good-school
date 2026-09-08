@@ -56,8 +56,6 @@ export function SchoolCombinationFormModal({
   const [subsidiaryId, setSubsidiaryId] = useState(
     combination?.subjects.find((s) => s.role === 'subsidiary')?.subjectId ?? '',
   );
-  const [overrideName, setOverrideName] = useState(false);
-  const [name, setName] = useState(combination?.name ?? '');
   const [description, setDescription] = useState(combination?.description ?? '');
   const [minClassSize, setMinClassSize] = useState(combination?.minClassSize?.toString() ?? '');
   const [saving, setSaving] = useState(false);
@@ -116,7 +114,6 @@ export function SchoolCombinationFormModal({
       mode === 'catalog' && !isEdit
         ? { catalogCombinationId: catalogId }
         : {
-            name: overrideName ? name.trim() || undefined : undefined,
             description: description.trim() || null,
             minClassSize: minClassSize ? Number(minClassSize) : null,
             subjects: [
@@ -216,25 +213,11 @@ export function SchoolCombinationFormModal({
 
             <Section title="Identity">
               <div className="rounded-lg bg-[#FAFAFA] px-3 py-2 text-sm">
-                <span className="text-text-faint">Name and code are assigned automatically — </span>
+                <span className="text-text-faint">
+                  Code is assigned automatically. The name follows the subjects —{' '}
+                </span>
                 <span className="font-medium">{preview}</span>
               </div>
-              {isEdit && (
-                <div>
-                  <label className="flex items-center gap-2 text-sm text-[#12333F] mb-1.5">
-                    <input
-                      type="checkbox"
-                      checked={overrideName}
-                      onChange={(e) => setOverrideName(e.target.checked)}
-                      className="rounded border-[#E5E5E5]"
-                    />
-                    Override the name
-                  </label>
-                  {overrideName && (
-                    <Input value={name} onChange={(e) => setName(e.target.value)} placeholder={preview} />
-                  )}
-                </div>
-              )}
               <Input label="Description (optional)" value={description} onChange={(e) => setDescription(e.target.value)} />
               <Input
                 label="Minimum class size (optional)"

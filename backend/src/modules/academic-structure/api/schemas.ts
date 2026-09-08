@@ -62,11 +62,9 @@ export const combinationBodySchema = {
   type: "object",
   required: [],
   properties: {
-    // Both optional — system-assigned (code: C001, ...) / auto-derived from
-    // the chosen subjects' short names (name) when omitted. An explicit value
-    // still overrides, e.g. when editing.
+    // Optional — `code` is system-assigned (C001, ...) when omitted. The name
+    // is not accepted at all: it's derived from the member subjects on read.
     code: { type: "string" },
-    name: { type: "string", minLength: 1 },
     description: { type: ["string", "null"] },
     isActive: { type: "boolean" },
     subjects: {
@@ -174,7 +172,6 @@ export const schoolCombinationBodySchema = {
   properties: {
     catalogCombinationId: { type: ["string", "null"] },
     code: { type: ["string", "null"] },
-    name: { type: "string", minLength: 1 },
     description: { type: ["string", "null"] },
     isOffered: { type: "boolean" },
     minClassSize: { type: ["integer", "null"], minimum: 1 },
