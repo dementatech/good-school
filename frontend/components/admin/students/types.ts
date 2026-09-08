@@ -83,6 +83,7 @@ export interface SchoolClass {
   curriculumStageId: string;
   stageCode: string;
   stageName: string;
+  stagePhase: 'O_LEVEL' | 'A_LEVEL';
   hasStreams: boolean;
   isActive: boolean;
 }
@@ -161,5 +162,56 @@ export interface StudentCombination {
   academicYearId: string;
   status: 'pending' | 'confirmed' | 'reassigned';
   selectedAt: string;
+  eligibilityOverrideReason: string | null;
   members: StudentCombinationMember[];
+  warnings: string[];
 }
+
+// Mirrors backend/src/modules/students/domain/prior-exams.repository.ts
+
+export type PriorExamType = 'PLE' | 'UCE';
+
+export interface PriorExamSubject {
+  principalSubjectId: string;
+  principalSubjectCode: string;
+  principalSubjectName: string;
+  grade: string;
+}
+
+export interface PriorExam {
+  id: string;
+  studentUserId: string;
+  schoolId: string;
+  enrollmentId: string | null;
+  examType: PriorExamType;
+  examYear: number;
+  candidateNumber: string | null;
+  aggregate: number | null;
+  divisionOrResult: string | null;
+  notes: string | null;
+  recordedBy: string | null;
+  createdAt: string;
+  updatedAt: string;
+  subjects: PriorExamSubject[];
+}
+
+export const PRIOR_EXAM_TYPES: readonly PriorExamType[] = ['PLE', 'UCE'];
+export const PRIOR_EXAM_TYPE_LABEL: Record<PriorExamType, string> = {
+  PLE: 'PLE (Primary Leaving Exam)',
+  UCE: 'UCE (O-Level)',
+};
+
+// PLE aggregate → division (legacy 1–9 per-subject scale, 4 subjects, 4–36).
+// docs/design/uganda-secondary-school-foundations.md §4.1.
+export const PLE_DIVISIONS = ['Division 1', 'Division 2', 'Division 3', 'Division 4', 'Ungraded (U)'];
+// UCE: legacy Division 1–4 / Fail, or NLSC "Result" statuses.
+export const UCE_RESULTS = [
+  'Division 1',
+  'Division 2',
+  'Division 3',
+  'Division 4',
+  'Fail',
+  'Result 1',
+  'Result 2',
+  'Result 3',
+];

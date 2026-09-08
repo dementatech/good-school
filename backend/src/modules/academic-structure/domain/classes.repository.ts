@@ -12,6 +12,7 @@ export interface ClassRecord {
   curriculumStageId: string;
   stageCode: string;
   stageName: string;
+  stagePhase: "O_LEVEL" | "A_LEVEL";
   hasStreams: boolean;
   classTeacherId: string | null;
   isActive: boolean;
@@ -33,6 +34,7 @@ interface ClassRow {
   curriculum_stage_id: string;
   stage_code: string;
   stage_name: string;
+  stage_phase: "O_LEVEL" | "A_LEVEL";
   has_streams: boolean;
   class_teacher_id: string | null;
   is_active: boolean;
@@ -42,7 +44,7 @@ interface ClassRow {
 
 const SELECT_CLASS = `
   select c.id, c.academic_year_id, c.curriculum_stage_id,
-         cs.code as stage_code, cs.name as stage_name,
+         cs.code as stage_code, cs.name as stage_name, cs.phase as stage_phase,
          c.has_streams, c.class_teacher_id, c.is_active, c.created_at, c.updated_at
   from classes c
   join curriculum_stage cs on cs.id = c.curriculum_stage_id
@@ -55,6 +57,7 @@ function mapRow(row: ClassRow): ClassRecord {
     curriculumStageId: row.curriculum_stage_id,
     stageCode: row.stage_code,
     stageName: row.stage_name,
+    stagePhase: row.stage_phase,
     hasStreams: row.has_streams,
     classTeacherId: row.class_teacher_id,
     isActive: row.is_active,

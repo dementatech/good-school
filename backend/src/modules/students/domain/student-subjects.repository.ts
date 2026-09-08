@@ -1,4 +1,7 @@
+import type { Pool, PoolClient } from "pg";
 import { pool } from "../../../shared/db/index.js";
+
+type Db = Pool | PoolClient;
 
 // Per-student O-Level subject registration — a state transition on one row
 // per (student, subject, year), never a delete, so a dropped subject's prior
@@ -105,8 +108,9 @@ export async function addStudentSubject(
   academicYearId: string,
   subjectId: string,
   changedBy: string,
+  db: Db = pool,
 ): Promise<StudentSubjectRecord> {
-  const offering = await pool.query<{ is_offered: boolean }>(
+  const offering = await db.query<{ is_offered: boolean }>(
     `select is_offered from subject_offering
      where school_id = $1 and subject_id = $2 and academic_year_id = $3`,
     [schoolId, subjectId, academicYearId],
@@ -118,7 +122,7 @@ export async function addStudentSubject(
   // A fresh row starts 'active'; re-adding over a previously-'dropped' row is
   // tagged 'added' instead — the doc's distinction between "was here all
   // along" and "came back after being dropped" (§2.4).
-  const result = await pool.query<{ id: string }>(
+  const result = await db.query<{ id: string }>(
     `insert into student_subject (student_user_id, school_id, subject_id, academic_year_id, status, status_changed_by)
      values ($1, $2, $3, $4, 'active', $5)
      on conflict (student_user_id, subject_id, academic_year_id) do update
@@ -128,7 +132,7 @@ export async function addStudentSubject(
     [studentUserId, schoolId, subjectId, academicYearId, changedBy],
   );
 
-  const row = await pool.query<StudentSubjectRow>(`${SELECT_STUDENT_SUBJECT} where ss.id = $1`, [
+  const row = await db.query<StudentSubjectRow>(`${SELECT_STUDENT_SUBJECT} where ss.id = $1`, [
     result.rows[0].id,
   ]);
   return mapRow(row.rows[0]);

@@ -5,12 +5,17 @@ import {
   ActiveCombinationExistsError,
   ActiveEnrollmentExistsError,
   CompulsorySubjectError,
+  DuplicatePriorExamError,
   InvalidGuardianInputError,
   InvalidSubsidiaryError,
   SubjectNotOfferedError,
   UnknownCombinationReferenceError,
   UnknownReferenceError,
   addStudentSubject,
+  deletePriorExam,
+  listPriorExams,
+  recordPriorExam,
+  updatePriorExam,
   archiveStudent,
   createEnrollment,
   createStudent,
@@ -43,11 +48,13 @@ import {
   dropStudentSubjectBodySchema,
   enrollmentBodySchema,
   guardianLinkBodySchema,
+  priorExamBodySchema,
   resetPasswordsBodySchema,
   selectCombinationBodySchema,
   studentIdentityBodySchema,
   withdrawBodySchema,
 } from "./schemas.js";
+import type { PriorExamInput } from "../domain/prior-exams.repository.js";
 
 const ADMIN = requireAuth(["admin", "school_admin", "super_admin"]);
 
@@ -100,13 +107,23 @@ export async function studentsRoutes(fastify: FastifyInstance) {
       const schoolId = schoolOf(request, reply);
       if (!schoolId) return;
       try {
-        const { student, tempPassword, guardians } = await createStudent(schoolId, request.body);
-        return reply.status(201).send(ok({ student, tempPassword, guardians }));
+        const created = await createStudent(schoolId, request.authUser!.user_id, request.body);
+        return reply.status(201).send(ok(created));
       } catch (err) {
-        if (err instanceof UnknownReferenceError || err instanceof InvalidGuardianInputError) {
+        if (
+          err instanceof UnknownReferenceError ||
+          err instanceof InvalidGuardianInputError ||
+          err instanceof SubjectNotOfferedError ||
+          err instanceof UnknownCombinationReferenceError ||
+          err instanceof InvalidSubsidiaryError ||
+          err instanceof DuplicatePriorExamError
+        ) {
           return reply.status(400).send(fail(err.message));
         }
-        if (err instanceof ActiveEnrollmentExistsError) {
+        if (
+          err instanceof ActiveEnrollmentExistsError ||
+          err instanceof ActiveCombinationExistsError
+        ) {
           return reply.status(409).send(fail(err.message));
         }
         throw err;
@@ -282,6 +299,79 @@ export async function studentsRoutes(fastify: FastifyInstance) {
     },
   );
 
+  // ── Prior national-exam results (PLE / UCE) ─────────────────────────────
+
+  fastify.get<{ Params: { id: string } }>(
+    "/:id/prior-exams",
+    { preHandler: ADMIN },
+    async (request) => ok(await listPriorExams(request.params.id)),
+  );
+
+  fastify.post<{ Params: { id: string }; Body: PriorExamInput }>(
+    "/:id/prior-exams",
+    { preHandler: ADMIN, schema: { body: priorExamBodySchema } },
+    async (request, reply) => {
+      const schoolId = schoolOf(request, reply);
+      if (!schoolId) return;
+      const client = await pool.connect();
+      try {
+        await client.query("BEGIN");
+        const record = await recordPriorExam(
+          client,
+          schoolId,
+          request.params.id,
+          request.body,
+          request.authUser!.user_id,
+        );
+        await client.query("COMMIT");
+        return reply.status(201).send(ok(record));
+      } catch (err) {
+        await client.query("ROLLBACK");
+        if (err instanceof DuplicatePriorExamError) {
+          return reply.status(409).send(fail(err.message));
+        }
+        throw err;
+      } finally {
+        client.release();
+      }
+    },
+  );
+
+  fastify.patch<{ Params: { id: string; examId: string }; Body: PriorExamInput }>(
+    "/:id/prior-exams/:examId",
+    { preHandler: ADMIN, schema: { body: priorExamBodySchema } },
+    async (request, reply) => {
+      const schoolId = schoolOf(request, reply);
+      if (!schoolId) return;
+      try {
+        const record = await updatePriorExam(
+          schoolId,
+          request.params.id,
+          request.params.examId,
+          request.body,
+          request.authUser!.user_id,
+        );
+        return record ? ok(record) : reply.status(404).send(fail("not_found"));
+      } catch (err) {
+        if (err instanceof DuplicatePriorExamError) {
+          return reply.status(409).send(fail(err.message));
+        }
+        throw err;
+      }
+    },
+  );
+
+  fastify.delete<{ Params: { id: string; examId: string } }>(
+    "/:id/prior-exams/:examId",
+    { preHandler: ADMIN },
+    async (request, reply) => {
+      const schoolId = schoolOf(request, reply);
+      if (!schoolId) return;
+      const removed = await deletePriorExam(schoolId, request.params.id, request.params.examId);
+      return removed ? reply.status(204).send() : reply.status(404).send(fail("not_found"));
+    },
+  );
+
   // ── O-Level subjects ────────────────────────────────────────────────────
 
   fastify.get<{ Params: { id: string }; Querystring: { academicYearId?: string } }>(
@@ -362,7 +452,12 @@ export async function studentsRoutes(fastify: FastifyInstance) {
 
   fastify.post<{
     Params: { id: string };
-    Body: { academicYearId: string; schoolCombinationId: string; subsidiarySubjectId?: string | null };
+    Body: {
+      academicYearId: string;
+      schoolCombinationId: string;
+      subsidiarySubjectId?: string | null;
+      overrideReason?: string | null;
+    };
   }>(
     "/:id/combination",
     { preHandler: ADMIN, schema: { body: selectCombinationBodySchema } },
@@ -377,6 +472,7 @@ export async function studentsRoutes(fastify: FastifyInstance) {
           request.body.schoolCombinationId,
           request.body.subsidiarySubjectId,
           request.authUser!.user_id,
+          request.body.overrideReason,
         );
         return reply.status(201).send(ok(combination));
       } catch (err) {
@@ -393,7 +489,12 @@ export async function studentsRoutes(fastify: FastifyInstance) {
 
   fastify.post<{
     Params: { id: string };
-    Body: { academicYearId: string; schoolCombinationId: string; subsidiarySubjectId?: string | null };
+    Body: {
+      academicYearId: string;
+      schoolCombinationId: string;
+      subsidiarySubjectId?: string | null;
+      overrideReason?: string | null;
+    };
   }>(
     "/:id/combination/reassign",
     { preHandler: ADMIN, schema: { body: selectCombinationBodySchema } },
@@ -408,6 +509,7 @@ export async function studentsRoutes(fastify: FastifyInstance) {
           request.body.schoolCombinationId,
           request.body.subsidiarySubjectId,
           request.authUser!.user_id,
+          request.body.overrideReason,
         );
         return reply.status(201).send(ok(combination));
       } catch (err) {

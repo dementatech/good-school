@@ -20,6 +20,8 @@ import {
   NotebookPen,
   BookOpen,
   Network,
+  ListChecks,
+  Combine,
 } from 'lucide-react';
 import type { Role } from '@/lib/auth/session';
 
@@ -29,7 +31,15 @@ const NAV = [
   { href: '/school-admin', label: 'Dashboard', icon: LayoutDashboard, exact: true },
   { href: '/school-admin/academic-years', label: 'Academic Years', icon: CalendarDays },
   { href: '/school-admin/classes', label: 'Classes & Streams', icon: Layers },
-  { href: '/school-admin/subjects', label: 'Subjects & Combinations', icon: BookOpen },
+  {
+    label: 'Curriculum & Subjects',
+    icon: BookOpen,
+    children: [
+      { href: '/school-admin/subjects', label: 'Manage Subjects', icon: BookOpen, exact: true },
+      { href: '/school-admin/subjects/options', label: 'Manage Options', icon: ListChecks },
+      { href: '/school-admin/subjects/combinations', label: 'Combinations', icon: Combine },
+    ],
+  },
   { href: '/school-admin/staff', label: 'Staff', icon: UserCog },
   { href: '/school-admin/organisation-studio', label: 'Organisation Studio', icon: Network },
   { href: '/school-admin/students', label: 'Students', icon: GraduationCap },
