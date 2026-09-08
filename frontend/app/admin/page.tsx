@@ -45,9 +45,9 @@ interface Analytics {
 
 const ADMIN_CARDS = [
   { key: 'schools' as const, label: 'Schools', href: '/admin/system/schools', icon: Building2 },
-  { key: 'staff' as const, label: 'Staff', href: '/admin/system/staff', icon: Users },
-  { key: 'students' as const, label: 'Students', href: '/admin/system/students', icon: GraduationCap },
-  { key: 'parents' as const, label: 'Parents', href: '/admin/system/parents', icon: UserRound },
+  { key: 'staff' as const, label: 'Staff', href: '/admin/system/accounts', icon: Users },
+  { key: 'students' as const, label: 'Students', href: '/admin/system/accounts', icon: GraduationCap },
+  { key: 'parents' as const, label: 'Parents', href: '/admin/system/accounts', icon: UserRound },
 ];
 
 export default function AdminDashboard() {

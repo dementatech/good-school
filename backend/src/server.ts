@@ -9,6 +9,7 @@ import { registerStudentsModule } from "./modules/students/index.js";
 import { registerAcademicStructureModule } from "./modules/academic-structure/index.js";
 import { registerTeachersModule } from "./modules/teachers/index.js";
 import { registerOrganizationModule } from "./modules/organization/index.js";
+import { registerAdminModule } from "./modules/admin/index.js";
 import { ensureUploadsRoot, uploadsRoot } from "./shared/uploads.js";
 
 const fastify = Fastify({
@@ -40,6 +41,7 @@ await registerStudentsModule(fastify);
 await registerAcademicStructureModule(fastify);
 await registerTeachersModule(fastify);
 await registerOrganizationModule(fastify);
+await registerAdminModule(fastify);
 
 const port = Number(process.env.PORT ?? 4000);
 

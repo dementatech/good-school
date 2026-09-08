@@ -9,8 +9,8 @@ import { NotificationBell } from '@/components/ui/NotificationBell';
 import { MobileNavDrawer } from '@/components/ui/MobileNavDrawer';
 import { PortalSidebar } from '@/components/ui/PortalSidebar';
 import {
-  LayoutDashboard, FileText, GraduationCap,
-  School, UserCog, Contact, CalendarDays, ShieldCheck,
+  LayoutDashboard, FileText,
+  School, Users, CalendarDays,
   UserCircle,
 } from 'lucide-react';
 import type { Role } from '@/lib/auth/session';
@@ -29,10 +29,7 @@ const NAV = [
 const SYSTEM_NAV = [
   { href: '/admin/system/curriculum', label: 'Curriculum & Subjects', icon: CalendarDays },
   { href: '/admin/system/schools', label: 'Schools', icon: School },
-  { href: '/admin/system/staff', label: 'Staff & Admins', icon: UserCog },
-  { href: '/admin/system/students', label: 'Student Accounts', icon: GraduationCap },
-  { href: '/admin/system/parents', label: 'Parents', icon: Contact },
-  { href: '/admin/system/super-admins', label: 'Super Admins', icon: ShieldCheck },
+  { href: '/admin/system/accounts', label: 'Accounts', icon: Users },
 ];
 
 // Own-account settings — kept out of NAV and pinned beside Sign out, since it

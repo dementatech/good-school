@@ -10,6 +10,8 @@ export interface AuthUserRecord {
   phone_number: string | null;
   password_hash: string;
   role: Role;
+  is_active: boolean;
+  must_change_password: boolean;
 }
 
 const COLUMN_BY_KIND: Record<IdentifierKind, string> = {
@@ -35,7 +37,8 @@ export async function findUserByIdentifier(
   }
 
   const result = await pool.query<AuthUserRecord>(
-    `select id, school_id, system_id, email, phone_number, password_hash, role
+    `select id, school_id, system_id, email, phone_number, password_hash, role,
+            is_active, must_change_password
      from users
      where ${conditions.join(" and ")}
      limit 1`,
@@ -64,7 +67,8 @@ export async function findUsersByIdentifierForReset(
 
 export async function findUserById(id: string): Promise<AuthUserRecord | null> {
   const result = await pool.query<AuthUserRecord>(
-    `select id, school_id, system_id, email, phone_number, password_hash, role
+    `select id, school_id, system_id, email, phone_number, password_hash, role,
+            is_active, must_change_password
      from users
      where id = $1`,
     [id],

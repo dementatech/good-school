@@ -78,6 +78,9 @@ export const LoginScreen: React.FC<{
       } else if (data.error === 'school_suspended') {
         // Not the user's fault — don't count it toward the lockout.
         setError("Your school's account is suspended. Contact your administrator.");
+      } else if (data.error === 'account_disabled') {
+        // A super admin turned this login off — not a credential problem.
+        setError('This account has been disabled. Contact your administrator.');
       } else {
         const newAttempts = attempts + 1;
         setAttempts(newAttempts);
