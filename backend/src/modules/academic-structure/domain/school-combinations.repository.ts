@@ -1,5 +1,6 @@
 import type { PoolClient } from "pg";
 import { pool } from "../../../shared/db/index.js";
+import { combinationDisplayName } from "./combination-name.js";
 import type { CombinationRole } from "./combinations.repository.js";
 import { nextSequentialCode } from "./sequential-code.js";
 
@@ -247,21 +248,20 @@ export async function createSchoolCombination(
     }
 
     if (!name) {
-      // "PhyChemMath/ICT/GP" — each principal's short_name (pick order, no
-      // re-sort), then the subsidiary's short_name after a slash if any,
-      // then "/GP" always — General Paper is automatic for every A-Level
-      // student the moment they're placed into ANY combination (never a
-      // member here — see `replaceMembers` above), so it's display-only.
+      // "BCM/SCS/GP" — cores by first letter of the subject name, the
+      // subsidiary by its short name, then "/GP" always. See
+      // `combinationDisplayName`. Display-only; pick order kept.
       const principalIds = members.filter((m) => m.role === "principal").map((m) => m.subjectId);
       const subsidiaryIds = members.filter((m) => m.role === "subsidiary").map((m) => m.subjectId);
-      const derived = await client.query<{ id: string; short_name: string }>(
-        `select id, short_name from subject where id = any($1::uuid[])`,
+      const derived = await client.query<{ id: string; name: string; short_name: string }>(
+        `select id, name, short_name from subject where id = any($1::uuid[])`,
         [[...principalIds, ...subsidiaryIds]],
       );
-      const byId = new Map(derived.rows.map((r) => [r.id, r.short_name]));
-      const principalNames = principalIds.map((id) => byId.get(id) ?? "").join("");
-      const subsidiaryName = subsidiaryIds.map((id) => byId.get(id) ?? "").join("+");
-      name = `${principalNames || "Combination"}${subsidiaryName ? `/${subsidiaryName}` : ""}/GP`;
+      const byId = new Map(derived.rows.map((r) => [r.id, r]));
+      name = combinationDisplayName(
+        principalIds.map((id) => ({ name: byId.get(id)?.name ?? "" })),
+        subsidiaryIds.map((id) => ({ shortName: byId.get(id)?.short_name ?? "" })),
+      );
     }
 
     const result = await client.query<{ id: string }>(

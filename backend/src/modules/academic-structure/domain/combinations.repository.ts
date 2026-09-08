@@ -1,4 +1,5 @@
 import { pool } from "../../../shared/db/index.js";
+import { combinationDisplayName } from "./combination-name.js";
 import { nextSequentialCode } from "./sequential-code.js";
 
 // A-Level subject combinations (PCM, HEG, …) and their member subjects with a
@@ -166,13 +167,9 @@ async function replaceMembers(
 }
 
 /**
- * "PhyChemMath/ICT/GP" — each principal's `short_name`, in the order they
- * were picked (there's no single "correct" alphabetical order for these, so
- * we don't impose one), concatenated with no separator, then the
- * subsidiary's own `short_name` after a slash if there is one, then "/GP" —
- * always, since General Paper is automatic for every A-Level student the
- * moment they're placed into ANY combination (never a member here, see
- * `replaceMembers` above; this is display text only).
+ * "BCM/SCS/GP" — cores by first letter of the subject name, the subsidiary by
+ * its short name, then "/GP" always. See `combinationDisplayName`. Pick order
+ * is kept. Display text only.
  */
 async function deriveName(
   client: import("pg").PoolClient,
@@ -180,17 +177,16 @@ async function deriveName(
 ): Promise<string> {
   const principalIds = members.filter((m) => m.role === "principal").map((m) => m.subjectId);
   const subsidiaryIds = members.filter((m) => m.role === "subsidiary").map((m) => m.subjectId);
-  const { rows } = await client.query<{ id: string; short_name: string }>(
-    `select id, short_name from subject where id = any($1::uuid[])`,
+  const { rows } = await client.query<{ id: string; name: string; short_name: string }>(
+    `select id, name, short_name from subject where id = any($1::uuid[])`,
     [[...principalIds, ...subsidiaryIds]],
   );
-  const byId = new Map(rows.map((r) => [r.id, r.short_name]));
+  const byId = new Map(rows.map((r) => [r.id, r]));
 
-  const principalNames = principalIds.map((id) => byId.get(id) ?? "").join("");
-  const subsidiaryName = subsidiaryIds.map((id) => byId.get(id) ?? "").join("+");
-
-  const name = principalNames || "Combination";
-  return `${name}${subsidiaryName ? `/${subsidiaryName}` : ""}/GP`;
+  return combinationDisplayName(
+    principalIds.map((id) => ({ name: byId.get(id)?.name ?? "" })),
+    subsidiaryIds.map((id) => ({ shortName: byId.get(id)?.short_name ?? "" })),
+  );
 }
 
 export async function createCombination(

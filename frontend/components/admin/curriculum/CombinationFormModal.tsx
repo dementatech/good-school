@@ -6,6 +6,7 @@ import { Input } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
 import { Button } from '@/components/ui/Button';
 import { useToast } from '@/components/ui/ToastProvider';
+import { combinationDisplayName } from '@/lib/combination-name';
 import { submitJson, type Combination, type Subject } from './types';
 
 // docs/design/subject-selection-module.md §3.1/§3.3: core (principal) subjects
@@ -43,16 +44,27 @@ export function CombinationFormModal({
   // Core (principal) picks come from Science/Art — General Paper is never
   // among them (it's category 'subsidiary'). The subsidiary pick comes from
   // 'subsidiary'-category subjects, minus GP itself (automatic, never a pick).
-  const coreOptions = subjects.filter((s) => s.category === 'science' || s.category === 'art');
-  const subsidiaryOptions = subjects.filter((s) => s.category === 'subsidiary' && !s.isGeneralPaper);
-  const allPickable = [...coreOptions, ...subsidiaryOptions];
-  const subjectById = useMemo(() => Object.fromEntries(allPickable.map((s) => [s.id, s])), [allPickable]);
+  const coreOptions = useMemo(
+    () => subjects.filter((s) => s.category === 'science' || s.category === 'art'),
+    [subjects],
+  );
+  const subsidiaryOptions = useMemo(
+    () => subjects.filter((s) => s.category === 'subsidiary' && !s.isGeneralPaper),
+    [subjects],
+  );
+  const subjectById = useMemo(
+    () => Object.fromEntries([...coreOptions, ...subsidiaryOptions].map((s) => [s.id, s])),
+    [coreOptions, subsidiaryOptions],
+  );
 
-  const preview = useMemo(() => {
-    const coreNames = coreIds.map((id) => subjectById[id]?.shortName ?? '').join('');
-    const subsidiaryName = subsidiaryId ? subjectById[subsidiaryId]?.shortName : '';
-    return `${coreNames || 'Combination'}${subsidiaryName ? `/${subsidiaryName}` : ''}/GP`;
-  }, [coreIds, subsidiaryId, subjectById]);
+  const preview = useMemo(
+    () =>
+      combinationDisplayName(
+        coreIds.map((id) => subjectById[id]?.name ?? ''),
+        subsidiaryId && subjectById[subsidiaryId] ? [subjectById[subsidiaryId].shortName] : [],
+      ),
+    [coreIds, subsidiaryId, subjectById],
+  );
 
   function toggleCore(id: string) {
     setCoreIds((ids) => (ids.includes(id) ? ids.filter((i) => i !== id) : [...ids, id]));
