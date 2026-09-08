@@ -53,6 +53,42 @@ export const studentIdentityBodySchema = {
   additionalProperties: false,
 } as const;
 
+// Class-aware admission extras — the wizard sends whichever apply to the
+// chosen entry class. Reused as the standalone POST /:id/prior-exams body too.
+const priorExamFields = {
+  examType: { type: "string", enum: ["PLE", "UCE"] },
+  examYear: { type: "integer", minimum: 1980, maximum: 2100 },
+  candidateNumber: { type: ["string", "null"] },
+  aggregate: { type: ["integer", "null"] },
+  divisionOrResult: { type: ["string", "null"] },
+  notes: { type: ["string", "null"] },
+  subjects: {
+    type: "array",
+    items: {
+      type: "object",
+      required: ["principalSubjectId", "grade"],
+      properties: {
+        principalSubjectId: { type: "string" },
+        grade: { type: "string", minLength: 1 },
+      },
+      additionalProperties: false,
+    },
+  },
+};
+
+export const priorExamBodySchema = {
+  type: "object",
+  required: ["examType", "examYear"],
+  properties: priorExamFields,
+  additionalProperties: false,
+} as const;
+
+const admissionCombinationProps = {
+  schoolCombinationId: { type: "string" },
+  subsidiarySubjectId: { type: ["string", "null"] },
+  overrideReason: { type: ["string", "null"] },
+};
+
 export const createStudentBodySchema = {
   type: "object",
   required: ["firstName", "lastName", "enrollment", "guardians"],
@@ -74,6 +110,19 @@ export const createStudentBodySchema = {
       additionalProperties: false,
     },
     guardians: { type: "array", items: guardianRowSchema, minItems: 1 },
+    priorExam: {
+      type: ["object", "null"],
+      required: ["examType", "examYear"],
+      properties: priorExamFields,
+      additionalProperties: false,
+    },
+    oLevelSubjectIds: { type: ["array", "null"], items: { type: "string" } },
+    combination: {
+      type: ["object", "null"],
+      required: ["schoolCombinationId"],
+      properties: admissionCombinationProps,
+      additionalProperties: false,
+    },
   },
   additionalProperties: false,
 } as const;
@@ -151,6 +200,7 @@ export const selectCombinationBodySchema = {
     academicYearId: { type: "string" },
     schoolCombinationId: { type: "string" },
     subsidiarySubjectId: { type: ["string", "null"] },
+    overrideReason: { type: ["string", "null"] },
   },
   additionalProperties: false,
 } as const;

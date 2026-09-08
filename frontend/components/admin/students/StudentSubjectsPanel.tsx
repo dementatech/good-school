@@ -1,6 +1,7 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { AlertTriangle } from 'lucide-react';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { Select } from '@/components/ui/Select';
@@ -9,11 +10,188 @@ import { fetchList, submitJson } from '@/lib/api/envelope';
 import type { SchoolCombination, SubjectOffering } from '../subjects/types';
 import type { EnrollmentRecord, StudentCombination, StudentSubject } from './types';
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Controlled building blocks — no API writes of their own. Used both by the
+// admission wizard (before the student exists) and by the live panels below.
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface CombinationChoice {
+  schoolCombinationId: string;
+  subsidiarySubjectId: string | null;
+  overrideReason: string | null;
+}
+
+export const emptyCombinationChoice: CombinationChoice = {
+  schoolCombinationId: '',
+  subsidiarySubjectId: null,
+  overrideReason: null,
+};
+
+/** Combination + subsidiary + an optional "why proceed" note. Pure form state. */
+export function CombinationPicker({
+  academicYearId,
+  value,
+  onChange,
+}: {
+  academicYearId: string;
+  value: CombinationChoice;
+  onChange: (next: CombinationChoice) => void;
+}) {
+  const [offered, setOffered] = useState<SchoolCombination[]>([]);
+
+  useEffect(() => {
+    if (!academicYearId) return;
+    void fetchList<SchoolCombination>(
+      `/api/v1/academic/school-combinations?academicYearId=${academicYearId}`,
+    ).then((list) => setOffered(list.filter((c) => c.isOffered)));
+  }, [academicYearId]);
+
+  const selected = offered.find((c) => c.id === value.schoolCombinationId);
+  const subsidiaryOptions = selected?.subjects.filter((s) => s.role === 'subsidiary') ?? [];
+
+  return (
+    <div className="space-y-3">
+      <Select
+        label="Combination"
+        value={value.schoolCombinationId}
+        onChange={(e) =>
+          onChange({ ...value, schoolCombinationId: e.target.value, subsidiarySubjectId: null })
+        }
+        options={[
+          { value: '', label: offered.length ? 'Select a combination…' : 'No combinations offered yet' },
+          ...offered.map((c) => ({ value: c.id, label: `${c.code} — ${c.name}` })),
+        ]}
+      />
+      {subsidiaryOptions.length > 1 && (
+        <Select
+          label="Subsidiary"
+          value={value.subsidiarySubjectId ?? ''}
+          onChange={(e) => onChange({ ...value, subsidiarySubjectId: e.target.value || null })}
+          options={[
+            { value: '', label: 'Select a subsidiary…' },
+            ...subsidiaryOptions.map((s) => ({ value: s.subjectId, label: s.subjectName })),
+          ]}
+        />
+      )}
+      <label className="block text-sm">
+        <span className="text-xs font-medium text-text-muted">
+          Eligibility override note <span className="text-text-faint">(optional)</span>
+        </span>
+        <textarea
+          value={value.overrideReason ?? ''}
+          onChange={(e) => onChange({ ...value, overrideReason: e.target.value || null })}
+          rows={2}
+          placeholder="If the student's UCE grades fall short of a principal subject, note why you're proceeding."
+          className="mt-1 w-full rounded-lg border border-border bg-bg-card px-3 py-2 text-sm"
+        />
+      </label>
+    </div>
+  );
+}
+
+/**
+ * O-Level subject checklist as pure form state. Compulsory offerings are
+ * always included and locked; `value` is the full set of subject ids to
+ * register (compulsory + chosen optionals).
+ */
+export function OLevelOptionalsChecklist({
+  academicYearId,
+  value,
+  onChange,
+}: {
+  academicYearId: string;
+  value: string[];
+  onChange: (ids: string[]) => void;
+}) {
+  const [offerings, setOfferings] = useState<SubjectOffering[]>([]);
+
+  useEffect(() => {
+    if (!academicYearId) return;
+    void fetchList<SubjectOffering>(
+      `/api/v1/academic/subject-offerings?academicYearId=${academicYearId}&phase=O_LEVEL`,
+    ).then((list) => setOfferings(list.filter((o) => o.isOffered)));
+  }, [academicYearId]);
+
+  const compulsoryIds = useMemo(
+    () => offerings.filter((o) => o.isCompulsory).map((o) => o.subjectId),
+    [offerings],
+  );
+
+  // Keep every compulsory subject in the selection once offerings load.
+  useEffect(() => {
+    const missing = compulsoryIds.filter((id) => !value.includes(id));
+    if (missing.length) onChange([...value, ...missing]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [compulsoryIds]);
+
+  if (offerings.length === 0) {
+    return (
+      <p className="text-sm text-text-faint">
+        This school hasn&apos;t set up any O-Level subjects yet — do that under Curriculum &amp;
+        Subjects first.
+      </p>
+    );
+  }
+
+  const optionalCount = value.filter((id) => !compulsoryIds.includes(id)).length;
+
+  return (
+    <div className="space-y-2">
+      <p className="text-xs text-text-muted">
+        Core subjects are added automatically. Pick the optionals — usually 2.{' '}
+        <span className="font-medium">{optionalCount} chosen.</span>
+      </p>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+        {offerings.map((o) => {
+          const checked = value.includes(o.subjectId);
+          return (
+            <label key={o.subjectId} className="flex items-center gap-2 text-sm text-[#12333F]">
+              <input
+                type="checkbox"
+                checked={checked}
+                disabled={o.isCompulsory}
+                onChange={(e) =>
+                  onChange(
+                    e.target.checked
+                      ? [...value, o.subjectId]
+                      : value.filter((id) => id !== o.subjectId),
+                  )
+                }
+                className="rounded border-[#E5E5E5] disabled:opacity-60"
+              />
+              {o.subjectName}
+              {o.isCompulsory && <Badge variant="muted">compulsory</Badge>}
+            </label>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function EligibilityWarnings({ warnings }: { warnings: string[] }) {
+  if (!warnings.length) return null;
+  return (
+    <div className="flex items-start gap-2 rounded-lg border border-accent-light bg-accent-lighter p-2.5 text-xs text-accent-dark">
+      <AlertTriangle className="w-3.5 h-3.5 mt-0.5 shrink-0" aria-hidden />
+      <ul className="space-y-0.5">
+        {warnings.map((w) => (
+          <li key={w}>{w}</li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Live panels — used by the student detail modal and the roster pages.
+// ─────────────────────────────────────────────────────────────────────────────
+
 // O-Level: a checklist of what the school offers, checked = registered
 // (active/added), unchecked = not taken/dropped. Compulsory subjects can't
 // be unchecked here — the backend enforces this too (§2.4), this just avoids
 // a round-trip for the obvious case.
-function OLevelSubjects({
+export function OLevelSubjects({
   studentUserId,
   enrollment,
 }: {
@@ -87,7 +265,7 @@ function OLevelSubjects({
 // A-Level: the single atomic combination choice — a picker when there isn't
 // one yet, otherwise the current combination + a "Reassign" escape hatch
 // (§3.4 — reassignment is the exception path, not the default flow).
-function ALevelCombination({
+export function ALevelCombination({
   studentUserId,
   enrollment,
 }: {
@@ -96,21 +274,16 @@ function ALevelCombination({
 }) {
   const toast = useToast();
   const [current, setCurrent] = useState<StudentCombination | null | undefined>(undefined);
-  const [offered, setOffered] = useState<SchoolCombination[]>([]);
   const [picking, setPicking] = useState(false);
-  const [combinationId, setCombinationId] = useState('');
-  const [subsidiaryId, setSubsidiaryId] = useState('');
+  const [choice, setChoice] = useState<CombinationChoice>(emptyCombinationChoice);
   const [saving, setSaving] = useState(false);
 
   const load = async () => {
-    const [curRes, offeredRes] = await Promise.all([
-      fetch(`/api/v1/students/${studentUserId}/combination?academicYearId=${enrollment.academicYearId}`, {
-        credentials: 'include',
-      }).then((r) => r.json()),
-      fetchList<SchoolCombination>(`/api/v1/academic/school-combinations?academicYearId=${enrollment.academicYearId}`),
-    ]);
+    const curRes = await fetch(
+      `/api/v1/students/${studentUserId}/combination?academicYearId=${enrollment.academicYearId}`,
+      { credentials: 'include' },
+    ).then((r) => r.json());
     setCurrent(curRes.success ? curRes.data : null);
-    setOffered(offeredRes.filter((c) => c.isOffered));
   };
 
   useEffect(() => {
@@ -120,31 +293,28 @@ function ALevelCombination({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [studentUserId, enrollment.academicYearId]);
 
-  const selectedCombo = offered.find((c) => c.id === combinationId);
-  const subsidiaryOptions = selectedCombo?.subjects.filter((s) => s.role === 'subsidiary') ?? [];
-
   async function submit(reassign: boolean) {
-    if (!combinationId) {
+    if (!choice.schoolCombinationId) {
       toast.error('Pick a combination.');
-      return;
-    }
-    if (subsidiaryOptions.length > 1 && !subsidiaryId) {
-      toast.error('This combination offers more than one subsidiary — pick one.');
       return;
     }
     setSaving(true);
     const path = reassign ? 'combination/reassign' : 'combination';
-    const res = await submitJson(`/api/v1/students/${studentUserId}/${path}`, 'POST', {
+    const res = await submitJson<StudentCombination>(`/api/v1/students/${studentUserId}/${path}`, 'POST', {
       academicYearId: enrollment.academicYearId,
-      schoolCombinationId: combinationId,
-      subsidiarySubjectId: subsidiaryOptions.length > 1 ? subsidiaryId : null,
+      schoolCombinationId: choice.schoolCombinationId,
+      subsidiarySubjectId: choice.subsidiarySubjectId,
+      overrideReason: choice.overrideReason,
     });
     setSaving(false);
     if (res.ok) {
-      toast.success(reassign ? 'Combination reassigned.' : 'Combination confirmed.');
+      const warned = res.data?.warnings?.length ?? 0;
+      toast.success(
+        (reassign ? 'Combination reassigned.' : 'Combination confirmed.') +
+          (warned ? ` ${warned} eligibility warning${warned > 1 ? 's' : ''} recorded.` : ''),
+      );
       setPicking(false);
-      setCombinationId('');
-      setSubsidiaryId('');
+      setChoice(emptyCombinationChoice);
       await load();
     } else {
       toast.error(res.error!);
@@ -156,7 +326,7 @@ function ALevelCombination({
   return (
     <div className="space-y-3">
       {current ? (
-        <div className="rounded-xl border border-border p-3 text-sm">
+        <div className="rounded-xl border border-border p-3 text-sm space-y-2">
           <div className="flex items-center justify-between">
             <div className="font-medium">
               <Badge variant="default">{current.combinationCode}</Badge> {current.combinationName}
@@ -165,9 +335,15 @@ function ALevelCombination({
               Reassign
             </Button>
           </div>
-          <div className="text-text-faint mt-1">
+          <div className="text-text-faint">
             {current.members.map((m) => `${m.subjectCode}${m.role === 'principal' ? '' : ` (${m.role})`}`).join(', ')}
           </div>
+          <EligibilityWarnings warnings={current.warnings} />
+          {current.eligibilityOverrideReason && (
+            <p className="text-xs text-text-faint">
+              Override note: {current.eligibilityOverrideReason}
+            </p>
+          )}
         </div>
       ) : (
         <p className="text-sm text-text-muted">No combination selected yet.</p>
@@ -175,29 +351,11 @@ function ALevelCombination({
 
       {(picking || !current) && (
         <div className="rounded-xl border border-border p-3 space-y-3">
-          <Select
-            label="Combination"
-            value={combinationId}
-            onChange={(e) => {
-              setCombinationId(e.target.value);
-              setSubsidiaryId('');
-            }}
-            options={[
-              { value: '', label: offered.length ? 'Select a combination…' : 'No combinations offered yet' },
-              ...offered.map((c) => ({ value: c.id, label: `${c.code} — ${c.name}` })),
-            ]}
+          <CombinationPicker
+            academicYearId={enrollment.academicYearId}
+            value={choice}
+            onChange={setChoice}
           />
-          {subsidiaryOptions.length > 1 && (
-            <Select
-              label="Subsidiary"
-              value={subsidiaryId}
-              onChange={(e) => setSubsidiaryId(e.target.value)}
-              options={[
-                { value: '', label: 'Select a subsidiary…' },
-                ...subsidiaryOptions.map((s) => ({ value: s.subjectId, label: s.subjectName })),
-              ]}
-            />
-          )}
           <Button type="button" isLoading={saving} inline onClick={() => void submit(Boolean(current))}>
             {current ? 'Confirm reassignment' : 'Confirm combination'}
           </Button>
