@@ -55,6 +55,7 @@ type IdentityState = {
   linStatus: LinStatus;
   email: string;
   phoneNumber: string;
+  paymentCode: string;
 };
 
 function initialIdentity(s?: Student): IdentityState {
@@ -68,6 +69,7 @@ function initialIdentity(s?: Student): IdentityState {
     linStatus: s?.linStatus ?? 'not_yet_issued',
     email: s?.email ?? '',
     phoneNumber: s?.phoneNumber ?? '',
+    paymentCode: s?.paymentCode ?? '',
   };
 }
 
@@ -84,7 +86,19 @@ function identityPayload(identity: IdentityState) {
     linStatus: identity.linStatus,
     email: trimOrNull(identity.email),
     phoneNumber: trimOrNull(identity.phoneNumber),
+    paymentCode: trimOrNull(identity.paymentCode),
   };
+}
+
+/** "Fields marked * are required" — shown once at the top of a form so staff
+ *  don't leave a queried field blank and stall the record downstream. */
+function RequiredLegend() {
+  return (
+    <p className="text-xs text-text-muted">
+      Fields marked <span className="text-error font-semibold">*</span> are required. Everything else
+      is optional and can be added later.
+    </p>
+  );
 }
 
 function IdentityFields({
@@ -97,26 +111,34 @@ function IdentityFields({
   return (
     <>
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-        <Input label="First name" value={identity.firstName} onChange={(e) => set('firstName', e.target.value)} required />
-        <Input label="Middle name" value={identity.middleName} onChange={(e) => set('middleName', e.target.value)} />
-        <Input label="Last name" value={identity.lastName} onChange={(e) => set('lastName', e.target.value)} required />
+        <Input label="First name *" value={identity.firstName} onChange={(e) => set('firstName', e.target.value)} required />
+        <Input label="Middle name (optional)" value={identity.middleName} onChange={(e) => set('middleName', e.target.value)} />
+        <Input label="Last name *" value={identity.lastName} onChange={(e) => set('lastName', e.target.value)} required />
       </div>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        <Input label="Date of birth" type="date" value={identity.dateOfBirth} onChange={(e) => set('dateOfBirth', e.target.value)} />
+        <Input
+          label="SchoolPay payment code (optional)"
+          value={identity.paymentCode}
+          onChange={(e) => set('paymentCode', e.target.value)}
+          placeholder="Add it later if the student isn't on SchoolPay yet"
+        />
+        <Input label="Date of birth (optional)" type="date" value={identity.dateOfBirth} onChange={(e) => set('dateOfBirth', e.target.value)} />
+      </div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <Select
-          label="Gender"
+          label="Gender (optional)"
           value={identity.gender}
           onChange={(e) => set('gender', e.target.value as Gender | '')}
           options={[{ value: '', label: '—' }, ...GENDERS.map((g) => ({ value: g, label: g }))]}
         />
-      </div>
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <Input
-          label="LIN (Learner Identification Number)"
+          label="LIN — Learner Identification Number (optional)"
           value={identity.lin}
           onChange={(e) => set('lin', e.target.value)}
           placeholder="Leave blank if not yet issued"
         />
+      </div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <Select
           label="LIN status"
           value={identity.linStatus}
@@ -187,8 +209,8 @@ function GuardiansFields({
             )}
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <Input label="First name" value={g.firstName} onChange={(e) => update(i, { firstName: e.target.value })} required />
-            <Input label="Last name" value={g.lastName} onChange={(e) => update(i, { lastName: e.target.value })} required />
+            <Input label="First name *" value={g.firstName} onChange={(e) => update(i, { firstName: e.target.value })} required />
+            <Input label="Last name *" value={g.lastName} onChange={(e) => update(i, { lastName: e.target.value })} required />
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <Input
@@ -341,6 +363,7 @@ function EditForm({
   return (
     <form onSubmit={submit} className="space-y-6">
       <Section title="Identity">
+        <RequiredLegend />
         <IdentityFields identity={identity} set={set} />
       </Section>
       <div className="flex gap-2 pt-1">
@@ -565,12 +588,14 @@ function AdmissionWizard({
 
       {currentKey === 'identity' && (
         <Section title="Identity">
+          <RequiredLegend />
           <IdentityFields identity={identity} set={setId} />
         </Section>
       )}
 
       {currentKey === 'enrollment' && (
         <Section title="Enrollment">
+          <RequiredLegend />
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <Select
               label="Academic year"
@@ -587,7 +612,7 @@ function AdmissionWizard({
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <Select
-              label="Class"
+              label="Class *"
               value={classId}
               onChange={(e) => setClassId(e.target.value)}
               options={[
@@ -597,7 +622,7 @@ function AdmissionWizard({
             />
             {selectedClass?.hasStreams && (
               <Select
-                label="Stream"
+                label="Stream *"
                 value={streamId}
                 onChange={(e) => setStreamId(e.target.value)}
                 options={[
@@ -607,7 +632,7 @@ function AdmissionWizard({
               />
             )}
           </div>
-          <Input label="Entry date" type="date" value={entryDate} onChange={(e) => setEntryDate(e.target.value)} required />
+          <Input label="Entry date *" type="date" value={entryDate} onChange={(e) => setEntryDate(e.target.value)} required />
           {branch && (
             <p className="text-xs text-text-muted">
               {branch === 'ple' && 'Next: record the student’s PLE results.'}
@@ -681,6 +706,10 @@ function AdmissionWizard({
               <dd className="font-medium">
                 {ENTRY_TYPE_LABEL[entryType]} · {entryDate}
               </dd>
+            </div>
+            <div>
+              <dt className="text-text-faint">Payment code</dt>
+              <dd className="font-medium">{identity.paymentCode.trim() || '—'}</dd>
             </div>
             <div>
               <dt className="text-text-faint">Guardians</dt>

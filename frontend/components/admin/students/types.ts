@@ -47,6 +47,8 @@ export interface Student {
   linStatus: LinStatus;
   email: string | null;
   phoneNumber: string | null;
+  /** Active SchoolPay payment code for this student at this school, if set. */
+  paymentCode: string | null;
   isActive: boolean;
   createdAt: string;
   activeEnrollment: EnrollmentRecord | null;

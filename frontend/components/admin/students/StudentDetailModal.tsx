@@ -206,6 +206,12 @@ export function StudentDetailModal({
             <div><span className="text-text-faint">Gender</span><div className="font-medium capitalize">{student.gender ?? '—'}</div></div>
             <div><span className="text-text-faint">Email</span><div className="font-medium">{student.email ?? '—'}</div></div>
             <div><span className="text-text-faint">Phone</span><div className="font-medium">{student.phoneNumber ?? '—'}</div></div>
+            <div>
+              <span className="text-text-faint">Payment code</span>
+              <div className="font-medium">
+                {student.paymentCode ?? <span className="text-error">Not set</span>}
+              </div>
+            </div>
           </div>
         </section>
 
