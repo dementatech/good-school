@@ -67,12 +67,18 @@ async function backfillOrder(pgm, comboTable, linkTable, linkFk) {
 }
 
 exports.up = async (pgm) => {
-  pgm.addColumn("combination_subject", {
-    sort_order: { type: "integer", notNull: true, default: 0 },
-  });
-  pgm.addColumn("school_combination_subject", {
-    sort_order: { type: "integer", notNull: true, default: 0 },
-  });
+  // Every step here runs immediately: `backfillOrder` uses `pgm.db.query`
+  // (an escape hatch that executes now), not the queued `pgm.*` builder.
+  // So the ADD COLUMN and DROP COLUMN must go through `pgm.db.query` too —
+  // a `pgm.addColumn` is only flushed *after* this function returns, which
+  // left the backfill UPDATE hitting a `sort_order` column that did not
+  // exist yet (prod deploy failure, 2026-09-09).
+  await pgm.db.query(
+    `alter table combination_subject add column sort_order integer not null default 0`,
+  );
+  await pgm.db.query(
+    `alter table school_combination_subject add column sort_order integer not null default 0`,
+  );
 
   await backfillOrder(pgm, "subject_combination", "combination_subject", "combination_id");
   await backfillOrder(
@@ -82,8 +88,8 @@ exports.up = async (pgm) => {
     "school_combination_id",
   );
 
-  pgm.dropColumn("subject_combination", "name");
-  pgm.dropColumn("school_combination", "name");
+  await pgm.db.query(`alter table subject_combination drop column name`);
+  await pgm.db.query(`alter table school_combination drop column name`);
 };
 
 exports.down = (pgm) => {
