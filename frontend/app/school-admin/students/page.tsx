@@ -10,7 +10,8 @@ import { CredentialsCard } from '@/components/admin/CredentialsCard';
 import { useToast } from '@/components/ui/ToastProvider';
 import { Loader } from '@/components/ui/loader';
 import { fetchList, submitJson } from '@/lib/api/envelope';
-import { Eye, KeyRound, Pencil, Plus, RotateCcw, UserX } from 'lucide-react';
+import Link from 'next/link';
+import { Eye, KeyRound, Pencil, Plus, RotateCcw, Upload, UserX } from 'lucide-react';
 import { StudentFormModal } from '@/components/admin/students/StudentFormModal';
 import { StudentDetailModal } from '@/components/admin/students/StudentDetailModal';
 import { LIN_STATUS_LABEL, studentFullName, type Student } from '@/components/admin/students/types';
@@ -114,6 +115,14 @@ export default function SchoolAdminStudentsPage() {
         ),
     },
     {
+      key: 'paymentCode',
+      header: 'Payment code',
+      value: (s) => s.paymentCode ?? '',
+      hideOnMobile: true,
+      render: (s) =>
+        s.paymentCode ?? <Badge variant="muted" className="text-error">Not set</Badge>,
+    },
+    {
       key: 'lin',
       header: 'LIN',
       value: (s) => s.lin ?? '',
@@ -166,10 +175,18 @@ export default function SchoolAdminStudentsPage() {
         emptyMessage="No students yet. Enrol the first one."
         exportFileName="students"
         actions={
-          <Button onClick={() => setFormStudent({})}>
-            <Plus className="w-4 h-4 mr-1.5" aria-hidden />
-            Enrol student
-          </Button>
+          <>
+            <Link href="/school-admin/students/import">
+              <Button variant="outline" inline>
+                <Upload className="w-4 h-4 mr-1.5" aria-hidden />
+                Bulk import
+              </Button>
+            </Link>
+            <Button inline onClick={() => setFormStudent({})}>
+              <Plus className="w-4 h-4 mr-1.5" aria-hidden />
+              Enrol student
+            </Button>
+          </>
         }
       />
 

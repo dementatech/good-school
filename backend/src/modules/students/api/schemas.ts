@@ -44,6 +44,9 @@ const identityFields = {
   linStatus: { type: "string", enum: ["verified", "pending", "not_yet_issued"] },
   email: { type: ["string", "null"] },
   phoneNumber: { type: ["string", "null"] },
+  // Optional here (identity-edit path); createStudentBodySchema below tightens
+  // it to a required, non-empty string for the admission flow.
+  paymentCode: { type: ["string", "null"] },
 };
 
 export const studentIdentityBodySchema = {
@@ -94,6 +97,10 @@ export const createStudentBodySchema = {
   required: ["firstName", "lastName", "enrollment", "guardians"],
   properties: {
     ...identityFields,
+    // The payment code field exists at admission but is never forced — an S1
+    // entrant may not be on the school's SchoolPay portal yet. Captured when
+    // known, flagged as a gap in the admin UI otherwise. See
+    // docs/design/student-enrollment.md §3.
     enrollment: {
       type: "object",
       required: ["academicYearId", "classId", "entryDate", "entryType"],
@@ -122,6 +129,35 @@ export const createStudentBodySchema = {
       required: ["schoolCombinationId"],
       properties: admissionCombinationProps,
       additionalProperties: false,
+    },
+  },
+  additionalProperties: false,
+} as const;
+
+// Bulk import — the reviewed rows the client sends back after /import/parse.
+// Kept permissive (the parse step already shaped them); the repository does
+// the real per-row validation and reports it in the results.
+export const importRowsBodySchema = {
+  type: "object",
+  required: ["rows"],
+  properties: {
+    rows: {
+      type: "array",
+      items: {
+        type: "object",
+        required: ["row", "firstName", "lastName", "className"],
+        properties: {
+          row: { type: "integer" },
+          firstName: { type: "string" },
+          lastName: { type: "string" },
+          otherNames: { type: ["string", "null"] },
+          className: { type: "string" },
+          streamName: { type: ["string", "null"] },
+          paymentCode: { type: ["string", "null"] },
+          lin: { type: ["string", "null"] },
+        },
+        additionalProperties: false,
+      },
     },
   },
   additionalProperties: false,

@@ -5,6 +5,7 @@ import {
   ActiveCombinationExistsError,
   ActiveEnrollmentExistsError,
   CompulsorySubjectError,
+  DuplicatePaymentCodeError,
   DuplicatePriorExamError,
   InvalidGuardianInputError,
   InvalidSubsidiaryError,
@@ -116,6 +117,7 @@ export async function studentsRoutes(fastify: FastifyInstance) {
           err instanceof SubjectNotOfferedError ||
           err instanceof UnknownCombinationReferenceError ||
           err instanceof InvalidSubsidiaryError ||
+          err instanceof DuplicatePaymentCodeError ||
           err instanceof DuplicatePriorExamError
         ) {
           return reply.status(400).send(fail(err.message));
@@ -137,8 +139,20 @@ export async function studentsRoutes(fastify: FastifyInstance) {
     async (request, reply) => {
       const schoolId = schoolOf(request, reply);
       if (!schoolId) return;
-      const student = await updateStudent(schoolId, request.params.id, request.body);
-      return student ? ok(student) : reply.status(404).send(fail("not_found"));
+      try {
+        const student = await updateStudent(
+          schoolId,
+          request.params.id,
+          request.body,
+          request.authUser!.user_id,
+        );
+        return student ? ok(student) : reply.status(404).send(fail("not_found"));
+      } catch (err) {
+        if (err instanceof DuplicatePaymentCodeError) {
+          return reply.status(400).send(fail(err.message));
+        }
+        throw err;
+      }
     },
   );
 

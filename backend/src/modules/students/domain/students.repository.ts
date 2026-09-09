@@ -22,6 +22,7 @@ import {
   type StudentCombinationRecord,
 } from "./student-combinations.repository.js";
 import { recordPriorExam, type PriorExamInput, type PriorExamRecord } from "./prior-exams.repository.js";
+import { setPaymentCode } from "./payment-codes.repository.js";
 
 // Identity only (see docs/design/student-data-model.md §2) — no class,
 // stream, or "current" anything on this table. "Where/when are they
@@ -41,6 +42,11 @@ export interface StudentRecord {
   linStatus: LinStatus;
   email: string | null;
   phoneNumber: string | null;
+  // The school's active SchoolPay payment code for this student, if set. Read
+  // from student_payment_code (see payment-codes.repository), never stored on
+  // this table. Null when the school hasn't recorded one yet — surfaced as a
+  // gap in the admin UI rather than blocking anything.
+  paymentCode: string | null;
   isActive: boolean;
   createdAt: string;
   activeEnrollment: EnrollmentRecord | null;
@@ -56,6 +62,9 @@ export interface StudentIdentityInput {
   linStatus?: LinStatus;
   email?: string | null;
   phoneNumber?: string | null;
+  // Required by the admission flow (enforced in the route schema); optional
+  // on the identity-edit path and for bulk import of pre-existing students.
+  paymentCode?: string | null;
 }
 
 export interface GuardianRow {
@@ -97,6 +106,7 @@ interface StudentRow {
   lin_status: LinStatus;
   email: string | null;
   phone_number: string | null;
+  payment_code: string | null;
   is_active: boolean;
   created_at: string;
 }
@@ -104,7 +114,12 @@ interface StudentRow {
 const SELECT_STUDENT = `
   select u.id as user_id, u.system_id, u.email, u.phone_number,
          s.first_name, s.middle_name, s.last_name, s.date_of_birth, s.gender,
-         s.lin, s.lin_status, s.is_active, s.created_at
+         s.lin, s.lin_status, s.is_active, s.created_at,
+         (select spc.external_payment_code
+            from student_payment_code spc
+           where spc.student_user_id = u.id and spc.school_id = u.school_id
+             and spc.provider = 'schoolpay' and spc.is_active
+           limit 1) as payment_code
   from students s
   join users u on u.id = s.user_id
 `;
@@ -122,6 +137,7 @@ function mapRow(row: StudentRow): Omit<StudentRecord, "activeEnrollment"> {
     linStatus: row.lin_status,
     email: row.email,
     phoneNumber: row.phone_number,
+    paymentCode: row.payment_code,
     isActive: row.is_active,
     createdAt: row.created_at,
   };
@@ -201,6 +217,10 @@ export async function createStudent(
         input.linStatus ?? "not_yet_issued",
       ],
     );
+
+    if (input.paymentCode?.trim()) {
+      await setPaymentCode(client, schoolId, userId, input.paymentCode, actingUserId);
+    }
 
     const activeEnrollment = await createEnrollment(client, schoolId, userId, input.enrollment);
 
@@ -299,6 +319,7 @@ export async function updateStudent(
   schoolId: string,
   userId: string,
   input: StudentIdentityInput,
+  actingUserId: string | null = null,
 ): Promise<StudentRecord | null> {
   const client = await pool.connect();
   try {
@@ -334,6 +355,13 @@ export async function updateStudent(
         userId,
       ],
     );
+
+    // Only touches student_payment_code when a non-empty code is supplied —
+    // omitting the field (or sending null/"") leaves any existing code as is,
+    // so the identity-edit form can't accidentally clear it.
+    if (input.paymentCode?.trim()) {
+      await setPaymentCode(client, schoolId, userId, input.paymentCode, actingUserId);
+    }
 
     await client.query("COMMIT");
 
@@ -458,6 +486,13 @@ export {
   ActiveCombinationExistsError,
   UnknownReferenceError as UnknownCombinationReferenceError,
 } from "./student-combinations.repository.js";
+
+export type { PaymentProvider } from "./payment-codes.repository.js";
+export {
+  getActivePaymentCode,
+  setPaymentCode,
+  DuplicatePaymentCodeError,
+} from "./payment-codes.repository.js";
 
 export type { PriorExamRecord, PriorExamInput, PriorExamType } from "./prior-exams.repository.js";
 export {
