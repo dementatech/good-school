@@ -11,6 +11,7 @@ import { PortalSidebar } from '@/components/ui/PortalSidebar';
 import {
   LayoutDashboard, FileText,
   School, Users, CalendarDays,
+  ClipboardList,
   UserCircle,
 } from 'lucide-react';
 import type { Role } from '@/lib/auth/session';
@@ -28,6 +29,7 @@ const NAV = [
 // just nav visibility).
 const SYSTEM_NAV = [
   { href: '/admin/system/curriculum', label: 'Curriculum & Subjects', icon: CalendarDays },
+  { href: '/admin/system/exams', label: 'Exam Sessions', icon: ClipboardList },
   { href: '/admin/system/schools', label: 'Schools', icon: School },
   { href: '/admin/system/accounts', label: 'Accounts', icon: Users },
 ];
