@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { useToast } from '@/components/ui/ToastProvider';
 import { Loader } from '@/components/ui/loader';
-import { CheckCircle2, Pencil, Plus, Trash2 } from 'lucide-react';
+import { Pencil, Plus, Trash2 } from 'lucide-react';
 
 interface Term {
   id: string;
@@ -15,7 +15,23 @@ interface Term {
   name: string;
   startDate: string;
   endDate: string;
-  isCurrent: boolean;
+}
+
+/**
+ * Which term is "current" is decided by the calendar, never a manual flag —
+ * this mirrors the backend `getCurrentTerm()`: the term whose window contains
+ * today; else the most recently ended term; else the earliest one.
+ */
+function currentTermOf(terms: Term[]): Term | null {
+  if (terms.length === 0) return null;
+  const today = new Date().toISOString().slice(0, 10);
+  const inWindow = terms.find((t) => t.startDate <= today && today <= t.endDate);
+  if (inWindow) return inWindow;
+  const ended = terms
+    .filter((t) => today > t.endDate)
+    .sort((a, b) => b.startDate.localeCompare(a.startDate));
+  if (ended[0]) return ended[0];
+  return [...terms].sort((a, b) => a.startDate.localeCompare(b.startDate))[0];
 }
 
 interface TermsManagerProps {
@@ -109,9 +125,6 @@ export function TermsManager({ apiBasePath, academicYearId, readOnly = false }: 
           name: editing.name,
           startDate: editing.startDate,
           endDate: editing.endDate,
-          // Preserve the flag — updateTerm() clears is_current on any PATCH
-          // that omits it.
-          isCurrent: editing.isCurrent,
         }),
       });
       const data = await res.json();
@@ -141,56 +154,20 @@ export function TermsManager({ apiBasePath, academicYearId, readOnly = false }: 
     }
   }
 
-  async function setCurrent(term: Term) {
-    const res = await fetch(`${apiBasePath}/${term.id}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        academicYearId,
-        termNumber: term.termNumber,
-        name: term.name,
-        startDate: term.startDate,
-        endDate: term.endDate,
-        isCurrent: true,
-      }),
-    });
-    const data = await res.json();
-    if (data.success) {
-      toast.success(`Term ${term.termNumber} is now the current term.`);
-      await load();
-    } else {
-      toast.error(data.error ?? data.message ?? 'Could not switch the current term.');
-    }
-  }
-
-  const today = new Date().toISOString().slice(0, 10);
-  const flaggedCurrent = terms.find((t) => t.isCurrent) ?? null;
-  // Mirrors the backend fallback in getCurrentTerm(): when no term is
-  // explicitly flagged, the one whose window contains today counts as current.
-  const dateCurrent = terms.find((t) => t.startDate <= today && today <= t.endDate) ?? null;
+  const current = currentTermOf(terms);
+  const todayInWindow =
+    current != null &&
+    current.startDate <= new Date().toISOString().slice(0, 10) &&
+    new Date().toISOString().slice(0, 10) <= current.endDate;
   const termLabel = (t: Term) => `Term ${t.termNumber}${t.name ? ` — ${t.name}` : ''}`;
 
   return (
     <div className="space-y-3">
-      {!loading && terms.length > 0 && (
+      {!loading && current && (
         <p className="text-xs text-text-muted">
-          {flaggedCurrent ? (
-            <>
-              Current term: <span className="font-medium text-text-secondary">{termLabel(flaggedCurrent)}</span>.
-              Used to date-stamp new records and to create exams.
-            </>
-          ) : dateCurrent ? (
-            <>
-              Current term (from today&apos;s date):{' '}
-              <span className="font-medium text-text-secondary">{termLabel(dateCurrent)}</span>. Use
-              &ldquo;Set current&rdquo; to pin it if the dates aren&apos;t reliable.
-            </>
-          ) : (
-            <>
-              No current term. Exams can&apos;t be created for this year until one is set — use
-              &ldquo;Set current&rdquo; on a term below (or fix the term dates so one covers today).
-            </>
-          )}
+          Current term: <span className="font-medium text-text-secondary">{termLabel(current)}</span>
+          {' '}— worked out from today&apos;s date, not set by hand.
+          {!todayInWindow && ' Today falls between terms, so the most recent one is shown.'}
         </p>
       )}
       {loading ? (
@@ -207,25 +184,10 @@ export function TermsManager({ apiBasePath, academicYearId, readOnly = false }: 
               <span className="flex items-center gap-2 text-text-primary">
                 Term {t.termNumber}
                 {t.name ? ` — ${t.name}` : ''}
-                {t.isCurrent ? (
-                  <Badge variant="success">Current</Badge>
-                ) : (
-                  !flaggedCurrent && dateCurrent?.id === t.id && <Badge variant="muted">Current by date</Badge>
-                )}
+                {current?.id === t.id && <Badge variant="success">Current</Badge>}
               </span>
               <span className="flex items-center gap-3 text-text-secondary">
                 {formatDate(t.startDate)} – {formatDate(t.endDate)}
-                {!readOnly && !t.isCurrent && (
-                  <button
-                    type="button"
-                    onClick={() => void setCurrent(t)}
-                    title="Set as current term"
-                    className="inline-flex items-center gap-1 text-xs font-medium text-primary-700 hover:text-primary-700/70"
-                  >
-                    <CheckCircle2 className="w-3.5 h-3.5" aria-hidden />
-                    Set current
-                  </button>
-                )}
                 {!readOnly && (
                   <>
                     <button
