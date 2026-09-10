@@ -1,11 +1,12 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
+import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { useToast } from '@/components/ui/ToastProvider';
 import { Loader } from '@/components/ui/loader';
-import { Pencil, Plus, Trash2 } from 'lucide-react';
+import { CheckCircle2, Pencil, Plus, Trash2 } from 'lucide-react';
 
 interface Term {
   id: string;
@@ -14,6 +15,7 @@ interface Term {
   name: string;
   startDate: string;
   endDate: string;
+  isCurrent: boolean;
 }
 
 interface TermsManagerProps {
@@ -107,6 +109,9 @@ export function TermsManager({ apiBasePath, academicYearId, readOnly = false }: 
           name: editing.name,
           startDate: editing.startDate,
           endDate: editing.endDate,
+          // Preserve the flag — updateTerm() clears is_current on any PATCH
+          // that omits it.
+          isCurrent: editing.isCurrent,
         }),
       });
       const data = await res.json();
@@ -136,8 +141,58 @@ export function TermsManager({ apiBasePath, academicYearId, readOnly = false }: 
     }
   }
 
+  async function setCurrent(term: Term) {
+    const res = await fetch(`${apiBasePath}/${term.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        academicYearId,
+        termNumber: term.termNumber,
+        name: term.name,
+        startDate: term.startDate,
+        endDate: term.endDate,
+        isCurrent: true,
+      }),
+    });
+    const data = await res.json();
+    if (data.success) {
+      toast.success(`Term ${term.termNumber} is now the current term.`);
+      await load();
+    } else {
+      toast.error(data.error ?? data.message ?? 'Could not switch the current term.');
+    }
+  }
+
+  const today = new Date().toISOString().slice(0, 10);
+  const flaggedCurrent = terms.find((t) => t.isCurrent) ?? null;
+  // Mirrors the backend fallback in getCurrentTerm(): when no term is
+  // explicitly flagged, the one whose window contains today counts as current.
+  const dateCurrent = terms.find((t) => t.startDate <= today && today <= t.endDate) ?? null;
+  const termLabel = (t: Term) => `Term ${t.termNumber}${t.name ? ` — ${t.name}` : ''}`;
+
   return (
     <div className="space-y-3">
+      {!loading && terms.length > 0 && (
+        <p className="text-xs text-text-muted">
+          {flaggedCurrent ? (
+            <>
+              Current term: <span className="font-medium text-text-secondary">{termLabel(flaggedCurrent)}</span>.
+              Used to date-stamp new records and to create exams.
+            </>
+          ) : dateCurrent ? (
+            <>
+              Current term (from today&apos;s date):{' '}
+              <span className="font-medium text-text-secondary">{termLabel(dateCurrent)}</span>. Use
+              &ldquo;Set current&rdquo; to pin it if the dates aren&apos;t reliable.
+            </>
+          ) : (
+            <>
+              No current term. Exams can&apos;t be created for this year until one is set — use
+              &ldquo;Set current&rdquo; on a term below (or fix the term dates so one covers today).
+            </>
+          )}
+        </p>
+      )}
       {loading ? (
         <div className="py-6 flex justify-center"><Loader size={32} /></div>
       ) : terms.length === 0 ? (
@@ -149,12 +204,28 @@ export function TermsManager({ apiBasePath, academicYearId, readOnly = false }: 
               key={t.id}
               className="flex items-center justify-between text-sm py-1.5 border-b border-primary-50 last:border-0"
             >
-              <span className="text-text-primary">
+              <span className="flex items-center gap-2 text-text-primary">
                 Term {t.termNumber}
                 {t.name ? ` — ${t.name}` : ''}
+                {t.isCurrent ? (
+                  <Badge variant="success">Current</Badge>
+                ) : (
+                  !flaggedCurrent && dateCurrent?.id === t.id && <Badge variant="muted">Current by date</Badge>
+                )}
               </span>
               <span className="flex items-center gap-3 text-text-secondary">
                 {formatDate(t.startDate)} – {formatDate(t.endDate)}
+                {!readOnly && !t.isCurrent && (
+                  <button
+                    type="button"
+                    onClick={() => void setCurrent(t)}
+                    title="Set as current term"
+                    className="inline-flex items-center gap-1 text-xs font-medium text-primary-700 hover:text-primary-700/70"
+                  >
+                    <CheckCircle2 className="w-3.5 h-3.5" aria-hidden />
+                    Set current
+                  </button>
+                )}
                 {!readOnly && (
                   <>
                     <button
