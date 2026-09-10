@@ -29,6 +29,52 @@ export const schoolExamBodySchema = {
   additionalProperties: false,
 } as const;
 
+// ─── Marks entry (roadmap Step 1) ──────────────────────────────────────────
+
+// The (subject, class, stream) triple that identifies one mark sheet. streamId
+// is null for a whole-class-level subject.
+const slotProps = {
+  subjectId: { type: "string", minLength: 1 },
+  classId: { type: "string", minLength: 1 },
+  streamId: { type: ["string", "null"] },
+} as const;
+
+export const markSheetSlotQuerySchema = {
+  type: "object",
+  required: ["subjectId", "classId"],
+  properties: slotProps,
+  additionalProperties: false,
+} as const;
+
+export const saveMarksBodySchema = {
+  type: "object",
+  required: ["subjectId", "classId", "entries"],
+  properties: {
+    ...slotProps,
+    entries: {
+      type: "array",
+      items: {
+        type: "object",
+        required: ["studentUserId"],
+        properties: {
+          studentUserId: { type: "string", minLength: 1 },
+          rawScore: { type: ["number", "null"], minimum: 0, maximum: 100 },
+          isAbsent: { type: "boolean" },
+        },
+        additionalProperties: false,
+      },
+    },
+  },
+  additionalProperties: false,
+} as const;
+
+export const markSheetSlotBodySchema = {
+  type: "object",
+  required: ["subjectId", "classId"],
+  properties: slotProps,
+  additionalProperties: false,
+} as const;
+
 export const schoolExamUpdateBodySchema = {
   type: "object",
   required: ["startsOn", "endsOn", "marksDueOn"],

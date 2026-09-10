@@ -25,13 +25,62 @@ import {
   type UpdateSchoolExamInput,
 } from "../domain/school-exams.repository.js";
 import {
+  IncompleteMarkSheetError,
+  InvalidScoreError,
+  MarkSheetLockedError,
+  MarksEntryClosedError,
+  NotAssignedError,
+  UnknownExamError,
+  UnknownSlotError,
+  examCompletion,
+  getMarkSheet,
+  listAssignedExams,
+  reopenMarkSheet,
+  saveMarks,
+  submitMarkSheet,
+  type MarkEntryInput,
+  type MarkSheetActor,
+} from "../domain/exam-results.repository.js";
+import {
   examSessionBodySchema,
+  markSheetSlotBodySchema,
+  markSheetSlotQuerySchema,
+  saveMarksBodySchema,
   schoolExamBodySchema,
   schoolExamUpdateBodySchema,
 } from "./schemas.js";
 
 const REFERENCE = requireAuth(["super_admin"]);
 const SCHOOL = requireAuth(["admin", "school_admin", "super_admin"]);
+const TEACHER = requireAuth(["teacher"]);
+// Marks entry: the assigned teacher, or a school admin acting as an override.
+const MARKS = requireAuth(["teacher", "admin", "school_admin"]);
+
+function actorOf(request: FastifyRequest): MarkSheetActor {
+  const auth = request.authUser!;
+  return { userId: auth.user_id, role: auth.role as MarkSheetActor["role"] };
+}
+
+// Pulls the (subject, class, stream) slot from a request body or query.
+function slotOf(src: { subjectId: string; classId: string; streamId?: string | null }) {
+  return { subjectId: src.subjectId, classId: src.classId, streamId: src.streamId || null };
+}
+
+// Maps a marks-entry domain error to its HTTP status, or rethrows.
+function replyMarksError(err: unknown, reply: FastifyReply): FastifyReply {
+  if (err instanceof UnknownExamError) return reply.status(404).send(fail(err.message));
+  if (err instanceof UnknownSlotError) return reply.status(404).send(fail(err.message));
+  if (err instanceof NotAssignedError) return reply.status(403).send(fail(err.message));
+  if (err instanceof InvalidScoreError) return reply.status(400).send(fail(err.message));
+  if (
+    err instanceof MarksEntryClosedError ||
+    err instanceof MarkSheetLockedError ||
+    err instanceof IncompleteMarkSheetError
+  ) {
+    return reply.status(409).send(fail(err.message));
+  }
+  throw err;
+}
 
 /** Pulls the caller's school from the JWT, or replies 400 and returns null. */
 function schoolOf(request: FastifyRequest, reply: FastifyReply): string | null {
@@ -180,4 +229,92 @@ export async function examsRoutes(fastify: FastifyInstance) {
     const deleted = await deleteSchoolExam(schoolId, request.params.id);
     return deleted ? ok(null) : reply.status(404).send(fail("not_found"));
   });
+
+  // ═══ Marks entry — roadmap Step 1 ════════════════════════════════════════
+
+  // Teacher portal: the active exams this teacher has marks to enter for, each
+  // with its subject/class/stream slots and per-slot progress.
+  fastify.get("/assigned", { preHandler: TEACHER }, async (request, reply) => {
+    const schoolId = schoolOf(request, reply);
+    if (!schoolId) return;
+    return ok(await listAssignedExams(schoolId, request.authUser!.user_id));
+  });
+
+  // Admin: every teaching slot for one exam, with progress + who owns it.
+  fastify.get<{ Params: { id: string } }>(
+    "/:id/completion",
+    { preHandler: SCHOOL },
+    async (request, reply) => {
+      const schoolId = schoolOf(request, reply);
+      if (!schoolId) return;
+      try {
+        return ok(await examCompletion(schoolId, request.params.id));
+      } catch (err) {
+        return replyMarksError(err, reply);
+      }
+    },
+  );
+
+  // One mark sheet — roster + current marks for a (subject, class, stream) slot.
+  fastify.get<{ Params: { id: string }; Querystring: { subjectId: string; classId: string; streamId?: string } }>(
+    "/:id/marksheet",
+    { preHandler: MARKS, schema: { querystring: markSheetSlotQuerySchema } },
+    async (request, reply) => {
+      const schoolId = schoolOf(request, reply);
+      if (!schoolId) return;
+      try {
+        return ok(await getMarkSheet(schoolId, request.params.id, slotOf(request.query), actorOf(request)));
+      } catch (err) {
+        return replyMarksError(err, reply);
+      }
+    },
+  );
+
+  fastify.put<{
+    Params: { id: string };
+    Body: { subjectId: string; classId: string; streamId?: string | null; entries: MarkEntryInput[] };
+  }>(
+    "/:id/marksheet",
+    { preHandler: MARKS, schema: { body: saveMarksBodySchema } },
+    async (request, reply) => {
+      const schoolId = schoolOf(request, reply);
+      if (!schoolId) return;
+      try {
+        return ok(
+          await saveMarks(schoolId, request.params.id, slotOf(request.body), request.body.entries, actorOf(request)),
+        );
+      } catch (err) {
+        return replyMarksError(err, reply);
+      }
+    },
+  );
+
+  fastify.post<{ Params: { id: string }; Body: { subjectId: string; classId: string; streamId?: string | null } }>(
+    "/:id/marksheet/submit",
+    { preHandler: MARKS, schema: { body: markSheetSlotBodySchema } },
+    async (request, reply) => {
+      const schoolId = schoolOf(request, reply);
+      if (!schoolId) return;
+      try {
+        return ok(await submitMarkSheet(schoolId, request.params.id, slotOf(request.body), actorOf(request)));
+      } catch (err) {
+        return replyMarksError(err, reply);
+      }
+    },
+  );
+
+  // Only a school admin can unfreeze a submitted sheet.
+  fastify.post<{ Params: { id: string }; Body: { subjectId: string; classId: string; streamId?: string | null } }>(
+    "/:id/marksheet/reopen",
+    { preHandler: SCHOOL, schema: { body: markSheetSlotBodySchema } },
+    async (request, reply) => {
+      const schoolId = schoolOf(request, reply);
+      if (!schoolId) return;
+      try {
+        return ok(await reopenMarkSheet(schoolId, request.params.id, slotOf(request.body), actorOf(request)));
+      } catch (err) {
+        return replyMarksError(err, reply);
+      }
+    },
+  );
 }

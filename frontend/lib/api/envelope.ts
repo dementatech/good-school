@@ -33,3 +33,14 @@ export async function fetchList<T = unknown>(url: string): Promise<T[]> {
     return [];
   }
 }
+
+/** GET a single-object endpoint. Returns `null` on any failure. */
+export async function fetchOne<T = unknown>(url: string): Promise<T | null> {
+  try {
+    const res = await fetch(url, { credentials: 'include' });
+    const json = await res.json().catch(() => ({}));
+    return json.success ? (json.data as T) : null;
+  } catch {
+    return null;
+  }
+}
