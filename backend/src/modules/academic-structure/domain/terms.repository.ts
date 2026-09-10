@@ -19,7 +19,6 @@ export interface TermRecord {
   name: string;
   startDate: string;
   endDate: string;
-  isCurrent: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -30,7 +29,6 @@ export interface TermInput {
   name: string;
   startDate: string;
   endDate: string;
-  isCurrent?: boolean;
 }
 
 interface TermRow {
@@ -40,12 +38,11 @@ interface TermRow {
   name: string;
   start_date: string;
   end_date: string;
-  is_current: boolean;
   created_at: string;
   updated_at: string;
 }
 
-const SELECT_TERM = `select id, academic_year_id, term_number, name, start_date, end_date, is_current, created_at, updated_at from terms`;
+const SELECT_TERM = `select id, academic_year_id, term_number, name, start_date, end_date, created_at, updated_at from terms`;
 
 function mapRow(row: TermRow): TermRecord {
   return {
@@ -55,7 +52,6 @@ function mapRow(row: TermRow): TermRecord {
     name: row.name,
     startDate: row.start_date,
     endDate: row.end_date,
-    isCurrent: row.is_current,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -89,11 +85,14 @@ export async function listTerms(
   return result.rows.map(mapRow);
 }
 
-// The current term of the given academic year. An explicit `is_current` flag
-// (set by the admin) always wins; failing that, we fall back to whichever
-// term's [start_date, end_date] window contains today, so a school that keeps
-// its term dates accurate never has to touch the toggle. Null only when
-// neither applies (no flag, and today sits outside every term's window).
+// The current term of the given academic year, derived purely from the
+// calendar — no manual flag. Resolution order:
+//   1. the term whose [start_date, end_date] window contains today
+//   2. else, if today is past a term's end, the most recently ended term
+//      (year is over, or we're in a gap between two terms — you're still
+//      closing out that term's work)
+//   3. else the earliest term (the year hasn't started yet)
+// Only null when the year has no terms at all.
 export async function getCurrentTerm(
   schoolId: string,
   academicYearId: string,
@@ -101,8 +100,11 @@ export async function getCurrentTerm(
   const result = await pool.query<TermRow>(
     `${SELECT_TERM}
       where school_id = $1 and academic_year_id = $2
-        and (is_current or current_date between start_date and end_date)
-      order by is_current desc, start_date
+      order by
+        (current_date between start_date and end_date) desc,
+        (current_date > end_date) desc,
+        case when current_date > end_date then start_date end desc,
+        start_date asc
       limit 1`,
     [schoolId, academicYearId],
   );
@@ -140,18 +142,10 @@ export async function createTerm(
       throw new TermLimitExceededError(limit);
     }
 
-    if (input.isCurrent) {
-      await client.query(
-        `update terms set is_current = false, updated_at = now()
-         where academic_year_id = $1 and is_current = true`,
-        [input.academicYearId],
-      );
-    }
-
     const result = await client.query<TermRow>(
-      `insert into terms (school_id, academic_year_id, term_number, name, start_date, end_date, is_current, created_by)
-       values ($1, $2, $3, $4, $5, $6, $7, $8)
-       returning id, academic_year_id, term_number, name, start_date, end_date, is_current, created_at, updated_at`,
+      `insert into terms (school_id, academic_year_id, term_number, name, start_date, end_date, created_by)
+       values ($1, $2, $3, $4, $5, $6, $7)
+       returning id, academic_year_id, term_number, name, start_date, end_date, created_at, updated_at`,
       [
         schoolId,
         input.academicYearId,
@@ -159,7 +153,6 @@ export async function createTerm(
         input.name,
         input.startDate,
         input.endDate,
-        input.isCurrent ?? false,
         createdBy,
       ],
     );
@@ -188,28 +181,12 @@ export async function updateTerm(
       return null;
     }
 
-    if (input.isCurrent) {
-      await client.query(
-        `update terms set is_current = false, updated_at = now()
-         where academic_year_id = $1 and is_current = true and id <> $2`,
-        [input.academicYearId, id],
-      );
-    }
-
     const result = await client.query<TermRow>(
       `update terms
-       set term_number = $1, name = $2, start_date = $3, end_date = $4, is_current = $5, updated_at = now()
-       where id = $6 and school_id = $7
-       returning id, academic_year_id, term_number, name, start_date, end_date, is_current, created_at, updated_at`,
-      [
-        input.termNumber ?? null,
-        input.name,
-        input.startDate,
-        input.endDate,
-        input.isCurrent ?? false,
-        id,
-        schoolId,
-      ],
+       set term_number = $1, name = $2, start_date = $3, end_date = $4, updated_at = now()
+       where id = $5 and school_id = $6
+       returning id, academic_year_id, term_number, name, start_date, end_date, created_at, updated_at`,
+      [input.termNumber ?? null, input.name, input.startDate, input.endDate, id, schoolId],
     );
 
     await client.query("COMMIT");

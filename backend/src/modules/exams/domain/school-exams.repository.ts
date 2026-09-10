@@ -51,7 +51,7 @@ export class NoCurrentAcademicYearError extends Error {
 
 export class NoCurrentTermError extends Error {
   constructor(yearName: string) {
-    super(`Set a current term for ${yearName} before creating an exam.`);
+    super(`${yearName} has no terms yet — add its terms (with dates) before creating an exam.`);
     this.name = "NoCurrentTermError";
   }
 }

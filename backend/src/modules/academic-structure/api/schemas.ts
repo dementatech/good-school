@@ -114,7 +114,6 @@ export const termBodySchema = {
     name: { type: "string", minLength: 1 },
     startDate: { type: "string" },
     endDate: { type: "string" },
-    isCurrent: { type: "boolean" },
   },
   additionalProperties: false,
 } as const;

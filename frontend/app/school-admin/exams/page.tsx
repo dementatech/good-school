@@ -20,7 +20,6 @@ interface AcademicYear {
 interface Term {
   id: string;
   name: string;
-  isCurrent: boolean;
 }
 
 const fmt = (d: string) => new Date(d).toLocaleDateString();
@@ -184,7 +183,6 @@ export default function SchoolAdminExamsPage() {
                 {terms.map((t) => (
                   <option key={t.id} value={t.id}>
                     {t.name}
-                    {t.isCurrent ? ' (current)' : ''}
                   </option>
                 ))}
               </select>
