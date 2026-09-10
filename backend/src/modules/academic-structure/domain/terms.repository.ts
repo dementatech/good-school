@@ -89,13 +89,21 @@ export async function listTerms(
   return result.rows.map(mapRow);
 }
 
-/** The current term of the given academic year, or null if none is marked current. */
+// The current term of the given academic year. An explicit `is_current` flag
+// (set by the admin) always wins; failing that, we fall back to whichever
+// term's [start_date, end_date] window contains today, so a school that keeps
+// its term dates accurate never has to touch the toggle. Null only when
+// neither applies (no flag, and today sits outside every term's window).
 export async function getCurrentTerm(
   schoolId: string,
   academicYearId: string,
 ): Promise<TermRecord | null> {
   const result = await pool.query<TermRow>(
-    `${SELECT_TERM} where school_id = $1 and academic_year_id = $2 and is_current`,
+    `${SELECT_TERM}
+      where school_id = $1 and academic_year_id = $2
+        and (is_current or current_date between start_date and end_date)
+      order by is_current desc, start_date
+      limit 1`,
     [schoolId, academicYearId],
   );
   return result.rows[0] ? mapRow(result.rows[0]) : null;
