@@ -89,6 +89,18 @@ export async function listTerms(
   return result.rows.map(mapRow);
 }
 
+/** The current term of the given academic year, or null if none is marked current. */
+export async function getCurrentTerm(
+  schoolId: string,
+  academicYearId: string,
+): Promise<TermRecord | null> {
+  const result = await pool.query<TermRow>(
+    `${SELECT_TERM} where school_id = $1 and academic_year_id = $2 and is_current`,
+    [schoolId, academicYearId],
+  );
+  return result.rows[0] ? mapRow(result.rows[0]) : null;
+}
+
 export async function getTerm(schoolId: string, id: string): Promise<TermRecord | null> {
   const result = await pool.query<TermRow>(`${SELECT_TERM} where school_id = $1 and id = $2`, [
     schoolId,

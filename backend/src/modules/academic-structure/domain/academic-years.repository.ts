@@ -41,6 +41,17 @@ function mapRow(row: AcademicYearRow): AcademicYearRecord {
   };
 }
 
+/** The school's current academic year, or null if none is marked current. */
+export async function getCurrentAcademicYear(
+  schoolId: string,
+): Promise<AcademicYearRecord | null> {
+  const result = await pool.query<AcademicYearRow>(
+    `${SELECT_YEAR} where school_id = $1 and is_current`,
+    [schoolId],
+  );
+  return result.rows[0] ? mapRow(result.rows[0]) : null;
+}
+
 export async function listAcademicYears(schoolId: string): Promise<AcademicYearRecord[]> {
   const result = await pool.query<AcademicYearRow>(
     `${SELECT_YEAR} where school_id = $1 order by start_date desc`,
