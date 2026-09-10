@@ -113,6 +113,7 @@ const ROUTE_FEATURES: { prefix: string; key: FeatureKey }[] = [
   { prefix: "/admin/lessons", key: "lessons" },
 
   { prefix: "/staff/account", key: "staff_account" },
+  { prefix: "/staff/exam-marks", key: "exams" },
   { prefix: "/staff/assessments", key: "assessments" },
   { prefix: "/staff/marking", key: "marking" },
   { prefix: "/staff/library", key: "library" },

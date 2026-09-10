@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import { DataTable, type DataTableColumn } from '@/components/ui/DataTable';
@@ -8,7 +9,7 @@ import { type DropdownMenuItem } from '@/components/ui/DropdownMenu';
 import { useToast } from '@/components/ui/ToastProvider';
 import { Loader } from '@/components/ui/loader';
 import { fetchList } from '@/lib/api/envelope';
-import { Lock, LockOpen, Pencil, Plus, Trash2 } from 'lucide-react';
+import { ClipboardList, Lock, LockOpen, Pencil, Plus, Trash2 } from 'lucide-react';
 import { SchoolExamFormModal } from '@/components/admin/exams/SchoolExamFormModal';
 import { submitJson, type SchoolExam } from '@/components/admin/exams/types';
 
@@ -26,6 +27,7 @@ const fmt = (d: string) => new Date(d).toLocaleDateString();
 
 export default function SchoolAdminExamsPage() {
   const toast = useToast();
+  const router = useRouter();
   const [years, setYears] = useState<AcademicYear[]>([]);
   const [terms, setTerms] = useState<Term[]>([]);
   const [yearId, setYearId] = useState('');
@@ -116,6 +118,11 @@ export default function SchoolAdminExamsPage() {
   ];
 
   const rowActions = (e: SchoolExam): DropdownMenuItem[] => [
+    {
+      label: 'Enter / view marks',
+      icon: ClipboardList,
+      onClick: () => router.push(`/school-admin/exams/${e.id}`),
+    },
     { label: 'Edit', icon: Pencil, onClick: () => setModal({ initial: e }) },
     e.status === 'active'
       ? {
@@ -199,6 +206,7 @@ export default function SchoolAdminExamsPage() {
               columns={columns}
               rowActions={rowActions}
               rowKey={(e) => e.id}
+              onRowClick={(e) => router.push(`/school-admin/exams/${e.id}`)}
               initialSort={{ key: 'window', direction: 'desc' }}
               emptyMessage="No exams for this selection yet."
               exportFileName="exams"
