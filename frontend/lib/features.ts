@@ -22,6 +22,7 @@ export type FeatureKey =
   | "behaviour"
   | "forms"
   | "academic_structure"
+  | "exams"
   | "schools"
   | "students"
   | "student_import"
@@ -51,6 +52,9 @@ export const FEATURES: Record<FeatureKey, FeatureMeta> = {
   behaviour: { label: "Behaviour Rating", ready: false },
   forms: { label: "Data Forms", ready: false },
   academic_structure: { label: "Academic Structure", ready: true },
+  // Super-admin exam_session catalog (/admin/system/exams) + the school_admin's
+  // own exam activation (/school-admin/exams). Backed by /api/v1/exams.
+  exams: { label: "Exams", ready: true },
   schools: { label: "Schools", ready: true },
   // School-scoped student enrollment (Phase 3A). Distinct from `accounts`
   // (staff/parent/super-admin login management) — that's still unwired.
@@ -98,6 +102,7 @@ const ROUTE_FEATURES: { prefix: string; key: FeatureKey }[] = [
   // One tabbed page: School Admins / Staff / Students / Parents / Super Admins.
   // Bulk student CSV import stays its own (still-unwired) sub-route.
   { prefix: "/admin/system/students/import", key: "student_import" },
+  { prefix: "/admin/system/exams", key: "exams" },
   { prefix: "/admin/system/accounts", key: "accounts" },
   { prefix: "/admin/system/library", key: "library" },
   { prefix: "/admin/system", key: "dashboard" },
@@ -125,6 +130,7 @@ const ROUTE_FEATURES: { prefix: string; key: FeatureKey }[] = [
   { prefix: "/school-admin/school", key: "schools" },
   { prefix: "/school-admin/staff", key: "staff" },
   { prefix: "/school-admin/organisation-studio", key: "organization" },
+  { prefix: "/school-admin/exams", key: "exams" },
   { prefix: "/school-admin/students", key: "students" },
   { prefix: "/school-admin/attendance", key: "attendance" },
   { prefix: "/school-admin/lessons", key: "lessons" },
