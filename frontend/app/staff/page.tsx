@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { Card } from '@/components/ui/Card';
 import { Sparkline } from '@/components/ui/Sparkline';
-import { CheckSquare, ClipboardList, FileText, TrendingUp } from 'lucide-react';
+import { CheckSquare, ClipboardCheck, ClipboardList, FileText, TrendingUp } from 'lucide-react';
 
 interface Stats {
   lessons?: number;
@@ -52,6 +52,18 @@ export default function StaffDashboard() {
     <div className="w-full">
       <h1 className="text-2xl font-bold text-primary-900 mb-1">Dashboard</h1>
       <p className="text-sm text-text-muted mb-6">Your lesson reports, papers and marking.</p>
+
+      <Link href="/staff/exam-marks" className="block mb-4">
+        <Card hover className="p-4 sm:p-5 flex items-center gap-3">
+          <div className="p-2.5 rounded-xl bg-primary-700 shrink-0">
+            <ClipboardCheck className="w-5 h-5 text-white" />
+          </div>
+          <div>
+            <p className="font-semibold text-primary-900">Exam Marks</p>
+            <p className="text-sm text-text-muted">Enter scores for the exams and classes you teach.</p>
+          </div>
+        </Card>
+      </Link>
 
       <div className="grid grid-cols-2 lg:grid-cols-3 gap-2.5 sm:gap-4">
         {CARDS.map((c) => {
