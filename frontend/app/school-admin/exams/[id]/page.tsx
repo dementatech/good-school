@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { useParams } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Card } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
@@ -9,15 +9,19 @@ import { Button } from '@/components/ui/Button';
 import { Loader } from '@/components/ui/loader';
 import { fetchOne } from '@/lib/api/envelope';
 import { ArrowLeft } from 'lucide-react';
-import { MarkSheetDrawer } from '@/components/exams/MarkSheetDrawer';
 import {
   slotLabel,
   type ExamCompletion,
   type ExamCompletionSlot,
-  type SlotKey,
 } from '@/components/exams/types';
 
 const fmt = (d: string) => new Date(d).toLocaleDateString();
+
+function sheetHref(examId: string, slot: ExamCompletionSlot): string {
+  const p = new URLSearchParams({ subject: slot.subjectId, class: slot.classId });
+  if (slot.streamId) p.set('stream', slot.streamId);
+  return `/school-admin/exams/${examId}/marksheet?${p.toString()}`;
+}
 
 function Progress({ slot }: { slot: ExamCompletionSlot }) {
   const done = slot.rosterCount > 0 && slot.enteredCount >= slot.rosterCount;
@@ -37,9 +41,9 @@ function Progress({ slot }: { slot: ExamCompletionSlot }) {
 
 export default function SchoolAdminExamDetailPage() {
   const { id } = useParams<{ id: string }>();
+  const router = useRouter();
   const [data, setData] = useState<ExamCompletion | null>(null);
   const [loading, setLoading] = useState(true);
-  const [open, setOpen] = useState<SlotKey | null>(null);
 
   const load = useCallback(async () => {
     setData(await fetchOne<ExamCompletion>(`/api/v1/exams/${id}/completion`));
@@ -50,6 +54,13 @@ export default function SchoolAdminExamDetailPage() {
     void (async () => {
       await load();
     })();
+  }, [load]);
+
+  // Refresh progress when returning from a mark sheet.
+  useEffect(() => {
+    const onFocus = () => void load();
+    window.addEventListener('focus', onFocus);
+    return () => window.removeEventListener('focus', onFocus);
   }, [load]);
 
   if (loading) {
@@ -146,13 +157,7 @@ export default function SchoolAdminExamDetailPage() {
                   <Button
                     inline
                     variant="outline"
-                    onClick={() =>
-                      setOpen({
-                        subjectId: slot.subjectId,
-                        classId: slot.classId,
-                        streamId: slot.streamId,
-                      })
-                    }
+                    onClick={() => router.push(sheetHref(id, slot))}
                   >
                     {slot.submitted ? 'View' : 'Enter marks'}
                   </Button>
@@ -162,16 +167,6 @@ export default function SchoolAdminExamDetailPage() {
           </tbody>
         </table>
       </Card>
-
-      {open && (
-        <MarkSheetDrawer
-          examId={id}
-          slot={open}
-          canReopen
-          onClose={() => setOpen(null)}
-          onSaved={load}
-        />
-      )}
     </div>
   );
 }
