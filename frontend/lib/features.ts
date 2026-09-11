@@ -33,7 +33,8 @@ export type FeatureKey =
   | "parent_portal"
   | "notifications"
   | "account_settings"
-  | "staff_account";
+  | "staff_account"
+  | "portal_home";
 
 interface FeatureMeta {
   label: string;
@@ -42,6 +43,12 @@ interface FeatureMeta {
 
 export const FEATURES: Record<FeatureKey, FeatureMeta> = {
   dashboard: { label: "Dashboard", ready: false },
+  // The bare portal landing (/staff, /school-admin, /admin). It's navigation,
+  // not a feature — gating it behind the not-ready `dashboard` locked every
+  // signed-in teacher out of their own portal with a "Dementa is cooking"
+  // wall. The per-portal index pages degrade gracefully on their own when a
+  // stats endpoint 404s.
+  portal_home: { label: "Portal", ready: true },
   assessments: { label: "Assessments", ready: false },
   marking: { label: "Marking", ready: false },
   library: { label: "Library", ready: false },
@@ -105,7 +112,7 @@ const ROUTE_FEATURES: { prefix: string; key: FeatureKey }[] = [
   { prefix: "/admin/system/exams", key: "exams" },
   { prefix: "/admin/system/accounts", key: "accounts" },
   { prefix: "/admin/system/library", key: "library" },
-  { prefix: "/admin/system", key: "dashboard" },
+  { prefix: "/admin/system", key: "portal_home" },
   { prefix: "/admin/assessments", key: "assessments" },
   { prefix: "/admin/marking", key: "marking" },
   { prefix: "/admin/library", key: "library" },
@@ -144,7 +151,7 @@ const ROUTE_FEATURES: { prefix: string; key: FeatureKey }[] = [
   { prefix: "/parent/attendance", key: "parent_portal" },
   { prefix: "/parent/lessons", key: "parent_portal" },
   { prefix: "/parent/library", key: "parent_portal" },
-  { prefix: "/parent/dashboard", key: "dashboard" },
+  { prefix: "/parent/dashboard", key: "portal_home" },
 
   { prefix: "/student/library", key: "student_portal" },
   { prefix: "/student/results", key: "student_portal" },
@@ -154,12 +161,12 @@ const ROUTE_FEATURES: { prefix: string; key: FeatureKey }[] = [
   { prefix: "/student/practice", key: "student_portal" },
   { prefix: "/student/attempts", key: "student_portal" },
   { prefix: "/student/confirmation", key: "student_portal" },
-  { prefix: "/student/dashboard", key: "dashboard" },
+  { prefix: "/student/dashboard", key: "portal_home" },
 
   // Bare portal landing pages.
-  { prefix: "/school-admin", key: "dashboard" },
-  { prefix: "/staff", key: "dashboard" },
-  { prefix: "/admin", key: "dashboard" },
+  { prefix: "/school-admin", key: "portal_home" },
+  { prefix: "/staff", key: "portal_home" },
+  { prefix: "/admin", key: "portal_home" },
 ];
 
 export function featureForPath(pathname: string): { key: FeatureKey; meta: FeatureMeta } | null {

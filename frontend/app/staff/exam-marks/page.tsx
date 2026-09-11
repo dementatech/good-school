@@ -1,14 +1,20 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { Card } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import { Loader } from '@/components/ui/loader';
 import { fetchList } from '@/lib/api/envelope';
-import { MarkSheetDrawer } from '@/components/exams/MarkSheetDrawer';
-import { slotLabel, type AssignedExam, type ExamSlot, type SlotKey } from '@/components/exams/types';
+import { slotLabel, type AssignedExam, type ExamSlot } from '@/components/exams/types';
 
 const fmt = (d: string) => new Date(d).toLocaleDateString();
+
+function sheetHref(examId: string, slot: ExamSlot): string {
+  const p = new URLSearchParams({ exam: examId, subject: slot.subjectId, class: slot.classId });
+  if (slot.streamId) p.set('stream', slot.streamId);
+  return `/staff/exam-marks/sheet?${p.toString()}`;
+}
 
 function SlotStatus({ slot }: { slot: ExamSlot }) {
   if (slot.submitted) return <Badge variant="muted">Submitted</Badge>;
@@ -22,9 +28,9 @@ function SlotStatus({ slot }: { slot: ExamSlot }) {
 }
 
 export default function StaffExamMarksPage() {
+  const router = useRouter();
   const [exams, setExams] = useState<AssignedExam[]>([]);
   const [loading, setLoading] = useState(true);
-  const [open, setOpen] = useState<{ examId: string; slot: SlotKey } | null>(null);
 
   const load = useCallback(async () => {
     setExams(await fetchList<AssignedExam>('/api/v1/exams/assigned'));
@@ -35,6 +41,13 @@ export default function StaffExamMarksPage() {
     void (async () => {
       await load();
     })();
+  }, [load]);
+
+  // Refresh progress counts when returning from a mark sheet.
+  useEffect(() => {
+    const onFocus = () => void load();
+    window.addEventListener('focus', onFocus);
+    return () => window.removeEventListener('focus', onFocus);
   }, [load]);
 
   return (
@@ -62,9 +75,7 @@ export default function StaffExamMarksPage() {
             <div className="flex flex-wrap items-center gap-2 mb-3">
               <span className="font-semibold text-primary-900">{exam.examName}</span>
               <span className="text-sm text-text-muted">{exam.termName}</span>
-              <span className="text-sm text-text-muted">
-                · marks due {fmt(exam.marksDueOn)}
-              </span>
+              <span className="text-sm text-text-muted">· marks due {fmt(exam.marksDueOn)}</span>
               {exam.marksEntryOpen ? (
                 <Badge variant="success">Entry open</Badge>
               ) : (
@@ -87,16 +98,7 @@ export default function StaffExamMarksPage() {
                     <tr
                       key={`${slot.subjectId}:${slot.classId}:${slot.streamId ?? ''}`}
                       className="border-b border-border/60 cursor-pointer hover:bg-bg-subtle"
-                      onClick={() =>
-                        setOpen({
-                          examId: exam.examId,
-                          slot: {
-                            subjectId: slot.subjectId,
-                            classId: slot.classId,
-                            streamId: slot.streamId,
-                          },
-                        })
-                      }
+                      onClick={() => router.push(sheetHref(exam.examId, slot))}
                     >
                       <td className="py-2 pr-2 font-medium text-primary-900">{slot.subjectName}</td>
                       <td className="py-2 px-2">{slotLabel(slot)}</td>
@@ -111,15 +113,6 @@ export default function StaffExamMarksPage() {
             </div>
           </Card>
         ))
-      )}
-
-      {open && (
-        <MarkSheetDrawer
-          examId={open.examId}
-          slot={open.slot}
-          onClose={() => setOpen(null)}
-          onSaved={load}
-        />
       )}
     </div>
   );
