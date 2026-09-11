@@ -1,6 +1,7 @@
 import "dotenv/config";
 import { hashPassword } from "../src/modules/auth/index.js";
 import { pool } from "../src/shared/db/index.js";
+import { nextSystemId } from "../src/shared/system-id.js";
 
 // One-off bootstrap for the platform owner's account — there's no
 // self-registration or UI for this, since a super_admin isn't scoped to any
@@ -29,11 +30,12 @@ async function main() {
 
   const passwordHash = await hashPassword(password);
 
+  const systemId = await nextSystemId(pool, "X");
   const result = await pool.query<{ id: string }>(
-    `insert into users (school_id, email, password_hash, role)
-     values (null, $1, $2, 'super_admin')
+    `insert into users (school_id, system_id, email, password_hash, role)
+     values (null, $1, $2, $3, 'super_admin')
      returning id`,
-    [email.trim().toLowerCase(), passwordHash],
+    [systemId, email.trim().toLowerCase(), passwordHash],
   );
 
   console.log(`Super admin created: ${email} (id: ${result.rows[0].id})`);

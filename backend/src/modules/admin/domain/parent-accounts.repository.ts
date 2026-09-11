@@ -1,5 +1,6 @@
 import { pool } from "../../../shared/db/index.js";
 import { generateTempPassword, hashPassword } from "../../auth/index.js";
+import { nextSystemId } from "../../../shared/system-id.js";
 import type { MutationResult } from "./accounts.repository.js";
 
 // The Parents tab is really a guardian roster (guardian is a data-only table,
@@ -119,11 +120,12 @@ export async function createParentAccount(
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
+    const systemId = await nextSystemId(client, "P");
     const inserted = await client.query<{ id: string }>(
-      `insert into users (school_id, email, phone_number, password_hash, role, must_change_password)
-       values (null, $1, $2, $3, 'parent', true)
+      `insert into users (school_id, system_id, email, phone_number, password_hash, role, must_change_password)
+       values (null, $1, $2, $3, $4, 'parent', true)
        returning id`,
-      [email, phone, passwordHash],
+      [systemId, email, phone, passwordHash],
     );
     await client.query(`update guardian set user_id = $1, updated_at = now() where id = $2`, [
       inserted.rows[0].id,
