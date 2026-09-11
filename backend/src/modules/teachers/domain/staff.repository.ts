@@ -186,7 +186,7 @@ export async function createStaff(
   try {
     await client.query("BEGIN");
 
-    const systemId = await nextSystemId(client, schoolId, "TCH");
+    const systemId = await nextSystemId(client, "T");
     const tempPassword = generateTempPassword();
     const passwordHash = await hashPassword(tempPassword);
 

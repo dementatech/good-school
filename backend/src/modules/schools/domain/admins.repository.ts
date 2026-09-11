@@ -1,5 +1,6 @@
 import { pool } from "../../../shared/db/index.js";
 import { generateTempPassword, hashPassword } from "../../auth/index.js";
+import { nextSystemId } from "../../../shared/system-id.js";
 
 export interface SchoolAdminRecord {
   id: string;
@@ -51,11 +52,12 @@ export async function createSchoolAdmin(
   const passwordHash = await hashPassword(tempPassword);
   const email = input.email.trim().toLowerCase();
 
+  const systemId = await nextSystemId(pool, "A");
   const result = await pool.query<SchoolAdminRow>(
-    `insert into users (school_id, email, phone_number, password_hash, role)
-     values ($1, $2, $3, $4, 'school_admin')
+    `insert into users (school_id, system_id, email, phone_number, password_hash, role)
+     values ($1, $2, $3, $4, $5, 'school_admin')
      returning id, email, phone_number, created_at`,
-    [schoolId, email, input.phoneNumber ?? null, passwordHash],
+    [schoolId, systemId, email, input.phoneNumber ?? null, passwordHash],
   );
 
   return { admin: mapRow(result.rows[0]), tempPassword };
