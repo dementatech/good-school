@@ -190,7 +190,7 @@ export async function createStudent(
   try {
     await client.query("BEGIN");
 
-    const systemId = await nextSystemId(client, schoolId, "STU");
+    const systemId = await nextSystemId(client, "S");
     const tempPassword = generateTempPassword();
     const passwordHash = await hashPassword(tempPassword);
 

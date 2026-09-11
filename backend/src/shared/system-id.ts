@@ -1,31 +1,35 @@
 import type { PoolClient } from "pg";
 
-// Generic across roles — originally lived under students/domain since that
-// was the only caller, moved here once the teachers module needed the same
-// "TCH-0001"-style sequence (docs/design/teachers-module.md §1) against the
-// same `users.system_id` column.
+// A user's system ID: <T|S><YY><seq> — e.g. T260001 (staff), S260042 (student).
 //
-// Locks the current highest system_id for this school+prefix so two
-// concurrent creates don't hand out the same sequence number. Doesn't help
-// on the very first row (nothing to lock yet) — an acceptable gap for the
-// single-admin-at-a-time usage this is built for today.
+//   T / S  staff or student
+//   YY     last two digits of the calendar year the account is created,
+//          frozen for the life of the account
+//   seq    a running counter for that (type, year), allocated across the whole
+//          platform so the full ID is globally unique — there is no school
+//          segment, and login-by-ID never has to guess which school. Padded to
+//          four digits for looks; the pad is a MINIMUM, not a cap — it grows to
+//          five or more on its own, and nothing ever sorts these as text.
+//
+// Allocation goes through id_sequence (see the 1700000051000 migration): one
+// upsert per ID, so two concurrent account creations can't land on the same
+// number and there's no read-max race. The unique indexes on `users`
+// (global for this format, per-school for the legacy one) are the last line of
+// defence.
+
+export type SystemIdPrefix = "T" | "S";
+
 export async function nextSystemId(
   client: PoolClient,
-  schoolId: string,
-  prefix: string,
+  prefix: SystemIdPrefix,
 ): Promise<string> {
-  const result = await client.query<{ system_id: string }>(
-    `select system_id from users
-     where school_id = $1 and system_id like $2
-     order by system_id desc
-     limit 1
-     for update`,
-    [schoolId, `${prefix}-%`],
+  const { rows } = await client.query<{ next_value: string; yy: string }>(
+    `insert into id_sequence (scope, next_value)
+       values ($1 || to_char(now() at time zone 'UTC', ':YYYY'), 1)
+     on conflict (scope) do update set next_value = id_sequence.next_value + 1
+     returning next_value, to_char(now() at time zone 'UTC', 'YY') as yy`,
+    [prefix],
   );
-
-  const last = result.rows[0]?.system_id;
-  const lastSeq = last ? parseInt(last.slice(prefix.length + 1), 10) : 0;
-  const nextSeq = Number.isNaN(lastSeq) ? 1 : lastSeq + 1;
-
-  return `${prefix}-${String(nextSeq).padStart(4, "0")}`;
+  const { next_value, yy } = rows[0];
+  return `${prefix}${yy}${next_value.padStart(4, "0")}`;
 }
