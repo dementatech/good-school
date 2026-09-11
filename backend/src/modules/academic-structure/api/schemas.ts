@@ -54,6 +54,22 @@ export const subjectBodySchema = {
     isExaminable: { type: "boolean" },
     isActive: { type: "boolean" },
     stageIds: { type: "array", items: { type: "string" } },
+    // Omit both to leave the variant configuration untouched on an update.
+    hasVariant: { type: "boolean" },
+    variants: {
+      type: "array",
+      items: {
+        type: "object",
+        required: ["name", "code", "contributionPercent"],
+        properties: {
+          id: { type: "string" },
+          name: { type: "string", minLength: 1 },
+          code: { type: "string", minLength: 1 },
+          contributionPercent: { type: "number", exclusiveMinimum: 0, maximum: 100 },
+        },
+        additionalProperties: false,
+      },
+    },
   },
   additionalProperties: false,
 } as const;

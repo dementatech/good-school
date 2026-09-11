@@ -6,6 +6,7 @@ import { Input } from '@/components/ui/Input';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import { useToast } from '@/components/ui/ToastProvider';
+import { Plus, Trash2 } from 'lucide-react';
 import {
   CATEGORY_LABEL,
   PHASE_LABEL,
@@ -17,7 +18,22 @@ import {
   type Stage,
   type Subject,
   type SubjectCategory,
+  type SubjectVariant,
 } from './types';
+
+/** A variant row mid-edit — contributionPercent stays text so "" / "7." don't
+ * fight the input while typing; parsed to a number only on submit. */
+interface VariantDraft {
+  name: string;
+  code: string;
+  contribution: string;
+}
+
+const toDraft = (v: SubjectVariant): VariantDraft => ({
+  name: v.name,
+  code: v.code,
+  contribution: String(v.contributionPercent),
+});
 
 export function SubjectFormModal({
   open,
@@ -55,7 +71,27 @@ export function SubjectFormModal({
     isActive: initial?.isActive ?? true,
     stageIds: initial?.stageIds ?? ([] as string[]),
   });
+  const [hasVariant, setHasVariant] = useState(initial?.hasVariant ?? false);
+  const [variants, setVariants] = useState<VariantDraft[]>(
+    initial?.variants.length ? initial.variants.map(toDraft) : [
+      { name: '', code: '', contribution: '' },
+      { name: '', code: '', contribution: '' },
+    ],
+  );
   const [saving, setSaving] = useState(false);
+
+  const variantSum = variants.reduce((n, v) => n + (Number(v.contribution) || 0), 0);
+  const variantSumOk = Math.round(variantSum * 100) === 10000;
+
+  function updateVariant(i: number, patch: Partial<VariantDraft>) {
+    setVariants((vs) => vs.map((v, idx) => (idx === i ? { ...v, ...patch } : v)));
+  }
+  function addVariant() {
+    setVariants((vs) => [...vs, { name: '', code: '', contribution: '' }]);
+  }
+  function removeVariant(i: number) {
+    setVariants((vs) => vs.filter((_, idx) => idx !== i));
+  }
 
   // A subject saved under an older rule set can carry a category no longer in
   // `categories` (e.g. legacy data) — keep it selectable on edit rather than
@@ -74,6 +110,20 @@ export function SubjectFormModal({
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
+    if (hasVariant) {
+      if (variants.length < 2) {
+        toast.error('A subject with variants needs at least two.');
+        return;
+      }
+      if (variants.some((v) => !v.name.trim() || !v.code.trim())) {
+        toast.error('Every variant needs a name and a code.');
+        return;
+      }
+      if (!variantSumOk) {
+        toast.error(`Variant contributions must add up to 100% (currently ${variantSum}%).`);
+        return;
+      }
+    }
     setSaving(true);
     const payload = {
       phase,
@@ -83,6 +133,14 @@ export function SubjectFormModal({
       isExaminable: form.isExaminable,
       isActive: form.isActive,
       stageIds: form.stageIds,
+      hasVariant,
+      variants: hasVariant
+        ? variants.map((v) => ({
+            name: v.name.trim(),
+            code: v.code.trim(),
+            contributionPercent: Number(v.contribution),
+          }))
+        : [],
     };
     const res = initial
       ? await submitJson(`/api/v1/academic/subjects/${initial.id}`, 'PATCH', payload)
@@ -222,6 +280,82 @@ export function SubjectFormModal({
                   {s.code}
                 </label>
               ))}
+            </div>
+          )}
+        </div>
+
+        <div className="border-t border-border pt-3">
+          <label className="flex items-center gap-2 text-sm text-[#12333F] mb-2">
+            <input
+              type="checkbox"
+              checked={hasVariant}
+              onChange={(e) => setHasVariant(e.target.checked)}
+              className="rounded border-[#E5E5E5]"
+            />
+            Examined as separate papers, merged into one mark
+          </label>
+          <p className="text-xs text-text-faint mb-2">
+            e.g. Theory 70% + Practical 30%. Contributions must add up to 100%.
+            {initial && (
+              <>
+                {' '}
+                If this subject already has recorded marks, this configuration is locked — you&apos;ll
+                see an error on save.
+              </>
+            )}
+          </p>
+
+          {hasVariant && (
+            <div className="space-y-2">
+              {variants.map((v, i) => (
+                <div key={i} className="flex flex-wrap items-center gap-2">
+                  <input
+                    placeholder="Name (Theory)"
+                    value={v.name}
+                    onChange={(e) => updateVariant(i, { name: e.target.value })}
+                    className="flex-1 min-w-[7rem] border border-border rounded-lg px-2.5 py-1.5 text-sm"
+                  />
+                  <input
+                    placeholder="Code"
+                    value={v.code}
+                    onChange={(e) => updateVariant(i, { code: e.target.value })}
+                    className="w-24 border border-border rounded-lg px-2.5 py-1.5 text-sm"
+                  />
+                  <div className="flex items-center gap-1">
+                    <input
+                      type="number"
+                      min={0}
+                      max={100}
+                      placeholder="70"
+                      value={v.contribution}
+                      onChange={(e) => updateVariant(i, { contribution: e.target.value })}
+                      className="w-16 border border-border rounded-lg px-2.5 py-1.5 text-sm"
+                    />
+                    <span className="text-sm text-text-muted">%</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => removeVariant(i)}
+                    disabled={variants.length <= 2}
+                    className="p-1.5 text-text-muted hover:text-error disabled:opacity-30 disabled:hover:text-text-muted"
+                    aria-label="Remove variant"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
+              ))}
+              <div className="flex items-center justify-between">
+                <button
+                  type="button"
+                  onClick={addVariant}
+                  className="inline-flex items-center gap-1 text-xs text-primary-700 hover:text-primary-800"
+                >
+                  <Plus className="w-3.5 h-3.5" aria-hidden /> Add variant
+                </button>
+                <span className={`text-xs ${variantSumOk ? 'text-text-muted' : 'text-error'}`}>
+                  Total: {variantSum}%{!variantSumOk && ' (must be 100%)'}
+                </span>
+              </div>
             </div>
           )}
         </div>

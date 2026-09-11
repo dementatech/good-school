@@ -1,11 +1,28 @@
 // Mirrors backend/src/modules/exams/domain/exam-results.repository.ts
 
+export interface SubjectVariantSummary {
+  id: string;
+  name: string;
+  code: string;
+  contributionPercent: number;
+}
+
+export interface VariantScore {
+  variantId: string;
+  rawScore: number | null;
+  isAbsent: boolean;
+}
+
 export interface MarkSheetRow {
   studentUserId: string;
   studentName: string;
   systemId: string | null;
+  /** Entered mark (plain subject) or the merged weighted score (variant
+   * subject, computed server-side — null while any variant is unmarked). */
   rawScore: number | null;
   isAbsent: boolean;
+  /** Present only when subject.hasVariant — one entry per subject.variants. */
+  variantScores?: VariantScore[];
 }
 
 export interface MarkSheet {
@@ -19,7 +36,7 @@ export interface MarkSheet {
     status: 'active' | 'closed';
     marksEntryOpen: boolean;
   };
-  subject: { id: string; code: string; name: string };
+  subject: { id: string; code: string; name: string; hasVariant: boolean; variants: SubjectVariantSummary[] };
   class: { id: string; name: string };
   stream: { id: string; name: string } | null;
   submitted: boolean;

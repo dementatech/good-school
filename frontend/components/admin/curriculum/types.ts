@@ -36,6 +36,13 @@ export interface Stage {
   ageEquivalentYears: number | null;
 }
 
+export interface SubjectVariant {
+  id: string;
+  name: string;
+  code: string;
+  contributionPercent: number;
+}
+
 export interface Subject {
   id: string;
   phase: Phase;
@@ -53,6 +60,11 @@ export interface Subject {
    * Paper, a system constant every A-Level student takes automatically —
    * never created or deleted through this form. */
   isGeneralPaper: boolean;
+  /** Papers examined separately and merged into one subject mark (e.g.
+   * Physics Theory 70% + Practical 30%). Once this subject has any recorded
+   * exam marks, hasVariant/variants become read-only server-side. */
+  hasVariant: boolean;
+  variants: SubjectVariant[];
 }
 
 export interface Combination {
