@@ -4,6 +4,7 @@ import "./globals.css";
 import { ToastProvider } from "@/components/ui/ToastProvider";
 import { AuthProvider } from "@/components/auth/AuthContext";
 import { RegisterServiceWorker } from "@/components/RegisterServiceWorker";
+import { InstallPrompt } from "@/components/InstallPrompt";
 
 const quicksand = Quicksand({
   subsets: ["latin"],
@@ -15,6 +16,11 @@ const quicksand = Quicksand({
 export const metadata: Metadata = {
   title: "Good School",
   description: "Uganda Secondary School Management System",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "default",
+    title: "Good School",
+  },
 };
 
 export default function RootLayout({
@@ -32,6 +38,7 @@ export default function RootLayout({
           <AuthProvider>{children}</AuthProvider>
         </ToastProvider>
         <RegisterServiceWorker />
+        <InstallPrompt />
       </body>
     </html>
   );
