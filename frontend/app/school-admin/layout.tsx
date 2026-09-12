@@ -23,6 +23,7 @@ import {
   Network,
   ListChecks,
   Combine,
+  Award,
 } from 'lucide-react';
 import type { Role } from '@/lib/auth/session';
 
@@ -44,7 +45,14 @@ const NAV = [
   { href: '/school-admin/staff', label: 'Staff', icon: UserCog },
   { href: '/school-admin/organisation-studio', label: 'Organisation Studio', icon: Network },
   { href: '/school-admin/students', label: 'Students', icon: GraduationCap },
-  { href: '/school-admin/exams', label: 'Exams', icon: ClipboardList },
+  {
+    label: 'Exams',
+    icon: ClipboardList,
+    children: [
+      { href: '/school-admin/exams', label: 'Manage Exams', icon: ClipboardList, exact: true },
+      { href: '/school-admin/grading-schemes', label: 'Grading Schemes', icon: Award },
+    ],
+  },
   { href: '/school-admin/attendance', label: 'Attendance', icon: ClipboardCheck },
   { href: '/school-admin/lessons', label: 'Lessons', icon: NotebookPen },
   { href: '/school-admin/terms', label: 'Terms', icon: CalendarDays },

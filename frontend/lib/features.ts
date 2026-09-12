@@ -139,6 +139,7 @@ const ROUTE_FEATURES: { prefix: string; key: FeatureKey }[] = [
   { prefix: "/school-admin/staff", key: "staff" },
   { prefix: "/school-admin/organisation-studio", key: "organization" },
   { prefix: "/school-admin/exams", key: "exams" },
+  { prefix: "/school-admin/grading-schemes", key: "exams" },
   { prefix: "/school-admin/students", key: "students" },
   { prefix: "/school-admin/attendance", key: "attendance" },
   { prefix: "/school-admin/lessons", key: "lessons" },
