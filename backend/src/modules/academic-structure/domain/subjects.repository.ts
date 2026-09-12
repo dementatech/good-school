@@ -1,3 +1,4 @@
+import type { PoolClient } from "pg";
 import { pool } from "../../../shared/db/index.js";
 import { nextSequentialCode } from "./sequential-code.js";
 
@@ -44,8 +45,30 @@ export interface SubjectRecord {
    * constant, seeded when the curriculum is created — never set through
    * `createSubject`/`updateSubject`, and never deletable. */
   isGeneralPaper: boolean;
+  /** Some subjects (Physics Theory + Practical, ...) are examined as separate
+   * papers with different weights and merged into one subject mark. `variants`
+   * is empty unless `hasVariant` is true, in which case it always has at
+   * least two, with contributionPercent summing to 100. */
+  hasVariant: boolean;
+  variants: SubjectVariantRecord[];
   createdAt: string;
   updatedAt: string;
+}
+
+export interface SubjectVariantRecord {
+  id: string;
+  name: string;
+  code: string;
+  contributionPercent: number;
+}
+
+export interface SubjectVariantInput {
+  /** Present when editing an existing variant; omitted for a new one — ids
+   * are otherwise unused since the whole set is replaced together. */
+  id?: string;
+  name: string;
+  code: string;
+  contributionPercent: number;
 }
 
 export interface SubjectInput {
@@ -56,6 +79,10 @@ export interface SubjectInput {
   isExaminable?: boolean;
   isActive?: boolean;
   stageIds?: string[];
+  /** Omit both to leave the variant configuration untouched. Once the
+   * subject has any exam_result, changing either throws VariantsLockedError. */
+  hasVariant?: boolean;
+  variants?: SubjectVariantInput[];
 }
 
 interface SubjectRow {
@@ -75,6 +102,8 @@ interface SubjectRow {
   reviewed_at: string | null;
   rejection_reason: string | null;
   is_general_paper: boolean;
+  has_variant: boolean;
+  variants: SubjectVariantRecord[] | null;
   created_at: string;
   updated_at: string;
 }
@@ -96,18 +125,28 @@ const mapRow = (r: SubjectRow): SubjectRecord => ({
   reviewedAt: r.reviewed_at,
   rejectionReason: r.rejection_reason,
   isGeneralPaper: r.is_general_paper,
+  hasVariant: r.has_variant,
+  variants: r.variants ?? [],
   createdAt: r.created_at,
   updatedAt: r.updated_at,
 });
 
-// coalesce so a subject with no stages returns [] not [null]
+// Scalar subqueries rather than joins for stage_ids/variants — a subject can
+// have several of each, and joining both in one query would cross-multiply
+// the rows before the array/json aggregation ever ran.
 const SELECT_SUBJECT = `
   select s.id, s.curriculum_id, s.phase, s.code, s.short_name, s.name, s.category, s.is_examinable, s.is_active,
-         coalesce(array_agg(ss.curriculum_stage_id) filter (where ss.curriculum_stage_id is not null), '{}') as stage_ids,
+         (select coalesce(array_agg(ss.curriculum_stage_id), '{}')
+            from subject_stage ss where ss.subject_id = s.id) as stage_ids,
          s.status, s.proposed_by_school_id, s.reviewed_by, s.reviewed_at, s.rejection_reason, s.is_general_paper,
+         s.has_variant,
+         (select coalesce(json_agg(json_build_object(
+                  'id', sv.id, 'name', sv.name, 'code', sv.code,
+                  'contributionPercent', sv.contribution_percent
+                ) order by sv.code), '[]'::json)
+            from subject_variant sv where sv.subject_id = s.id) as variants,
          s.created_at, s.updated_at
   from subject s
-  left join subject_stage ss on ss.subject_id = s.id
 `;
 
 export interface ListSubjectsFilter {
@@ -140,7 +179,7 @@ export async function listSubjects(filter: ListSubjectsFilter = {}): Promise<Sub
   }
   const clause = where.length ? `where ${where.join(" and ")}` : "";
   const { rows } = await pool.query<SubjectRow>(
-    `${SELECT_SUBJECT} ${clause} group by s.id order by s.name`,
+    `${SELECT_SUBJECT} ${clause} order by s.name`,
     params,
   );
   return rows.map(mapRow);
@@ -148,7 +187,7 @@ export async function listSubjects(filter: ListSubjectsFilter = {}): Promise<Sub
 
 export async function getSubject(id: string): Promise<SubjectRecord | null> {
   const { rows } = await pool.query<SubjectRow>(
-    `${SELECT_SUBJECT} where s.id = $1 group by s.id`,
+    `${SELECT_SUBJECT} where s.id = $1`,
     [id],
   );
   return rows[0] ? mapRow(rows[0]) : null;
@@ -220,6 +259,102 @@ async function replaceStages(
   );
 }
 
+export class VariantsLockedError extends Error {
+  constructor() {
+    super(
+      "This subject already has recorded marks — its variants can't be changed. " +
+        "Create a new subject instead.",
+    );
+    this.name = "VariantsLockedError";
+  }
+}
+
+// Validates a desired variant set and returns it normalised (trimmed name,
+// upper-cased code) — never mutates, never touches the database.
+function assertVariantsValid(
+  hasVariant: boolean,
+  variants: SubjectVariantInput[] | undefined,
+): SubjectVariantInput[] {
+  if (!hasVariant) return [];
+  const list = variants ?? [];
+  if (list.length < 2) {
+    throw new InvalidSubjectError("A subject with variants needs at least two.");
+  }
+  const seen = new Set<string>();
+  let sum = 0;
+  const normalised = list.map((v) => {
+    const code = v.code.trim().toUpperCase();
+    if (!code || !v.name.trim()) {
+      throw new InvalidSubjectError("Every variant needs a name and a code.");
+    }
+    if (seen.has(code)) throw new InvalidSubjectError(`Duplicate variant code "${code}".`);
+    seen.add(code);
+    if (!(v.contributionPercent > 0 && v.contributionPercent <= 100)) {
+      throw new InvalidSubjectError("Each variant's contribution must be between 0 and 100.");
+    }
+    sum += v.contributionPercent;
+    return { id: v.id, name: v.name.trim(), code, contributionPercent: v.contributionPercent };
+  });
+  // Rounded to cents to tolerate float noise (33.33 + 33.33 + 33.34, etc.)
+  // without accepting a genuinely wrong split.
+  if (Math.round(sum * 100) !== 10000) {
+    throw new InvalidSubjectError(
+      `Variant contributions must add up to 100% (currently ${sum}%).`,
+    );
+  }
+  return normalised;
+}
+
+const variantSignature = (v: { code: string; contributionPercent: number }) =>
+  `${v.code.toUpperCase()}:${v.contributionPercent}`;
+
+function variantsEqual(
+  a: { code: string; contributionPercent: number }[],
+  b: { code: string; contributionPercent: number }[],
+): boolean {
+  if (a.length !== b.length) return false;
+  const sa = a.map(variantSignature).sort();
+  const sb = b.map(variantSignature).sort();
+  return sa.every((v, i) => v === sb[i]);
+}
+
+async function hasRecordedResults(client: PoolClient, subjectId: string): Promise<boolean> {
+  const { rowCount } = await client.query(`select 1 from exam_result where subject_id = $1 limit 1`, [
+    subjectId,
+  ]);
+  return (rowCount ?? 0) > 0;
+}
+
+async function currentVariants(client: PoolClient, subjectId: string): Promise<SubjectVariantRecord[]> {
+  const { rows } = await client.query<{ id: string; name: string; code: string; contribution_percent: string }>(
+    `select id, name, code, contribution_percent from subject_variant where subject_id = $1 order by code`,
+    [subjectId],
+  );
+  return rows.map((r) => ({
+    id: r.id,
+    name: r.name,
+    code: r.code,
+    contributionPercent: Number(r.contribution_percent),
+  }));
+}
+
+// Replaces the whole variant set in one go — same delete-then-insert pattern
+// as replaceStages. Caller is responsible for the lock check.
+async function replaceVariants(
+  client: PoolClient,
+  subjectId: string,
+  variants: SubjectVariantInput[],
+): Promise<void> {
+  await client.query(`delete from subject_variant where subject_id = $1`, [subjectId]);
+  for (const v of variants) {
+    await client.query(
+      `insert into subject_variant (subject_id, name, code, contribution_percent)
+       values ($1, $2, $3, $4)`,
+      [subjectId, v.name, v.code, v.contributionPercent],
+    );
+  }
+}
+
 export interface CreateSubjectContext {
   /** null (super_admin) => created pre-approved; set (a school's own
    * proposal) => created `pending`, awaiting super_admin review. */
@@ -241,6 +376,7 @@ export async function createSubject(
     }
     const category = input.category ?? defaultCategoryForPhase(input.phase);
     assertCategoryValidForPhase(input.phase, category);
+    const variants = assertVariantsValid(input.hasVariant ?? false, input.variants);
     const code = await nextSequentialCode(client, {
       table: "subject",
       column: "code",
@@ -252,8 +388,8 @@ export async function createSubject(
     const { rows } = await client.query<{ id: string }>(
       `insert into subject
          (curriculum_id, phase, code, short_name, name, category, is_examinable, is_active,
-          status, proposed_by_school_id)
-       values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) returning id`,
+          status, proposed_by_school_id, has_variant)
+       values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) returning id`,
       [
         curriculumId,
         input.phase,
@@ -265,9 +401,11 @@ export async function createSubject(
         input.isActive ?? true,
         status,
         context.proposedBySchoolId,
+        input.hasVariant ?? false,
       ],
     );
     await replaceStages(client, rows[0].id, curriculumId, input.phase, input.stageIds ?? []);
+    if (variants.length > 0) await replaceVariants(client, rows[0].id, variants);
     await client.query("COMMIT");
     return getSubject(rows[0].id);
   } catch (err) {
@@ -288,8 +426,8 @@ export async function updateSubject(
     // Phase and code are fixed at creation — an O-Level subject never becomes
     // an A-Level one (different syllabi), and code is a system-assigned id,
     // never re-typed.
-    const current = await client.query<{ phase: SubjectPhase }>(
-      `select phase from subject where id = $1`,
+    const current = await client.query<{ phase: SubjectPhase; has_variant: boolean }>(
+      `select phase, has_variant from subject where id = $1`,
       [id],
     );
     if (current.rows.length === 0) {
@@ -298,10 +436,32 @@ export async function updateSubject(
     }
     const category = input.category ?? defaultCategoryForPhase(current.rows[0].phase);
     assertCategoryValidForPhase(current.rows[0].phase, category);
+
+    // Only touch variants when the caller actually sent something about them
+    // — omitting both fields means "leave as is". Re-submitting the current
+    // configuration unchanged is also a no-op, so editing an unrelated field
+    // (e.g. the name) on a subject that already has marks never trips the lock.
+    const touchesVariants = input.hasVariant !== undefined || input.variants !== undefined;
+    const nextHasVariant = touchesVariants ? input.hasVariant ?? current.rows[0].has_variant : current.rows[0].has_variant;
+    let nextVariants: SubjectVariantInput[] = [];
+    let variantsChanged = false;
+    if (touchesVariants) {
+      nextVariants = assertVariantsValid(nextHasVariant, input.variants);
+      variantsChanged = nextHasVariant !== current.rows[0].has_variant;
+      if (!variantsChanged && nextHasVariant) {
+        variantsChanged = !variantsEqual(await currentVariants(client, id), nextVariants);
+      }
+      if (variantsChanged && (await hasRecordedResults(client, id))) {
+        await client.query("ROLLBACK");
+        throw new VariantsLockedError();
+      }
+    }
+
     const { rows } = await client.query<{ curriculum_id: string; phase: SubjectPhase }>(
       `update subject
-       set short_name = $1, name = $2, category = $3, is_examinable = $4, is_active = $5, updated_at = now()
-       where id = $6
+       set short_name = $1, name = $2, category = $3, is_examinable = $4, is_active = $5,
+           has_variant = $6, updated_at = now()
+       where id = $7
        returning curriculum_id, phase`,
       [
         input.shortName.trim(),
@@ -309,6 +469,7 @@ export async function updateSubject(
         category,
         input.isExaminable ?? true,
         input.isActive ?? true,
+        nextHasVariant,
         id,
       ],
     );
@@ -319,6 +480,7 @@ export async function updateSubject(
     if (input.stageIds) {
       await replaceStages(client, id, rows[0].curriculum_id, rows[0].phase, input.stageIds);
     }
+    if (variantsChanged) await replaceVariants(client, id, nextVariants);
     await client.query("COMMIT");
     return getSubject(id);
   } catch (err) {

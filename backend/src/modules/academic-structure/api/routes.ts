@@ -24,6 +24,7 @@ import {
   rejectSubject,
   SubjectNotPendingError,
   updateSubject,
+  VariantsLockedError,
   type SubjectApprovalStatus,
   type SubjectInput,
 } from "../domain/subjects.repository.js";
@@ -307,6 +308,9 @@ export async function academicStructureRoutes(fastify: FastifyInstance) {
       } catch (err) {
         if (err instanceof InvalidSubjectError) {
           return reply.status(400).send(fail(err.message));
+        }
+        if (err instanceof VariantsLockedError) {
+          return reply.status(409).send(fail(err.message));
         }
         throw err;
       }

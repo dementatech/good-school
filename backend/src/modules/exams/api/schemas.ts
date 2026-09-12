@@ -58,6 +58,8 @@ export const saveMarksBodySchema = {
         required: ["studentUserId"],
         properties: {
           studentUserId: { type: "string", minLength: 1 },
+          // Required by the repo when the subject has variants; ignored otherwise.
+          variantId: { type: ["string", "null"] },
           rawScore: { type: ["number", "null"], minimum: 0, maximum: 100 },
           isAbsent: { type: "boolean" },
         },

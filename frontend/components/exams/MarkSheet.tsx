@@ -11,16 +11,58 @@ import { ArrowLeft, Check, Lock } from 'lucide-react';
 import type { MarkSheet as MarkSheetData, SlotKey } from './types';
 import { slotLabel } from './types';
 
-type Draft = Record<string, { score: string; absent: boolean }>;
+/** A plain (non-variant) subject is modelled as one column keyed by this
+ * sentinel, so the whole grid — draft, dirty-check, save — is written once
+ * against "cells" rather than branching subject shape throughout. */
+const PLAIN_KEY = '_';
+
+interface Cell {
+  score: string;
+  absent: boolean;
+}
+
+/** studentUserId -> cellKey (a variant id, or PLAIN_KEY) -> the cell. */
+type Draft = Record<string, Record<string, Cell>>;
+
+interface Column {
+  key: string;
+  label: string;
+  sublabel: string | null;
+}
 
 const fmt = (d: string) => new Date(d).toLocaleDateString();
+
+function columnsFor(sheet: MarkSheetData): Column[] {
+  if (!sheet.subject.hasVariant) return [{ key: PLAIN_KEY, label: 'Score', sublabel: null }];
+  return sheet.subject.variants.map((v) => ({
+    key: v.id,
+    label: v.name,
+    sublabel: `${v.contributionPercent}%`,
+  }));
+}
 
 function buildDraft(sheet: MarkSheetData): Draft {
   const d: Draft = {};
   for (const r of sheet.rows) {
-    d[r.studentUserId] = { score: r.rawScore === null ? '' : String(r.rawScore), absent: r.isAbsent };
+    if (r.variantScores) {
+      d[r.studentUserId] = {};
+      for (const vs of r.variantScores) {
+        d[r.studentUserId][vs.variantId] = {
+          score: vs.rawScore === null ? '' : String(vs.rawScore),
+          absent: vs.isAbsent,
+        };
+      }
+    } else {
+      d[r.studentUserId] = {
+        [PLAIN_KEY]: { score: r.rawScore === null ? '' : String(r.rawScore), absent: r.isAbsent },
+      };
+    }
   }
   return d;
+}
+
+function cellOf(draft: Draft, studentUserId: string, key: string): Cell {
+  return draft[studentUserId]?.[key] ?? { score: '', absent: false };
 }
 
 /**
@@ -30,6 +72,11 @@ function buildDraft(sheet: MarkSheetData): Draft {
  * state), and bulk edit/save tooling will grow here. The backend decides what
  * this actor may do and returns `editable`; `canReopen` adds the admin's
  * Reopen button on a submitted sheet.
+ *
+ * A subject examined as separate papers (Theory + Practical, ...) gets one
+ * column per variant instead of one Score column; the subject's final mark —
+ * the weighted merge of those columns — is computed server-side and shown
+ * read-only.
  */
 export function MarkSheet({
   examId,
@@ -56,6 +103,7 @@ export function MarkSheet({
   }, [slot]);
 
   const slotBody = { subjectId: slot.subjectId, classId: slot.classId, streamId: slot.streamId };
+  const columns = useMemo(() => (sheet ? columnsFor(sheet) : []), [sheet]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -77,13 +125,15 @@ export function MarkSheet({
 
   const dirty = useMemo(() => {
     if (!sheet) return false;
-    return sheet.rows.some((r) => {
-      const d = draft[r.studentUserId];
-      if (!d) return false;
-      const score = r.rawScore === null ? '' : String(r.rawScore);
-      return d.absent !== r.isAbsent || d.score.trim() !== score;
-    });
-  }, [sheet, draft]);
+    const original = buildDraft(sheet);
+    return sheet.rows.some((r) =>
+      columns.some((c) => {
+        const a = cellOf(draft, r.studentUserId, c.key);
+        const b = cellOf(original, r.studentUserId, c.key);
+        return a.absent !== b.absent || a.score.trim() !== b.score;
+      }),
+    );
+  }, [sheet, draft, columns]);
 
   // Warn before leaving with unsaved marks — the whole reason this is a page.
   useEffect(() => {
@@ -97,32 +147,51 @@ export function MarkSheet({
   }, [dirty]);
 
   const marked = sheet
-    ? sheet.rows.filter((r) => {
-        const d = draft[r.studentUserId];
-        return d && (d.absent || d.score.trim() !== '');
-      }).length
+    ? sheet.rows.filter((r) =>
+        columns.every((c) => {
+          const cell = cellOf(draft, r.studentUserId, c.key);
+          return cell.absent || cell.score.trim() !== '';
+        }),
+      ).length
     : 0;
 
-  function setRow(id: string, patch: Partial<{ score: string; absent: boolean }>) {
-    setDraft((d) => ({ ...d, [id]: { ...d[id], ...patch } }));
+  function setCell(studentUserId: string, key: string, patch: Partial<Cell>) {
+    setDraft((d) => ({
+      ...d,
+      [studentUserId]: { ...d[studentUserId], [key]: { ...cellOf(d, studentUserId, key), ...patch } },
+    }));
   }
 
   function entries() {
-    return Object.entries(draft).map(([studentUserId, d]) => {
-      if (d.absent) return { studentUserId, isAbsent: true as const };
-      const t = d.score.trim();
-      return { studentUserId, isAbsent: false as const, rawScore: t === '' ? null : Number(t) };
-    });
+    if (!sheet) return [];
+    return sheet.rows.flatMap((r) =>
+      columns.map((c) => {
+        const cell = cellOf(draft, r.studentUserId, c.key);
+        const variantId = c.key === PLAIN_KEY ? undefined : c.key;
+        if (cell.absent) return { studentUserId: r.studentUserId, variantId, isAbsent: true as const };
+        const t = cell.score.trim();
+        return {
+          studentUserId: r.studentUserId,
+          variantId,
+          isAbsent: false as const,
+          rawScore: t === '' ? null : Number(t),
+        };
+      }),
+    );
   }
 
   function hasInvalidScore(): boolean {
-    return Object.values(draft).some((d) => {
-      if (d.absent) return false;
-      const t = d.score.trim();
-      if (t === '') return false;
-      const n = Number(t);
-      return !Number.isFinite(n) || n < 0 || n > 100;
-    });
+    if (!sheet) return false;
+    return sheet.rows.some((r) =>
+      columns.some((c) => {
+        const cell = cellOf(draft, r.studentUserId, c.key);
+        if (cell.absent) return false;
+        const t = cell.score.trim();
+        if (t === '') return false;
+        const n = Number(t);
+        return !Number.isFinite(n) || n < 0 || n > 100;
+      }),
+    );
   }
 
   function apply(res: { ok: boolean; error?: string; data?: MarkSheetData }, okMsg?: string): boolean {
@@ -202,6 +271,7 @@ export function MarkSheet({
   }
 
   const readOnly = !sheet.editable;
+  const hasVariant = sheet.subject.hasVariant;
 
   return (
     <div className="space-y-4 pb-24">
@@ -225,6 +295,12 @@ export function MarkSheet({
           {sheet.exam.name} · {sheet.exam.termName} · window {fmt(sheet.exam.startsOn)}–
           {fmt(sheet.exam.marksDueOn)}
         </p>
+        {hasVariant && (
+          <p className="text-xs text-text-faint mt-1">
+            Examined as separate papers — {sheet.subject.variants.map((v) => `${v.name} ${v.contributionPercent}%`).join(' + ')}.
+            The Final column is the weighted merge, computed automatically.
+          </p>
+        )}
       </div>
 
       {readOnly && (
@@ -244,57 +320,79 @@ export function MarkSheet({
             <tr className="text-left text-xs text-text-muted bg-bg-subtle border-b border-border">
               <th className="py-2.5 px-4 w-10">#</th>
               <th className="py-2.5 px-2">Student</th>
-              <th className="py-2.5 px-2 w-28">Score (/100)</th>
-              <th className="py-2.5 px-2 w-20">Absent</th>
+              {columns.map((c) => (
+                <th key={c.key} className="py-2.5 px-2 w-28">
+                  {c.label}
+                  {c.sublabel && <span className="text-text-faint font-normal"> ({c.sublabel})</span>}
+                </th>
+              ))}
+              {hasVariant && <th className="py-2.5 px-2 w-24">Final</th>}
             </tr>
           </thead>
           <tbody>
             {sheet.rows.length === 0 && (
               <tr>
-                <td colSpan={4} className="py-8 text-center text-text-muted">
+                <td colSpan={2 + columns.length + (hasVariant ? 1 : 0)} className="py-8 text-center text-text-muted">
                   No students on this sheet.
                 </td>
               </tr>
             )}
-            {sheet.rows.map((r, i) => {
-              const d = draft[r.studentUserId] ?? { score: '', absent: false };
-              return (
-                <tr key={r.studentUserId} className="border-b border-border/60 last:border-0">
-                  <td className="py-1.5 px-4 text-text-muted tabular-nums">{i + 1}</td>
-                  <td className="py-1.5 px-2">
-                    <span className="font-medium text-primary-900">{r.studentName}</span>
-                    {r.systemId && <span className="text-text-muted"> · {r.systemId}</span>}
+            {sheet.rows.map((r, i) => (
+              <tr key={r.studentUserId} className="border-b border-border/60 last:border-0">
+                <td className="py-1.5 px-4 text-text-muted tabular-nums">{i + 1}</td>
+                <td className="py-1.5 px-2">
+                  <span className="font-medium text-primary-900">{r.studentName}</span>
+                  {r.systemId && <span className="text-text-muted"> · {r.systemId}</span>}
+                </td>
+                {columns.map((c) => {
+                  const cell = cellOf(draft, r.studentUserId, c.key);
+                  return (
+                    <td key={c.key} className="py-1.5 px-2">
+                      <div className="flex items-center gap-1.5">
+                        <input
+                          type="number"
+                          min={0}
+                          max={100}
+                          inputMode="decimal"
+                          aria-label={`${r.studentName} — ${c.label}`}
+                          className="w-16 rounded-lg border-2 border-[#E5E5E5] bg-white px-2 py-1.5 text-sm focus:border-primary-700 focus:outline-none disabled:bg-bg-muted disabled:text-text-muted"
+                          value={cell.absent ? '' : cell.score}
+                          disabled={readOnly || cell.absent}
+                          onChange={(e) => setCell(r.studentUserId, c.key, { score: e.target.value })}
+                        />
+                        <label className="flex items-center gap-1 text-xs text-text-muted">
+                          <input
+                            type="checkbox"
+                            aria-label={`Mark ${r.studentName} absent for ${c.label}`}
+                            className="w-3.5 h-3.5 accent-primary-700"
+                            checked={cell.absent}
+                            disabled={readOnly}
+                            onChange={(e) =>
+                              setCell(r.studentUserId, c.key, {
+                                absent: e.target.checked,
+                                score: e.target.checked ? '' : cell.score,
+                              })
+                            }
+                          />
+                          Abs
+                        </label>
+                      </div>
+                    </td>
+                  );
+                })}
+                {hasVariant && (
+                  <td className="py-1.5 px-2 font-medium text-primary-900 tabular-nums">
+                    {r.isAbsent ? (
+                      <span className="text-text-muted font-normal">Absent</span>
+                    ) : r.rawScore === null ? (
+                      <span className="text-text-faint font-normal">—</span>
+                    ) : (
+                      r.rawScore
+                    )}
                   </td>
-                  <td className="py-1.5 px-2">
-                    <input
-                      type="number"
-                      min={0}
-                      max={100}
-                      inputMode="decimal"
-                      className="w-24 rounded-lg border-2 border-[#E5E5E5] bg-white px-2 py-1.5 text-sm focus:border-primary-700 focus:outline-none disabled:bg-bg-muted disabled:text-text-muted"
-                      value={d.absent ? '' : d.score}
-                      disabled={readOnly || d.absent}
-                      onChange={(e) => setRow(r.studentUserId, { score: e.target.value })}
-                    />
-                  </td>
-                  <td className="py-1.5 px-2 text-center">
-                    <input
-                      type="checkbox"
-                      aria-label={`Mark ${r.studentName} absent`}
-                      className="w-4 h-4 accent-primary-700"
-                      checked={d.absent}
-                      disabled={readOnly}
-                      onChange={(e) =>
-                        setRow(r.studentUserId, {
-                          absent: e.target.checked,
-                          score: e.target.checked ? '' : d.score,
-                        })
-                      }
-                    />
-                  </td>
-                </tr>
-              );
-            })}
+                )}
+              </tr>
+            ))}
           </tbody>
         </table>
       </div>
