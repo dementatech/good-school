@@ -194,3 +194,34 @@ export const schoolCombinationBodySchema = {
   },
   additionalProperties: false,
 } as const;
+
+// -- Grading schemes (school_admin/admin, per school) ------------------------
+// Exams roadmap Step 2. Free-text `regime`/`appliesTo` — see
+// grading-schemes.repository.ts header.
+
+const gradeBandSchema = {
+  type: "object",
+  required: ["label", "minPct", "maxPct"],
+  properties: {
+    label: { type: "string", minLength: 1 },
+    minPct: { type: "number", minimum: 0, maximum: 100 },
+    maxPct: { type: "number", minimum: 0, maximum: 100 },
+    points: { type: ["integer", "null"] },
+    legacyEquivalent: { type: ["string", "null"] },
+  },
+  additionalProperties: false,
+} as const;
+
+export const gradingSchemeBodySchema = {
+  type: "object",
+  required: ["curriculumId", "regime", "appliesTo", "name", "bands"],
+  properties: {
+    curriculumId: { type: "string" },
+    regime: { type: "string", minLength: 1 },
+    appliesTo: { type: "string", enum: ["O_LEVEL", "A_LEVEL"] },
+    name: { type: "string", minLength: 1 },
+    isActive: { type: "boolean" },
+    bands: { type: "array", items: gradeBandSchema, minItems: 1 },
+  },
+  additionalProperties: false,
+} as const;

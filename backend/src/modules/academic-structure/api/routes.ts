@@ -89,10 +89,20 @@ import {
   type SchoolCombinationInput,
 } from "../domain/school-combinations.repository.js";
 import {
+  createGradingScheme,
+  deleteGradingScheme,
+  InvalidGradingSchemeError,
+  listGradingSchemes,
+  updateGradingScheme,
+  type GradingAppliesTo,
+  type GradingSchemeInput,
+} from "../domain/grading-schemes.repository.js";
+import {
   academicYearBodySchema,
   classBodySchema,
   combinationBodySchema,
   curriculumBodySchema,
+  gradingSchemeBodySchema,
   schoolCombinationBodySchema,
   schoolCurriculumBodySchema,
   stageBodySchema,
@@ -661,6 +671,64 @@ export async function academicStructureRoutes(fastify: FastifyInstance) {
       const schoolId = schoolOf(request, reply);
       if (!schoolId) return;
       const deleted = await removeSubjectOffering(schoolId, request.params.id);
+      return deleted ? ok(null) : reply.status(404).send(fail("not_found"));
+    },
+  );
+
+  // -- Grading schemes (Exams roadmap Step 2) — per-school, school_admin/admin ----
+  fastify.get<{ Querystring: { curriculumId?: string; appliesTo?: GradingAppliesTo } }>(
+    "/grading-schemes",
+    { preHandler: SCHOOL },
+    async (request, reply) => {
+      const schoolId = schoolOf(request, reply);
+      if (!schoolId) return;
+      return ok(await listGradingSchemes(schoolId, request.query.curriculumId, request.query.appliesTo));
+    },
+  );
+
+  fastify.post<{ Body: GradingSchemeInput }>(
+    "/grading-schemes",
+    { preHandler: SCHOOL, schema: { body: gradingSchemeBodySchema } },
+    async (request, reply) => {
+      const schoolId = schoolOf(request, reply);
+      if (!schoolId) return;
+      try {
+        const created = await createGradingScheme(schoolId, request.body);
+        return reply.status(201).send(ok(created));
+      } catch (err) {
+        if (err instanceof InvalidGradingSchemeError) {
+          return reply.status(400).send(fail(err.message));
+        }
+        throw err;
+      }
+    },
+  );
+
+  fastify.patch<{ Params: { id: string }; Body: GradingSchemeInput }>(
+    "/grading-schemes/:id",
+    { preHandler: SCHOOL, schema: { body: gradingSchemeBodySchema } },
+    async (request, reply) => {
+      const schoolId = schoolOf(request, reply);
+      if (!schoolId) return;
+      try {
+        const updated = await updateGradingScheme(schoolId, request.params.id, request.body);
+        return updated ? ok(updated) : reply.status(404).send(fail("not_found"));
+      } catch (err) {
+        if (err instanceof InvalidGradingSchemeError) {
+          return reply.status(400).send(fail(err.message));
+        }
+        throw err;
+      }
+    },
+  );
+
+  fastify.delete<{ Params: { id: string } }>(
+    "/grading-schemes/:id",
+    { preHandler: SCHOOL },
+    async (request, reply) => {
+      const schoolId = schoolOf(request, reply);
+      if (!schoolId) return;
+      const deleted = await deleteGradingScheme(schoolId, request.params.id);
       return deleted ? ok(null) : reply.status(404).send(fail("not_found"));
     },
   );
