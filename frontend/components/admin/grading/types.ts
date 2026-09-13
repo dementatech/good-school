@@ -22,6 +22,9 @@ export interface GradingScheme {
   name: string;
   isActive: boolean;
   bands: GradeBand[];
+  /** Null = shared catalog template. Set = this school's own private,
+   * editable fork — never set when roleScope is 'subsidiary'. */
+  schoolId: string | null;
   createdAt: string;
   updatedAt: string;
 }

@@ -2,11 +2,15 @@ import type { PoolClient } from "pg";
 import { pool } from "../../../shared/db/index.js";
 
 // Grading schemes — turns a raw exam_result.raw_score into a letter/points
-// grade. See migration 1700000055000_grading-scheme-catalog.cjs for the
-// full history: originally per-school (Step 2), corrected to a
-// curriculum-wide catalog (super-admin manages it, like subject/
-// subject_variant/combination) that a school just PICKS from per phase —
-// recorded in `school_grading_scheme`.
+// grade. See migration 1700000055000_grading-scheme-catalog.cjs and
+// 1700000056000_school-editable-grading-ranges.cjs for the full history:
+// per-school (Step 2) -> curriculum-wide catalog (super-admin manages it,
+// like subject/subject_variant/combination), schools just picked from it
+// -> fork-on-customize (this): the catalog stays as super-admin-managed
+// templates, but a school editing O-Level/Principal ranges forks its own
+// private copy (`grading_scheme.school_id` set) the first time, leaving
+// the shared template and every other school untouched. Subsidiary can
+// never be forked (DB check constraint) — it's a fixed UACE mechanic.
 //
 // `regime` (legacy_1_9 / nlsc_a_e) is free text, same convention as
 // curriculum_stage.phase. `roleScope` ('any' | 'principal' | 'subsidiary')
@@ -41,6 +45,10 @@ export interface GradingSchemeRecord {
   name: string;
   isActive: boolean;
   bands: GradeBandRecord[];
+  /** Null = shared catalog template. Set = one school's own private,
+   * editable fork (see editSchoolGradingRanges) — never true when
+   * roleScope is 'subsidiary'. */
+  schoolId: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -84,6 +92,7 @@ interface SchemeRow {
   name: string;
   is_active: boolean;
   bands: GradeBandRecord[];
+  school_id: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -101,7 +110,7 @@ const BANDS_JSON = `
 
 const SELECT_SCHEME = `
   select gs.id, gs.curriculum_id, gs.regime, gs.applies_to, gs.role_scope, gs.name, gs.is_active,
-         gs.created_at, gs.updated_at, ${BANDS_JSON} as bands
+         gs.school_id, gs.created_at, gs.updated_at, ${BANDS_JSON} as bands
     from grading_scheme gs
 `;
 
@@ -114,6 +123,7 @@ function mapRow(r: SchemeRow): GradingSchemeRecord {
     roleScope: r.role_scope,
     name: r.name,
     isActive: r.is_active,
+    schoolId: r.school_id,
     bands: r.bands.map((b) => ({
       id: b.id,
       label: b.label,
@@ -153,6 +163,13 @@ export class GradingSchemeMismatchError extends Error {
   constructor() {
     super("That scheme doesn't belong to this phase/subject track.");
     this.name = "GradingSchemeMismatchError";
+  }
+}
+
+export class NoGradingSchemeSelectedError extends Error {
+  constructor() {
+    super("Pick a grade system for this phase first (\"Change Grade System\") before customizing its ranges.");
+    this.name = "NoGradingSchemeSelectedError";
   }
 }
 
@@ -244,12 +261,14 @@ export async function getGradingScheme(id: string): Promise<GradingSchemeRecord 
   return rows[0] ? mapRow(rows[0]) : null;
 }
 
+// Catalog listing only — always excludes school-owned forks, so a school
+// customizing its own ranges never clutters the platform-wide catalog view.
 export async function listGradingSchemes(
   curriculumId?: string,
   appliesTo?: GradingAppliesTo,
   roleScope?: GradeRoleScope,
 ): Promise<GradingSchemeRecord[]> {
-  const conditions: string[] = [];
+  const conditions: string[] = ["gs.school_id is null"];
   const params: unknown[] = [];
   if (curriculumId) {
     params.push(curriculumId);
@@ -346,7 +365,7 @@ export async function getSchoolGradingSchemes(schoolId: string): Promise<SchoolG
   } & SchemeRow>(
     `select sgs.applies_to as sel_applies_to, sgs.role_scope as sel_role_scope,
             gs.id, gs.curriculum_id, gs.regime, gs.applies_to, gs.role_scope, gs.name, gs.is_active,
-            gs.created_at, gs.updated_at, ${BANDS_JSON} as bands
+            gs.school_id, gs.created_at, gs.updated_at, ${BANDS_JSON} as bands
        from school_grading_scheme sgs
        join grading_scheme gs on gs.id = sgs.grading_scheme_id
       where sgs.school_id = $1
@@ -379,6 +398,74 @@ export async function setSchoolGradingScheme(
     [schoolId, appliesTo, roleScope, gradingSchemeId],
   );
   return { appliesTo, roleScope, scheme };
+}
+
+// Fork-on-customize: a school adjusting O-Level or A-Level-Principal ranges
+// never mutates the shared catalog template (or any other school's fork) —
+// the first edit clones it into a new school-owned row, and
+// school_grading_scheme is repointed at that fork. Editing an
+// already-forked scheme just updates it in place. Subsidiary is fixed and
+// can never be forked — enforced both here and by a DB check constraint.
+export async function editSchoolGradingRanges(
+  schoolId: string,
+  appliesTo: GradingAppliesTo,
+  roleScope: GradeRoleScope,
+  bands: GradeBandInput[],
+): Promise<SchoolGradingSchemeSelection> {
+  if (roleScope === "subsidiary") {
+    throw new InvalidGradingSchemeError("Subsidiary grading is fixed and can't be customized.");
+  }
+  const validated = assertBandsValid(bands);
+
+  const client = await pool.connect();
+  let targetId: string;
+  try {
+    await client.query("begin");
+    const current = await client.query<{
+      grading_scheme_id: string;
+      school_id: string | null;
+      curriculum_id: string;
+      regime: string;
+      name: string;
+    }>(
+      `select sgs.grading_scheme_id, gs.school_id, gs.curriculum_id, gs.regime, gs.name
+         from school_grading_scheme sgs
+         join grading_scheme gs on gs.id = sgs.grading_scheme_id
+        where sgs.school_id = $1 and sgs.applies_to = $2 and sgs.role_scope = $3`,
+      [schoolId, appliesTo, roleScope],
+    );
+    if (current.rows.length === 0) {
+      await client.query("rollback");
+      throw new NoGradingSchemeSelectedError();
+    }
+    const row = current.rows[0];
+
+    if (row.school_id === schoolId) {
+      targetId = row.grading_scheme_id;
+    } else {
+      const inserted = await client.query<{ id: string }>(
+        `insert into grading_scheme (school_id, curriculum_id, regime, applies_to, role_scope, name, is_active)
+         values ($1, $2, $3, $4, $5, $6, true) returning id`,
+        [schoolId, row.curriculum_id, row.regime, appliesTo, roleScope, row.name],
+      );
+      targetId = inserted.rows[0].id;
+      await client.query(
+        `insert into school_grading_scheme (school_id, applies_to, role_scope, grading_scheme_id, updated_at)
+         values ($1, $2, $3, $4, now())
+         on conflict (school_id, applies_to, role_scope)
+           do update set grading_scheme_id = excluded.grading_scheme_id, updated_at = now()`,
+        [schoolId, appliesTo, roleScope, targetId],
+      );
+    }
+    await replaceBands(client, targetId, validated);
+    await client.query("commit");
+  } catch (err) {
+    await client.query("rollback");
+    throw err;
+  } finally {
+    client.release();
+  }
+  return { appliesTo, roleScope, scheme: (await getGradingScheme(targetId))! };
 }
 
 // ─── Publish-time resolution ────────────────────────────────────────────────
@@ -447,7 +534,7 @@ export async function getActiveSchemeForSubject(
 
   const { rows } = await pool.query<SchemeRow>(
     `select gs.id, gs.curriculum_id, gs.regime, gs.applies_to, gs.role_scope, gs.name, gs.is_active,
-            gs.created_at, gs.updated_at, ${BANDS_JSON} as bands
+            gs.school_id, gs.created_at, gs.updated_at, ${BANDS_JSON} as bands
        from school_grading_scheme sgs
        join grading_scheme gs on gs.id = sgs.grading_scheme_id
       where sgs.school_id = $1 and sgs.applies_to = $2 and sgs.role_scope = $3`,

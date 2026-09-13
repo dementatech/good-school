@@ -91,14 +91,17 @@ import {
 import {
   createGradingScheme,
   deleteGradingScheme,
+  editSchoolGradingRanges,
   getSchoolGradingSchemes,
   GradingSchemeInUseError,
   GradingSchemeMismatchError,
   InvalidGradingSchemeError,
   listGradingSchemes,
+  NoGradingSchemeSelectedError,
   setSchoolGradingScheme,
   UnknownGradingSchemeError,
   updateGradingScheme,
+  type GradeBandInput,
   type GradeRoleScope,
   type GradingAppliesTo,
   type GradingSchemeInput,
@@ -109,6 +112,7 @@ import {
   combinationBodySchema,
   curriculumBodySchema,
   gradingSchemeBodySchema,
+  schoolGradingRangesBodySchema,
   schoolGradingSchemeBodySchema,
   schoolCombinationBodySchema,
   schoolCurriculumBodySchema,
@@ -768,6 +772,33 @@ export async function academicStructureRoutes(fastify: FastifyInstance) {
         return ok(selection);
       } catch (err) {
         if (err instanceof UnknownGradingSchemeError || err instanceof GradingSchemeMismatchError) {
+          return reply.status(400).send(fail(err.message));
+        }
+        throw err;
+      }
+    },
+  );
+
+  // "Edit my ranges" — O-Level / A-Level-Principal only, forks the school's
+  // selected catalog scheme into its own copy on first edit.
+  fastify.put<{
+    Body: { appliesTo: GradingAppliesTo; roleScope: GradeRoleScope; bands: GradeBandInput[] };
+  }>(
+    "/school-grading-schemes/ranges",
+    { preHandler: SCHOOL, schema: { body: schoolGradingRangesBodySchema } },
+    async (request, reply) => {
+      const schoolId = schoolOf(request, reply);
+      if (!schoolId) return;
+      try {
+        const selection = await editSchoolGradingRanges(
+          schoolId,
+          request.body.appliesTo,
+          request.body.roleScope,
+          request.body.bands,
+        );
+        return ok(selection);
+      } catch (err) {
+        if (err instanceof InvalidGradingSchemeError || err instanceof NoGradingSchemeSelectedError) {
           return reply.status(400).send(fail(err.message));
         }
         throw err;
