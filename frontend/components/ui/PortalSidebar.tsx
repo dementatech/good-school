@@ -184,9 +184,10 @@ function NavNode({ item, collapsed, pathname }: { item: NavItem; collapsed: bool
 }
 
 export interface PortalSidebarProps {
-  /** Two-letter mark shown in the brand box, e.g. "TC". */
-  brandInitials: string;
-  /** Full portal name, e.g. "Good School". */
+  /** The signed-in user's school logo, if one's on file — falls back to the
+   *  platform default (public/logo.png) otherwise, never the bare initials. */
+  brandLogoUrl?: string | null;
+  /** Full portal name — the signed-in user's school name, or "Good School". */
   brandLabel: string;
   subtitle?: string | null;
   nav: NavItem[];
@@ -205,7 +206,7 @@ export interface PortalSidebarProps {
  * there is exactly one nav-item list per portal either way.
  */
 export function PortalSidebar({
-  brandInitials,
+  brandLogoUrl,
   brandLabel,
   subtitle,
   nav,
@@ -220,6 +221,7 @@ export function PortalSidebar({
   useEffect(() => {
     try {
       const stored = window.localStorage.getItem(STORAGE_KEY);
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- one-shot localStorage hydrate, same pattern as accounts/page.tsx
       if (stored !== null) setCollapsed(stored === '1');
     } catch {
       // Storage disabled (private browsing) — falls back to the collapsed default.
@@ -262,9 +264,12 @@ export function PortalSidebar({
       </button>
 
       <div className={`flex items-center gap-3 border-b border-white/10 ${collapsed ? 'justify-center p-3' : 'p-5'}`}>
-        <div className="w-10 h-10 rounded-xl bg-white/15 flex items-center justify-center shrink-0">
-          <span className="text-white text-sm font-bold">{brandInitials}</span>
-        </div>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={brandLogoUrl || '/logo.png'}
+          alt=""
+          className="w-10 h-10 rounded-xl object-contain bg-white/15 shrink-0"
+        />
         {ready && !collapsed && (
           <div className="min-w-0">
             <p className="text-sm font-semibold text-white truncate">{brandLabel}</p>

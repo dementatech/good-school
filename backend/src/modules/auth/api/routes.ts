@@ -2,6 +2,7 @@ import type { FastifyInstance } from "fastify";
 import { login } from "../domain/login.js";
 import { resolveIdentifierKind } from "../domain/identifier.js";
 import { findUserById, findUsersByIdentifierForReset } from "../domain/users.repository.js";
+import { findSchoolBrandingById } from "../../schools/index.js";
 import { hashPassword, verifyPassword } from "../domain/password.js";
 import { pool } from "../../../shared/db/index.js";
 import {
@@ -49,6 +50,10 @@ export async function authRoutes(fastify: FastifyInstance) {
       const user = await findUserById(request.authUser!.user_id);
       if (!user) return reply.status(404).send({ error: "not_found" });
 
+      // super_admin has no school_id — the portal chrome falls back to the
+      // platform default branding in that case.
+      const branding = user.school_id ? await findSchoolBrandingById(user.school_id) : null;
+
       return {
         id: user.id,
         // `users` holds identity/auth only — no name columns (see the auth
@@ -59,6 +64,8 @@ export async function authRoutes(fastify: FastifyInstance) {
         systemId: user.system_id,
         role: user.role,
         schoolId: user.school_id,
+        schoolName: branding?.name ?? null,
+        schoolLogoUrl: branding?.logoUrl ?? null,
         mustChangePassword: user.must_change_password,
       };
     },

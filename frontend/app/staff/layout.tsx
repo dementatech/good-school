@@ -34,8 +34,8 @@ function StaffShell({ children }: { children: React.ReactNode }) {
   return (
     <div className="min-h-screen bg-bg flex">
       <PortalSidebar
-        brandInitials="GS"
-        brandLabel="Good School"
+        brandLogoUrl={user?.logoUrl}
+        brandLabel={user?.school || 'Good School'}
         subtitle={user?.name}
         nav={NAV}
         onSignOut={() => { logout(); router.push('/auth'); }}
@@ -49,15 +49,18 @@ function StaffShell({ children }: { children: React.ReactNode }) {
         <div className="md:hidden flex items-center justify-between px-4 py-3 border-b border-border bg-bg-card">
           <div className="flex items-center gap-2 min-w-0">
             <MobileNavDrawer
-              title="Good School"
+              title={user?.school || 'Good School'}
               subtitle={user?.name}
               items={NAV}
               onSignOut={() => { logout(); router.push('/auth'); }}
             />
-            <div className="w-8 h-8 rounded-lg bg-primary-700 flex items-center justify-center shrink-0">
-              <span className="text-white text-xs font-bold">GS</span>
-            </div>
-            <p className="text-sm font-semibold text-primary-900 truncate">Good School</p>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={user?.logoUrl || '/logo.png'}
+              alt=""
+              className="w-8 h-8 rounded-lg object-contain bg-white border border-[#EAEAEA] shrink-0"
+            />
+            <p className="text-sm font-semibold text-primary-900 truncate">{user?.school || 'Good School'}</p>
           </div>
           <NotificationBell />
         </div>
