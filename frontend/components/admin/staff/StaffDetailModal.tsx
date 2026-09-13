@@ -345,6 +345,12 @@ function EndAssignmentForm({ assignment, onDone }: { assignment: StaffAssignment
   );
 }
 
+// A subject's name alone can collide across phases (e.g. "Physics" offered
+// both O-Level and A-Level, as two distinct catalog rows) — this flat list
+// mixes both phases with no other grouping to disambiguate, unlike the
+// phase-headed checklist in StaffFormModal.
+const phaseSuffix = (phase: string) => (phase === 'O_LEVEL' ? 'O-Level' : 'A-Level');
+
 function SpecializationsPanel({ staff, onChanged }: { staff: Staff; onChanged: () => Promise<void> | void }) {
   const toast = useToast();
   const [subjects, setSubjects] = useState<CatalogSubject[]>([]);
@@ -384,14 +390,18 @@ function SpecializationsPanel({ staff, onChanged }: { staff: Staff; onChanged: (
     <div className="space-y-2">
       <div className="flex flex-wrap gap-1.5">
         {staff.specializations.length === 0 && <span className="text-sm text-text-faint">None on file.</span>}
-        {staff.specializations.map((s) => (
-          <span key={s.subjectId} className="inline-flex items-center gap-1 rounded-full bg-bg-subtle px-2.5 py-1 text-xs">
-            {s.subjectName}
-            <button type="button" onClick={() => void remove(s.subjectId)} className="text-text-faint hover:text-red-600">
-              <Trash2 className="w-3 h-3" aria-hidden />
-            </button>
-          </span>
-        ))}
+        {staff.specializations.map((s) => {
+          const phase = subjects.find((su) => su.id === s.subjectId)?.phase;
+          return (
+            <span key={s.subjectId} className="inline-flex items-center gap-1 rounded-full bg-bg-subtle px-2.5 py-1 text-xs">
+              {s.subjectName}
+              {phase && <span className="text-text-faint">— {phaseSuffix(phase)}</span>}
+              <button type="button" onClick={() => void remove(s.subjectId)} className="text-text-faint hover:text-red-600">
+                <Trash2 className="w-3 h-3" aria-hidden />
+              </button>
+            </span>
+          );
+        })}
       </div>
       {available.length > 0 && (
         <div className="flex gap-2 items-end">
@@ -400,7 +410,10 @@ function SpecializationsPanel({ staff, onChanged }: { staff: Staff; onChanged: (
               label="Add a specialization"
               value={adding}
               onChange={(e) => setAdding(e.target.value)}
-              options={[{ value: '', label: 'Select a subject…' }, ...available.map((s) => ({ value: s.id, label: s.name }))]}
+              options={[
+                { value: '', label: 'Select a subject…' },
+                ...available.map((s) => ({ value: s.id, label: `${s.name} — ${phaseSuffix(s.phase)}` })),
+              ]}
             />
           </div>
           <Button type="button" variant="outline" onClick={() => void add()} disabled={!adding}>
