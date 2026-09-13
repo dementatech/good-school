@@ -8,6 +8,7 @@ import { GenderDonutChart } from '@/components/ui/GenderDonutChart';
 import { PopulationBarChart } from '@/components/ui/PopulationBarChart';
 import { ActivityFeed } from '@/components/ui/ActivityFeed';
 import { Layers, UserCog, GraduationCap, ClipboardCheck, ClipboardList, TrendingUp } from 'lucide-react';
+import { fetchList, fetchOne } from '@/lib/api/envelope';
 
 interface Stats {
   classes: number;
@@ -61,44 +62,39 @@ export default function SchoolAdminDashboard() {
 
   useEffect(() => {
     async function load() {
-      try {
-        const [classes, staff, students, attendance, assessments] = await Promise.all([
-          fetch('/api/v1/school-admin/classes').then((r) => r.json()),
-          fetch('/api/v1/school-admin/staff').then((r) => r.json()),
-          fetch('/api/v1/school-admin/students').then((r) => r.json()),
-          fetch('/api/v1/school-admin/attendance').then((r) => r.json()),
-          fetch('/api/v1/school-admin/assessments').then((r) => r.json()),
-        ]);
-        setStats({
-          classes: classes.data?.length ?? 0,
-          staff: staff.data?.length ?? 0,
-          students: students.data?.length ?? 0,
-          attendance: attendance.data?.length ?? 0,
-          assessments: assessments.data?.length ?? 0,
-        });
-      } finally {
-        setLoading(false);
-      }
+      // classes/staff/students are real endpoints; attendance/assessments have
+      // no backend yet (roadmap work) and fetchList's `[]`-on-failure fallback
+      // is exactly the "show nothing rather than crash" behaviour wanted here.
+      const [classes, staff, students, attendance, assessments] = await Promise.all([
+        fetchList('/api/v1/academic/classes'),
+        fetchList('/api/v1/staff'),
+        fetchList('/api/v1/students'),
+        fetchList('/api/v1/school-admin/attendance'),
+        fetchList('/api/v1/school-admin/assessments'),
+      ]);
+      setStats({
+        classes: classes.length,
+        staff: staff.length,
+        students: students.length,
+        attendance: attendance.length,
+        assessments: assessments.length,
+      });
+      setLoading(false);
     }
     load();
   }, []);
 
   useEffect(() => {
     async function loadTrend() {
-      const res = await fetch('/api/v1/school-admin/performance?trend=1').then((r) => r.json());
-      if (res.success) setTrend(res.data);
+      setTrend(await fetchList<TrendPoint>('/api/v1/school-admin/performance?trend=1'));
     }
     loadTrend();
   }, []);
 
   useEffect(() => {
     async function loadAnalytics() {
-      try {
-        const res = await fetch('/api/v1/school-admin/analytics').then((r) => r.json());
-        if (res.success) setAnalytics(res.data);
-      } finally {
-        setAnalyticsLoading(false);
-      }
+      setAnalytics(await fetchOne<Analytics>('/api/v1/school-admin/analytics'));
+      setAnalyticsLoading(false);
     }
     loadAnalytics();
   }, []);
