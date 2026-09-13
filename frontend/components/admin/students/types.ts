@@ -49,6 +49,7 @@ export interface Student {
   phoneNumber: string | null;
   /** Active SchoolPay payment code for this student at this school, if set. */
   paymentCode: string | null;
+  photoUrl: string | null;
   isActive: boolean;
   createdAt: string;
   activeEnrollment: EnrollmentRecord | null;
