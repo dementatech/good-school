@@ -10,6 +10,9 @@ import { useToast } from '@/components/ui/ToastProvider';
 import { fetchList, submitJson } from '@/lib/api/envelope';
 import type { SchoolClass, Stream } from '@/components/admin/students/types';
 import type { StaffCandidate, Staff, SubjectTeacherAssignment } from '@/components/admin/staff/types';
+import type { CatalogSubject, SubjectPhase } from '@/components/admin/subjects/types';
+
+const PHASE_LABEL: Record<SubjectPhase, string> = { O_LEVEL: 'O-Level', A_LEVEL: 'A-Level' };
 
 // The allocation half of docs/design/teachers-module.md §4 — "who teaches
 // this" lives right next to "is this subject offered", the same screen, not
@@ -22,6 +25,7 @@ export function SubjectTeacherAssignmentModal({
   academicYearId,
   subjectId,
   subjectName,
+  subjectPhase,
 }: {
   open: boolean;
   onClose: () => void;
@@ -29,6 +33,7 @@ export function SubjectTeacherAssignmentModal({
   academicYearId: string;
   subjectId: string;
   subjectName: string;
+  subjectPhase: SubjectPhase;
 }) {
   const toast = useToast();
   const [assignments, setAssignments] = useState<SubjectTeacherAssignment[] | null>(null);
@@ -36,6 +41,7 @@ export function SubjectTeacherAssignmentModal({
   const [streams, setStreams] = useState<Stream[]>([]);
   const [candidates, setCandidates] = useState<StaffCandidate[]>([]);
   const [allActiveStaff, setAllActiveStaff] = useState<Staff[]>([]);
+  const [phaseSubjects, setPhaseSubjects] = useState<CatalogSubject[]>([]);
 
   const [classId, setClassId] = useState('');
   const [streamId, setStreamId] = useState('');
@@ -57,11 +63,18 @@ export function SubjectTeacherAssignmentModal({
       setClasses(await fetchList<SchoolClass>(`/api/v1/academic/classes?academicYearId=${academicYearId}`));
       setCandidates(await fetchList<StaffCandidate>(`/api/v1/staff/candidates?subjectId=${subjectId}`));
       setAllActiveStaff((await fetchList<Staff>('/api/v1/staff')).filter((s) => s.activeAssignment));
+      // Subject rows are single-phase (a school's O-Level and A-Level version
+      // of "Mathematics" are different subject ids) — this is how we tell
+      // whether a staff member's specialization is for THIS phase at all.
+      setPhaseSubjects(await fetchList<CatalogSubject>(`/api/v1/academic/subjects?phase=${subjectPhase}`));
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [subjectId, academicYearId]);
+  }, [subjectId, academicYearId, subjectPhase]);
 
-  const selectedClass = classes.find((c) => c.id === classId) ?? null;
+  // Only classes this subject's phase actually runs at — an O-Level subject
+  // has no business being assigned against an S5/S6 (A-Level) class.
+  const phaseClasses = classes.filter((c) => c.stagePhase === subjectPhase);
+  const selectedClass = phaseClasses.find((c) => c.id === classId) ?? null;
 
   // No synchronous reset here (react-hooks/set-state-in-effect) — a class
   // with no streams just leaves the prior stream list stale until a
@@ -75,11 +88,20 @@ export function SubjectTeacherAssignmentModal({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [classId]);
 
-  // Specialized-and-active candidates first (teachers-module.md §4.2); every
-  // other active staff member stays pickable underneath rather than blocking
-  // — a genuinely new subject with no specialist yet shouldn't be a dead end.
+  // Specialized-and-active candidates first (teachers-module.md §4.2); any
+  // other active staff member who teaches *something* at this same phase
+  // stays pickable underneath rather than blocking — a genuinely new subject
+  // with no specialist yet shouldn't be a dead end. Staff who only teach the
+  // other phase, or who aren't teaching staff at all, are left out entirely:
+  // an O-Level assignment has no business listing an A-Level-only teacher.
   const candidateIds = new Set(candidates.map((c) => c.staffId));
-  const fallbackStaff = allActiveStaff.filter((s) => !candidateIds.has(s.userId));
+  const phaseSubjectIds = new Set(phaseSubjects.map((s) => s.id));
+  const fallbackStaff = allActiveStaff.filter(
+    (s) =>
+      !candidateIds.has(s.userId) &&
+      s.category === 'teaching' &&
+      s.specializations.some((sp) => phaseSubjectIds.has(sp.subjectId)),
+  );
 
   async function assign(e: React.FormEvent) {
     e.preventDefault();
@@ -161,8 +183,13 @@ export function SubjectTeacherAssignmentModal({
                 value={classId}
                 onChange={(e) => setClassId(e.target.value)}
                 options={[
-                  { value: '', label: classes.length ? 'Select a class…' : 'No classes set up for this year yet' },
-                  ...classes.map((c) => ({ value: c.id, label: c.stageName })),
+                  {
+                    value: '',
+                    label: phaseClasses.length
+                      ? 'Select a class…'
+                      : `No ${PHASE_LABEL[subjectPhase]} classes set up for this year yet`,
+                  },
+                  ...phaseClasses.map((c) => ({ value: c.id, label: c.stageName })),
                 ]}
               />
               {selectedClass?.hasStreams && (
@@ -185,7 +212,7 @@ export function SubjectTeacherAssignmentModal({
                 options={[
                   { value: '', label: 'Select a teacher…' },
                   // Specialized-in-this-subject candidates surface first,
-                  // starred, ahead of every other active staff member.
+                  // starred, ahead of other same-phase teaching staff.
                   ...candidates.map((c) => ({
                     value: c.staffId,
                     label: `★ ${c.staffName} (${c.staffSystemId ?? '—'})`,
@@ -198,10 +225,16 @@ export function SubjectTeacherAssignmentModal({
               />
               <Input label="Start date" type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} required />
             </div>
-            {candidates.length === 0 && (
+            {candidates.length === 0 && fallbackStaff.length > 0 && (
               <p className="text-xs text-text-faint">
-                No staff specialize in {subjectName} yet — pick from every active staff member instead, or
-                leave this offered-but-unassigned for now.
+                No staff specialize in {subjectName} yet — pick from another {PHASE_LABEL[subjectPhase]} teacher
+                instead, or leave this offered-but-unassigned for now.
+              </p>
+            )}
+            {candidates.length === 0 && fallbackStaff.length === 0 && (
+              <p className="text-xs text-text-faint">
+                Nobody at this school teaches {PHASE_LABEL[subjectPhase]} yet — leave this
+                offered-but-unassigned for now.
               </p>
             )}
             <Button type="submit" isLoading={saving}>
