@@ -2,6 +2,13 @@ import { pool } from "../../../shared/db/index.js";
 import { generateTempPassword, hashPassword } from "../../auth/index.js";
 import { nextSystemId } from "../../../shared/system-id.js";
 import {
+  deleteStoredFile,
+  fileUrl,
+  storeFile,
+  UnsupportedFileTypeError,
+  type StorageProvider,
+} from "../../../shared/media.js";
+import {
   createEnrollment,
   getActiveEnrollment,
   type EnrollmentInput,
@@ -47,6 +54,10 @@ export interface StudentRecord {
   // this table. Null when the school hasn't recorded one yet — surfaced as a
   // gap in the admin UI rather than blocking anything.
   paymentCode: string | null;
+  // Photos are always images by construction (setStudentPhoto only accepts
+  // image mime types) — a placeholder image/* mimeType is enough for
+  // fileUrl() to pick Cloudinary's "image" resource type correctly.
+  photoUrl: string | null;
   isActive: boolean;
   createdAt: string;
   activeEnrollment: EnrollmentRecord | null;
@@ -107,6 +118,8 @@ interface StudentRow {
   email: string | null;
   phone_number: string | null;
   payment_code: string | null;
+  photo_path: string | null;
+  photo_provider: StorageProvider | null;
   is_active: boolean;
   created_at: string;
 }
@@ -114,7 +127,7 @@ interface StudentRow {
 const SELECT_STUDENT = `
   select u.id as user_id, u.system_id, u.email, u.phone_number,
          s.first_name, s.middle_name, s.last_name, s.date_of_birth, s.gender,
-         s.lin, s.lin_status, s.is_active, s.created_at,
+         s.lin, s.lin_status, s.photo_path, s.photo_provider, s.is_active, s.created_at,
          (select spc.external_payment_code
             from student_payment_code spc
            where spc.student_user_id = u.id and spc.school_id = u.school_id
@@ -138,6 +151,9 @@ function mapRow(row: StudentRow): Omit<StudentRecord, "activeEnrollment"> {
     email: row.email,
     phoneNumber: row.phone_number,
     paymentCode: row.payment_code,
+    photoUrl: row.photo_path
+      ? fileUrl({ provider: row.photo_provider ?? "local", ref: row.photo_path, mimeType: "image/jpeg" })
+      : null,
     isActive: row.is_active,
     createdAt: row.created_at,
   };
@@ -373,6 +389,44 @@ export async function updateStudent(
     client.release();
   }
 }
+
+// Uploads a new photo (replacing and deleting any prior one — via Cloudinary
+// when configured, local disk otherwise, see shared/media.ts) or, given
+// `null`, clears it back to the default initials avatar the frontend renders
+// when photoUrl is null. Mirrors teachers/domain/staff.repository.ts's
+// setStaffPhoto.
+export async function setStudentPhoto(
+  schoolId: string,
+  userId: string,
+  file: { mimeType: string; data: Buffer } | null,
+): Promise<StudentRecord | null> {
+  const existing = await pool.query<{ photo_path: string | null; photo_provider: StorageProvider | null }>(
+    `select s.photo_path, s.photo_provider from students s
+     join users u on u.id = s.user_id
+     where u.id = $1 and u.school_id = $2 and u.role = 'student'`,
+    [userId, schoolId],
+  );
+  if (!existing.rows[0]) return null;
+  const prior = existing.rows[0];
+
+  let stored: Awaited<ReturnType<typeof storeFile>> | null = null;
+  if (file) {
+    stored = await storeFile("students", file.mimeType, file.data);
+  }
+
+  await pool.query(
+    `update students set photo_path = $1, photo_provider = $2, updated_at = now() where user_id = $3`,
+    [stored?.ref ?? null, stored?.provider ?? null, userId],
+  );
+
+  if (prior.photo_path) {
+    await deleteStoredFile({ provider: prior.photo_provider ?? "local", ref: prior.photo_path, mimeType: "image/jpeg" });
+  }
+
+  return getStudent(schoolId, userId);
+}
+
+export { UnsupportedFileTypeError };
 
 export async function deleteStudent(schoolId: string, userId: string): Promise<boolean> {
   const result = await pool.query(

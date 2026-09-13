@@ -8,24 +8,301 @@ import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import { useToast } from '@/components/ui/ToastProvider';
 import { fetchList, submitJson } from '@/lib/api/envelope';
+import { Camera, Trash2, X } from 'lucide-react';
 import {
   ENTRY_TYPE_LABEL,
   ENTRY_TYPES,
   EXIT_TYPE_LABEL,
   EXIT_TYPES,
+  GUARDIAN_ROLES,
   LIN_STATUS_LABEL,
   studentFullName,
   type AcademicYear,
   type EnrollmentRecord,
   type EntryType,
   type ExitType,
+  type GuardianRole,
   type SchoolClass,
   type Stream,
   type Student,
   type StudentGuardian,
 } from './types';
+import { StudentAvatar } from './StudentAvatar';
 import { StudentSubjectsPanel } from './StudentSubjectsPanel';
 import { PriorExamsSection } from './PriorExamsSection';
+
+function PhotoEditor({ student, onChanged }: { student: Student; onChanged: () => Promise<void> | void }) {
+  const toast = useToast();
+  const [uploading, setUploading] = useState(false);
+  // Local override so the avatar updates the moment an upload succeeds,
+  // rather than waiting on the parent list's refetch to flow a new `student`
+  // prop back down here (the modal doesn't get closed/reopened just for this).
+  const [photoUrl, setPhotoUrl] = useState(student.photoUrl);
+
+  async function upload(file: File) {
+    setUploading(true);
+    try {
+      const form = new FormData();
+      form.append('file', file);
+      const res = await fetch(`/api/v1/students/${student.userId}/photo`, {
+        method: 'POST',
+        body: form,
+        credentials: 'include',
+      });
+      const json = await res.json().catch(() => ({}));
+      if (res.ok && json.success !== false) {
+        setPhotoUrl(json.data.photoUrl);
+        await onChanged();
+      } else {
+        toast.error(json.error ?? 'Could not upload photo.');
+      }
+    } catch {
+      toast.error('Network error while uploading photo.');
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  async function remove() {
+    const res = await submitJson<Student>(`/api/v1/students/${student.userId}/photo`, 'DELETE');
+    if (res.ok) {
+      setPhotoUrl(null);
+      await onChanged();
+    } else {
+      toast.error(res.error!);
+    }
+  }
+
+  return (
+    <div className="flex items-center gap-4">
+      <StudentAvatar photoUrl={photoUrl} name={studentFullName(student)} size="lg" />
+      <div className="flex flex-col gap-2">
+        <label className="inline-flex items-center gap-1.5 text-sm font-medium text-primary-700 cursor-pointer hover:underline">
+          <Camera className="w-4 h-4" aria-hidden />
+          {uploading ? 'Uploading…' : photoUrl ? 'Replace photo' : 'Add photo'}
+          <input
+            type="file"
+            accept="image/jpeg,image/png,image/webp"
+            className="hidden"
+            disabled={uploading}
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              if (file) void upload(file);
+              e.target.value = '';
+            }}
+          />
+        </label>
+        {photoUrl && (
+          <button
+            type="button"
+            onClick={() => void remove()}
+            className="inline-flex items-center gap-1.5 text-sm text-text-muted hover:text-red-600"
+          >
+            <X className="w-4 h-4" aria-hidden />
+            Remove photo
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+interface GuardianSearchResult {
+  id: string;
+  firstName: string;
+  lastName: string;
+  phone: string | null;
+  email: string | null;
+  relationshipToStudent: string | null;
+}
+
+function AddGuardianForm({ student, onDone }: { student: Student; onDone: () => Promise<void> | void }) {
+  const toast = useToast();
+  const [query, setQuery] = useState('');
+  const [results, setResults] = useState<GuardianSearchResult[]>([]);
+  const [searching, setSearching] = useState(false);
+  const [selected, setSelected] = useState<GuardianSearchResult | null>(null);
+
+  const [firstName, setFirstName] = useState('');
+  const [lastName, setLastName] = useState('');
+  const [phone, setPhone] = useState('');
+  const [email, setEmail] = useState('');
+  const [relationshipToStudent, setRelationshipToStudent] = useState('');
+  const [role, setRole] = useState<GuardianRole>('parent');
+  const [isPrimaryContact, setIsPrimaryContact] = useState(false);
+  const [isFeeResponsible, setIsFeeResponsible] = useState(false);
+  const [isEmergencyContact, setIsEmergencyContact] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  // Debounced search against existing guardians — reusing a sibling's
+  // already-on-file guardian instead of creating a duplicate `guardian` row.
+  useEffect(() => {
+    if (selected) return;
+    const controller = new AbortController();
+    const timer = setTimeout(() => {
+      void (async () => {
+        const q = query.trim();
+        if (q.length < 2) {
+          setResults([]);
+          return;
+        }
+        setSearching(true);
+        const list = await fetchList<GuardianSearchResult>(
+          `/api/v1/students/guardians/search?search=${encodeURIComponent(q)}`,
+        );
+        if (!controller.signal.aborted) setResults(list);
+        setSearching(false);
+      })();
+    }, 300);
+    return () => {
+      clearTimeout(timer);
+      controller.abort();
+    };
+  }, [query, selected]);
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!selected && (!firstName.trim() || !lastName.trim())) {
+      toast.error('Pick an existing guardian, or enter a first and last name.');
+      return;
+    }
+    setSaving(true);
+    const body = selected
+      ? { guardianId: selected.id, role, isPrimaryContact, isFeeResponsible, isEmergencyContact }
+      : {
+          newGuardian: {
+            firstName: firstName.trim(),
+            lastName: lastName.trim(),
+            phone: phone.trim() || null,
+            email: email.trim() || null,
+            relationshipToStudent: relationshipToStudent.trim() || null,
+          },
+          role,
+          isPrimaryContact,
+          isFeeResponsible,
+          isEmergencyContact,
+        };
+    const res = await submitJson(`/api/v1/students/${student.userId}/guardians`, 'POST', body);
+    setSaving(false);
+    if (res.ok) {
+      toast.success('Guardian added.');
+      await onDone();
+    } else {
+      toast.error(res.error!);
+    }
+  }
+
+  return (
+    <form onSubmit={submit} className="space-y-3 rounded-xl border border-border p-3">
+      {!selected && (
+        <div className="space-y-1.5">
+          <Input
+            label="Search existing guardians (optional)"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Name or phone — reuses a sibling's guardian instead of duplicating"
+          />
+          {searching && <p className="text-xs text-text-faint">Searching…</p>}
+          {results.length > 0 && (
+            <div className="space-y-1">
+              {results.map((g) => (
+                <button
+                  type="button"
+                  key={g.id}
+                  onClick={() => {
+                    setSelected(g);
+                    setResults([]);
+                    setQuery(`${g.firstName} ${g.lastName}`);
+                  }}
+                  className="block w-full text-left text-sm rounded-lg border border-border px-2 py-1.5 hover:bg-bg-muted"
+                >
+                  <span className="font-medium">
+                    {g.firstName} {g.lastName}
+                  </span>
+                  <span className="text-text-faint">
+                    {g.phone ? ` · ${g.phone}` : ''}
+                    {g.email ? ` · ${g.email}` : ''}
+                  </span>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+      {selected ? (
+        <div className="flex items-center justify-between rounded-lg bg-bg-muted px-2 py-1.5 text-sm">
+          <span>
+            <span className="font-medium">
+              {selected.firstName} {selected.lastName}
+            </span>{' '}
+            — existing guardian
+          </span>
+          <button
+            type="button"
+            onClick={() => {
+              setSelected(null);
+              setQuery('');
+            }}
+            className="text-text-faint hover:text-red-600"
+          >
+            <Trash2 className="w-4 h-4" />
+          </button>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <Input label="First name *" value={firstName} onChange={(e) => setFirstName(e.target.value)} required />
+          <Input label="Last name *" value={lastName} onChange={(e) => setLastName(e.target.value)} required />
+          <Input label="Phone" value={phone} onChange={(e) => setPhone(e.target.value)} />
+          <Input label="Email (optional)" type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
+          <Input
+            label="Relationship to student"
+            value={relationshipToStudent}
+            onChange={(e) => setRelationshipToStudent(e.target.value)}
+            placeholder="Mother, Father, Aunt…"
+          />
+        </div>
+      )}
+      <Select
+        label="Role"
+        value={role}
+        onChange={(e) => setRole(e.target.value as GuardianRole)}
+        options={GUARDIAN_ROLES.map((r) => ({ value: r, label: r }))}
+      />
+      <div className="flex flex-wrap gap-4">
+        <label className="flex items-center gap-2 text-sm text-[#12333F]">
+          <input
+            type="checkbox"
+            checked={isPrimaryContact}
+            onChange={(e) => setIsPrimaryContact(e.target.checked)}
+            className="rounded border-[#E5E5E5]"
+          />
+          Primary contact
+        </label>
+        <label className="flex items-center gap-2 text-sm text-[#12333F]">
+          <input
+            type="checkbox"
+            checked={isFeeResponsible}
+            onChange={(e) => setIsFeeResponsible(e.target.checked)}
+            className="rounded border-[#E5E5E5]"
+          />
+          Fee responsible
+        </label>
+        <label className="flex items-center gap-2 text-sm text-[#12333F]">
+          <input
+            type="checkbox"
+            checked={isEmergencyContact}
+            onChange={(e) => setIsEmergencyContact(e.target.checked)}
+            className="rounded border-[#E5E5E5]"
+          />
+          Emergency contact
+        </label>
+      </div>
+      <Button type="submit" isLoading={saving} inline>
+        Add guardian
+      </Button>
+    </form>
+  );
+}
 
 function statusVariant(status: EnrollmentRecord['status']): 'default' | 'accent' | 'success' | 'muted' {
   if (status === 'active') return 'success';
@@ -167,10 +444,12 @@ export function StudentDetailModal({
   onChanged: () => Promise<void> | void;
   student: Student;
 }) {
+  const toast = useToast();
   const [guardians, setGuardians] = useState<StudentGuardian[] | null>(null);
   const [history, setHistory] = useState<EnrollmentRecord[] | null>(null);
   const [showWithdraw, setShowWithdraw] = useState(false);
   const [showNewEnrollment, setShowNewEnrollment] = useState(false);
+  const [showAddGuardian, setShowAddGuardian] = useState(false);
 
   const load = async () => {
     setGuardians(await fetchList<StudentGuardian>(`/api/v1/students/${student.userId}/guardians`));
@@ -184,6 +463,7 @@ export function StudentDetailModal({
       await load();
       setShowWithdraw(false);
       setShowNewEnrollment(false);
+      setShowAddGuardian(false);
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [student.userId]);
@@ -193,11 +473,26 @@ export function StudentDetailModal({
     await onChanged();
     setShowWithdraw(false);
     setShowNewEnrollment(false);
+    setShowAddGuardian(false);
   };
+
+  async function removeGuardian(guardianId: string) {
+    const res = await submitJson(`/api/v1/students/${student.userId}/guardians/${guardianId}`, 'DELETE');
+    if (res.ok) {
+      toast.success('Guardian removed.');
+      await refresh();
+    } else {
+      toast.error(res.error!);
+    }
+  }
 
   return (
     <Modal open={open} onClose={onClose} title={studentFullName(student)} size="lg">
       <div className="space-y-6">
+        <section>
+          <PhotoEditor student={student} onChanged={onChanged} />
+        </section>
+
         <section className="space-y-1 text-sm">
           <div className="grid grid-cols-2 gap-x-4 gap-y-1.5">
             <div><span className="text-text-faint">Student ID</span><div className="font-medium">{student.systemId ?? '—'}</div></div>
@@ -272,7 +567,17 @@ export function StudentDetailModal({
         </section>
 
         <section>
-          <h3 className="text-xs font-bold uppercase tracking-widest text-text-faint mb-2">Guardians</h3>
+          <div className="flex items-center justify-between mb-2">
+            <h3 className="text-xs font-bold uppercase tracking-widest text-text-faint">Guardians</h3>
+            <Button type="button" variant="outline" inline onClick={() => setShowAddGuardian((v) => !v)}>
+              Add guardian
+            </Button>
+          </div>
+          {showAddGuardian && (
+            <div className="mb-3">
+              <AddGuardianForm student={student} onDone={refresh} />
+            </div>
+          )}
           {guardians === null ? (
             <p className="text-sm text-text-faint">Loading…</p>
           ) : guardians.length === 0 ? (
@@ -285,10 +590,20 @@ export function StudentDetailModal({
                     <div className="font-medium">{g.firstName} {g.lastName} <span className="text-text-faint font-normal capitalize">({g.role})</span></div>
                     <div className="text-text-faint">{g.phone ?? '—'}{g.email ? ` · ${g.email}` : ''}{g.relationshipToStudent ? ` · ${g.relationshipToStudent}` : ''}</div>
                   </div>
-                  <div className="flex gap-1">
-                    {g.isPrimaryContact && <Badge variant="default">Primary</Badge>}
-                    {g.isFeeResponsible && <Badge variant="accent">Fees</Badge>}
-                    {g.isEmergencyContact && <Badge variant="muted">Emergency</Badge>}
+                  <div className="flex items-center gap-2">
+                    <div className="flex gap-1">
+                      {g.isPrimaryContact && <Badge variant="default">Primary</Badge>}
+                      {g.isFeeResponsible && <Badge variant="accent">Fees</Badge>}
+                      {g.isEmergencyContact && <Badge variant="muted">Emergency</Badge>}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => void removeGuardian(g.id)}
+                      className="text-text-faint hover:text-red-600"
+                      aria-label={`Remove ${g.firstName} ${g.lastName}`}
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
                   </div>
                 </div>
               ))}

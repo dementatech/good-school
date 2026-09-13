@@ -35,10 +35,12 @@ import {
   restoreStudent,
   searchGuardians,
   selectCombination,
+  setStudentPhoto,
   setStudentSubjectStatus,
   unlinkGuardianFromStudent,
   updateStudent,
   withdrawEnrollment,
+  UnsupportedFileTypeError,
   type CreateStudentInput,
   type StudentIdentityInput,
 } from "../domain/students.repository.js";
@@ -186,6 +188,35 @@ export async function studentsRoutes(fastify: FastifyInstance) {
       return student ? ok(student) : reply.status(404).send(fail("not_found"));
     },
   );
+
+  // Multipart upload — @fastify/multipart is registered globally in
+  // server.ts. A student record with no photo shows an initials avatar
+  // instead; this is how that gets replaced with a real one.
+  fastify.post<{ Params: { id: string } }>("/:id/photo", { preHandler: ADMIN }, async (request, reply) => {
+    const schoolId = schoolOf(request, reply);
+    if (!schoolId) return;
+    const uploaded = await request.file();
+    if (!uploaded) return reply.status(400).send(fail("No file uploaded"));
+    const data = await uploaded.toBuffer();
+    try {
+      const student = await setStudentPhoto(schoolId, request.params.id, {
+        mimeType: uploaded.mimetype,
+        data,
+      });
+      return student ? ok(student) : reply.status(404).send(fail("not_found"));
+    } catch (err) {
+      if (err instanceof UnsupportedFileTypeError) return reply.status(400).send(fail(err.message));
+      throw err;
+    }
+  });
+
+  // Clears back to the default initials avatar.
+  fastify.delete<{ Params: { id: string } }>("/:id/photo", { preHandler: ADMIN }, async (request, reply) => {
+    const schoolId = schoolOf(request, reply);
+    if (!schoolId) return;
+    const student = await setStudentPhoto(schoolId, request.params.id, null);
+    return student ? ok(student) : reply.status(404).send(fail("not_found"));
+  });
 
   // Backs the "include passwords" export option — bulk-resets and returns
   // fresh temp passwords for a filtered set of students in one request.
