@@ -16,6 +16,12 @@ import {
   listGuardianAccounts,
 } from "../domain/parent-accounts.repository.js";
 import {
+  getGenderBreakdown,
+  getPopulationByClass,
+  getRecentActivity,
+  getSystemStats,
+} from "../domain/system-dashboard.repository.js";
+import {
   accountTypeParamsSchema,
   resetPasswordsBodySchema,
   updateAccountBodySchema,
@@ -32,6 +38,18 @@ function statusFor(error: string): number {
 }
 
 export async function adminRoutes(fastify: FastifyInstance) {
+  // ── Super-admin dashboard ────────────────────────────────────────────────
+
+  fastify.get("/system/stats", { preHandler: SUPER }, async () => ok(await getSystemStats()));
+
+  fastify.get("/system/analytics", { preHandler: SUPER }, async () =>
+    ok({
+      gender: await getGenderBreakdown(),
+      population: await getPopulationByClass(),
+      activity: await getRecentActivity(),
+    }),
+  );
+
   // ── Account lists ────────────────────────────────────────────────────────
 
   fastify.get(
