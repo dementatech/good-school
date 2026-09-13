@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { Share } from "lucide-react";
 
 const DISMISS_KEY = "gs-install-prompt-dismissed";
 const DISMISS_DAYS = 14;
@@ -43,9 +44,16 @@ function isIOSDevice() {
   return isIOSUA || isIPadOS13;
 }
 
+// In-app webviews (Facebook, Instagram, TikTok, WeChat, ...) render pages in a
+// stripped-down share sheet that has no "Add to Home Screen" entry at all —
+// the visitor has to leave the host app and open the link in Safari first.
+function isIOSInAppBrowser() {
+  return /FBAN|FBAV|Instagram|Line\/|MicroMessenger|TikTok|Twitter/.test(navigator.userAgent);
+}
+
 export function InstallPrompt() {
   const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null);
-  const [showIOSBanner, setShowIOSBanner] = useState(false);
+  const [iosMode, setIosMode] = useState<"share" | "in-app" | null>(null);
 
   useEffect(() => {
     if (isStandalone() || isDismissed()) return;
@@ -53,7 +61,7 @@ export function InstallPrompt() {
     if (isIOSDevice()) {
       // One-shot client feature-detection hydrate, same pattern as accounts/page.tsx.
       // eslint-disable-next-line react-hooks/set-state-in-effect -- one-shot UA/standalone check, not a subscribable store
-      setShowIOSBanner(true);
+      setIosMode(isIOSInAppBrowser() ? "in-app" : "share");
       return;
     }
 
@@ -76,7 +84,7 @@ export function InstallPrompt() {
   function dismiss() {
     setDismissed();
     setDeferredPrompt(null);
-    setShowIOSBanner(false);
+    setIosMode(null);
   }
 
   async function handleInstallClick() {
@@ -110,17 +118,29 @@ export function InstallPrompt() {
     );
   }
 
-  if (showIOSBanner) {
+  if (iosMode) {
     return (
-      <div className="fixed inset-x-4 bottom-4 z-50 flex items-center justify-between gap-3 rounded-xl bg-primary-700 px-4 py-3 text-white shadow-lg sm:inset-x-auto sm:right-4 sm:max-w-sm">
-        <p className="text-sm">
-          Install Good School: tap <span aria-hidden="true">Share</span>, then &ldquo;Add to Home
-          Screen&rdquo;.
+      <div className="fixed inset-x-4 bottom-4 z-50 flex items-center gap-3 rounded-xl bg-primary-700 px-4 py-3 text-white shadow-lg sm:inset-x-auto sm:right-4 sm:max-w-sm">
+        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-white/15">
+          <Share className="h-5 w-5" aria-hidden="true" />
+        </span>
+        <p className="flex-1 text-sm">
+          {iosMode === "in-app" ? (
+            <>
+              Open this page in Safari, then tap <strong>Share</strong> and &ldquo;Add to Home
+              Screen&rdquo; to install Good School.
+            </>
+          ) : (
+            <>
+              Tap <strong>Share</strong> below, then &ldquo;Add to Home Screen&rdquo; to install
+              Good School.
+            </>
+          )}
         </p>
         <button
           type="button"
           onClick={dismiss}
-          className="shrink-0 rounded-md px-2 py-1 text-sm text-white/80 hover:text-white"
+          className="shrink-0 self-start rounded-md px-2 py-1 text-sm text-white/80 hover:text-white"
         >
           Got it
         </button>
