@@ -13,6 +13,14 @@ import { CurriculumFormModal } from '@/components/admin/curriculum/CurriculumFor
 import { StageFormModal } from '@/components/admin/curriculum/StageFormModal';
 import { SubjectFormModal } from '@/components/admin/curriculum/SubjectFormModal';
 import { CombinationFormModal } from '@/components/admin/curriculum/CombinationFormModal';
+import { GradingSchemeFormModal } from '@/components/admin/grading/GradingSchemeFormModal';
+import {
+  APPLIES_TO_LABEL,
+  REGIME_LABEL,
+  ROLE_SCOPE_LABEL,
+  type GradingAppliesTo,
+  type GradingScheme,
+} from '@/components/admin/grading/types';
 import {
   A_LEVEL_CATEGORIES,
   CATEGORY_LABEL,
@@ -52,6 +60,7 @@ export default function CurriculumPage() {
   const [stages, setStages] = useState<Stage[]>([]);
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [combinations, setCombinations] = useState<Combination[]>([]);
+  const [gradingSchemes, setGradingSchemes] = useState<GradingScheme[]>([]);
   const [schoolName, setSchoolName] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [rejecting, setRejecting] = useState<Subject | null>(null);
@@ -62,6 +71,10 @@ export default function CurriculumPage() {
   const [stageModal, setStageModal] = useState<{ initial?: Stage } | null>(null);
   const [subjectModal, setSubjectModal] = useState<{ phase: Phase; initial?: Subject } | null>(null);
   const [combinationModal, setCombinationModal] = useState<{ initial?: Combination } | null>(null);
+  const [gradingSchemeModal, setGradingSchemeModal] = useState<{
+    appliesTo: GradingAppliesTo;
+    initial?: GradingScheme;
+  } | null>(null);
 
   const loadCurricula = useCallback(async () => {
     const res = await fetch('/api/v1/academic/curricula').then((r) => r.json());
@@ -71,14 +84,16 @@ export default function CurriculumPage() {
 
   const reloadForCurriculum = useCallback(async (cid: string) => {
     if (!cid) return;
-    const [st, su, co] = await Promise.all([
+    const [st, su, co, gs] = await Promise.all([
       fetch(`/api/v1/academic/stages?curriculumId=${cid}`).then((r) => r.json()),
       fetch(`/api/v1/academic/subjects?curriculumId=${cid}`).then((r) => r.json()),
       fetch(`/api/v1/academic/combinations?curriculumId=${cid}`).then((r) => r.json()),
+      fetch(`/api/v1/academic/grading-schemes?curriculumId=${cid}`).then((r) => r.json()),
     ]);
     if (st.success) setStages(st.data);
     if (su.success) setSubjects(su.data);
     if (co.success) setCombinations(co.data);
+    if (gs.success) setGradingSchemes(gs.data);
   }, []);
 
   useEffect(() => {
@@ -337,6 +352,35 @@ export default function CurriculumPage() {
     },
   ];
 
+  const gradingSchemeCols: DataTableColumn<GradingScheme>[] = [
+    { key: 'name', header: 'Name', value: (s) => s.name, render: (s) => <span className="font-medium">{s.name}</span> },
+    { key: 'appliesTo', header: 'Applies to', value: (s) => APPLIES_TO_LABEL[s.appliesTo] },
+    {
+      key: 'roleScope',
+      header: 'Track',
+      value: (s) => ROLE_SCOPE_LABEL[s.roleScope],
+      render: (s) => (s.roleScope === 'any' ? <span className="text-text-faint">—</span> : ROLE_SCOPE_LABEL[s.roleScope]),
+    },
+    { key: 'regime', header: 'Regime', value: (s) => REGIME_LABEL[s.regime] ?? s.regime, hideOnMobile: true },
+    { key: 'bands', header: 'Bands', value: (s) => s.bands.length, align: 'right' },
+    {
+      key: 'isActive',
+      header: 'Status',
+      value: (s) => (s.isActive ? 'Active' : 'Inactive'),
+      render: (s) => <Badge variant={s.isActive ? 'success' : 'muted'}>{s.isActive ? 'Active' : 'Inactive'}</Badge>,
+    },
+  ];
+  const gradingSchemeActions = (s: GradingScheme): DropdownMenuItem[] => [
+    { label: 'Edit', icon: Pencil, onClick: () => setGradingSchemeModal({ appliesTo: s.appliesTo, initial: s }) },
+    {
+      label: 'Delete',
+      icon: Trash2,
+      danger: true,
+      separatorBefore: true,
+      onClick: () => void del(`/api/v1/academic/grading-schemes/${s.id}`, `Delete "${s.name}"?`, s.name),
+    },
+  ];
+
   const addBtn = (label: string, onClick: () => void, disabled = false) => (
     <Button onClick={onClick} disabled={disabled}>
       <Plus className="w-4 h-4 mr-1.5" aria-hidden />
@@ -480,6 +524,22 @@ export default function CurriculumPage() {
         )}
       </Section>
 
+      <Section
+        title="Grading schemes"
+        description="How raw scores turn into grades. Schools pick one per phase (and, at A-Level, per subject track) — schools no longer define their own bands."
+      >
+        <DataTable
+          rows={gradingSchemes}
+          columns={gradingSchemeCols}
+          rowActions={gradingSchemeActions}
+          rowKey={(s) => s.id}
+          initialSort={{ key: 'appliesTo', direction: 'asc' }}
+          emptyMessage="No grading schemes yet."
+          exportFileName="grading-schemes"
+          actions={addBtn('Add scheme', () => setGradingSchemeModal({ appliesTo: 'O_LEVEL' }), !curriculumId)}
+        />
+      </Section>
+
       {/* ── modals ─────────────────────────────────────────────── */}
       {curriculumModal && (
         <CurriculumFormModal
@@ -540,6 +600,16 @@ export default function CurriculumPage() {
           curriculumId={curriculumId}
           subjects={comboSubjects}
           initial={combinationModal.initial}
+        />
+      )}
+      {gradingSchemeModal && (
+        <GradingSchemeFormModal
+          open
+          onClose={() => setGradingSchemeModal(null)}
+          onSaved={reloadAll}
+          curriculumId={curriculumId}
+          appliesTo={gradingSchemeModal.appliesTo}
+          initial={gradingSchemeModal.initial}
         />
       )}
     </div>

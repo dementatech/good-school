@@ -201,27 +201,46 @@ export const schoolCombinationBodySchema = {
 
 const gradeBandSchema = {
   type: "object",
-  required: ["label", "minPct", "maxPct"],
+  required: ["label", "minPct", "maxPct", "comment"],
   properties: {
     label: { type: "string", minLength: 1 },
     minPct: { type: "number", minimum: 0, maximum: 100 },
     maxPct: { type: "number", minimum: 0, maximum: 100 },
     points: { type: ["integer", "null"] },
     legacyEquivalent: { type: ["string", "null"] },
+    // Shown on the report card — distinct from the short `label`.
+    comment: { type: "string", minLength: 1 },
   },
   additionalProperties: false,
 } as const;
 
+// curriculumId is a query param on create (POST /grading-schemes?curriculumId=…),
+// not part of the body — same precedent as subjects. appliesTo/roleScope are
+// fixed at creation (grading-schemes.repository.ts ignores them on update).
 export const gradingSchemeBodySchema = {
   type: "object",
-  required: ["curriculumId", "regime", "appliesTo", "name", "bands"],
+  required: ["regime", "appliesTo", "name", "bands"],
   properties: {
-    curriculumId: { type: "string" },
     regime: { type: "string", minLength: 1 },
     appliesTo: { type: "string", enum: ["O_LEVEL", "A_LEVEL"] },
+    // Omit for O-Level (forced to 'any'). Required in practice for a real
+    // A-Level scheme — principal and subsidiary subjects use different bands.
+    roleScope: { type: "string", enum: ["any", "principal", "subsidiary"] },
     name: { type: "string", minLength: 1 },
     isActive: { type: "boolean" },
     bands: { type: "array", items: gradeBandSchema, minItems: 1 },
+  },
+  additionalProperties: false,
+} as const;
+
+// A school picking which catalog scheme applies to one phase/role.
+export const schoolGradingSchemeBodySchema = {
+  type: "object",
+  required: ["appliesTo", "roleScope", "gradingSchemeId"],
+  properties: {
+    appliesTo: { type: "string", enum: ["O_LEVEL", "A_LEVEL"] },
+    roleScope: { type: "string", enum: ["any", "principal", "subsidiary"] },
+    gradingSchemeId: { type: "string" },
   },
   additionalProperties: false,
 } as const;
