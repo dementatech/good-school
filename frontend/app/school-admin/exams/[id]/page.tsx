@@ -100,6 +100,7 @@ export default function SchoolAdminExamDetailPage() {
             {exam.status === 'active' ? 'Active' : 'Closed'}
           </Badge>
           {exam.marksEntryOpen && <Badge variant="accent">Marks entry open</Badge>}
+          {exam.publishedAt && <Badge variant="accent">Published {fmt(exam.publishedAt)}</Badge>}
         </h1>
         <p className="text-sm text-text-muted">
           {exam.termName} · window {fmt(exam.startsOn)}–{fmt(exam.endsOn)} · marks due{' '}

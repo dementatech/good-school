@@ -33,6 +33,10 @@ export interface VariantScore {
   variantId: string;
   rawScore: number | null;
   isAbsent: boolean;
+  /** Set only by publishing — that variant's own paper grade. Grading the
+   * MERGED subject score for a variant subject (rather than each paper on
+   * its own) is deferred past this slice — see publishSchoolExam. */
+  computedGrade?: string | null;
 }
 
 export interface MarkSheetRow {
@@ -47,6 +51,11 @@ export interface MarkSheetRow {
   /** Present only when `subject.hasVariant` — one entry per variant, in
    * `subject.variants` order. */
   variantScores?: VariantScore[];
+  /** Set only by publishing the exam (school-exams.repository.ts
+   * publishSchoolExam) — null until then, and for a variant subject this is
+   * the merged score's grade, not any one variant's. See migration
+   * 1700000054000_publish-exam-results. */
+  computedGrade?: string | null;
 }
 
 export interface MarkSheet {
@@ -59,6 +68,7 @@ export interface MarkSheet {
     marksDueOn: string;
     status: "active" | "closed";
     marksEntryOpen: boolean;
+    publishedAt: string | null;
   };
   subject: {
     id: string;
@@ -151,6 +161,13 @@ export class MarkSheetLockedError extends Error {
   }
 }
 
+export class ExamPublishedError extends Error {
+  constructor() {
+    super("This exam's results have been published. Ask a school admin to unpublish it before editing marks.");
+    this.name = "ExamPublishedError";
+  }
+}
+
 export class InvalidScoreError extends Error {
   constructor() {
     super("Scores must be numbers between 0 and 100.");
@@ -179,6 +196,7 @@ interface ExamContext {
   marksDueOn: string;
   status: "active" | "closed";
   marksEntryOpen: boolean;
+  publishedAt: string | null;
 }
 
 async function loadExam(schoolId: string, examId: string): Promise<ExamContext> {
@@ -194,9 +212,10 @@ async function loadExam(schoolId: string, examId: string): Promise<ExamContext> 
     marks_due_on: string;
     status: "active" | "closed";
     marks_entry_open: boolean;
+    published_at: string | null;
   }>(
     `select se.id, se.school_id, se.academic_year_id, se.term_id, t.name as term_name,
-            se.name, se.starts_on, se.ends_on, se.marks_due_on, se.status,
+            se.name, se.starts_on, se.ends_on, se.marks_due_on, se.status, se.published_at,
             (se.status = 'active' and current_date between se.starts_on and se.marks_due_on)
               as marks_entry_open
        from school_exam se
@@ -218,6 +237,7 @@ async function loadExam(schoolId: string, examId: string): Promise<ExamContext> 
     marksDueOn: r.marks_due_on,
     status: r.status,
     marksEntryOpen: r.marks_entry_open,
+    publishedAt: r.published_at,
   };
 }
 
@@ -313,13 +333,18 @@ async function isSlotSubmitted(exam: ExamContext, slot: SlotRef): Promise<string
 // Teachers may edit only while marks entry is open AND the slot is unsubmitted.
 // A school admin may edit whenever the exam itself is still active (the
 // "override" path), but a submitted slot must be explicitly reopened first.
+// Once the whole exam is published, nobody may edit until a school admin
+// unpublishes it — a published grade shouldn't silently drift out of sync
+// with a mark someone then changes.
 function canEdit(exam: ExamContext, submitted: boolean, actor: MarkSheetActor): boolean {
+  if (exam.publishedAt !== null) return false;
   if (submitted) return false;
   if (isAdmin(actor.role)) return exam.status === "active";
   return exam.marksEntryOpen;
 }
 
 function assertEditable(exam: ExamContext, submitted: boolean, actor: MarkSheetActor): void {
+  if (exam.publishedAt !== null) throw new ExamPublishedError();
   if (submitted) throw new MarkSheetLockedError();
   if (!canEdit(exam, submitted, actor)) throw new MarksEntryClosedError();
 }
@@ -414,8 +439,9 @@ export async function getMarkSheet(
     subject_variant_id: string | null;
     raw_score: string | null;
     is_absent: boolean;
+    computed_grade: string | null;
   }>(
-    `select student_user_id, subject_variant_id, raw_score, is_absent
+    `select student_user_id, subject_variant_id, raw_score, is_absent, computed_grade
        from exam_result where school_exam_id = $1 and subject_id = $2`,
     [exam.id, slot.subjectId],
   );
@@ -438,6 +464,7 @@ export async function getMarkSheet(
       marksDueOn: exam.marksDueOn,
       status: exam.status,
       marksEntryOpen: exam.marksEntryOpen,
+      publishedAt: exam.publishedAt,
     },
     subject: resolved.subject,
     class: resolved.klass,
@@ -455,6 +482,7 @@ export async function getMarkSheet(
           systemId: s.systemId,
           rawScore: m && m.raw_score !== null ? Number(m.raw_score) : null,
           isAbsent: m?.is_absent ?? false,
+          computedGrade: m?.computed_grade ?? null,
         };
       }
       const variantScores: VariantScore[] = variants.map((v) => {
@@ -463,6 +491,7 @@ export async function getMarkSheet(
           variantId: v.id,
           rawScore: m && m.raw_score !== null ? Number(m.raw_score) : null,
           isAbsent: m?.is_absent ?? false,
+          computedGrade: m?.computed_grade ?? null,
         };
       });
       const merged = mergeVariantScore(variantScores, variants);
@@ -713,9 +742,10 @@ export async function listAssignedExams(
     marks_due_on: string;
     status: "active" | "closed";
     marks_entry_open: boolean;
+    published_at: string | null;
   }>(
     `select distinct se.id, se.academic_year_id, se.term_id, t.name as term_name, se.name,
-            se.starts_on, se.ends_on, se.marks_due_on, se.status,
+            se.starts_on, se.ends_on, se.marks_due_on, se.status, se.published_at,
             (se.status = 'active' and current_date between se.starts_on and se.marks_due_on)
               as marks_entry_open
        from school_exam se
@@ -742,6 +772,7 @@ export async function listAssignedExams(
       marksDueOn: e.marks_due_on,
       status: e.status,
       marksEntryOpen: e.marks_entry_open,
+      publishedAt: e.published_at,
     };
     const slots = await slotsForExam(exam, staffId);
     out.push({
@@ -775,6 +806,7 @@ export async function examCompletion(
       marksDueOn: exam.marksDueOn,
       status: exam.status,
       marksEntryOpen: exam.marksEntryOpen,
+      publishedAt: exam.publishedAt,
     },
     slots,
   };
