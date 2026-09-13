@@ -1,6 +1,7 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { requireAuth } from "../../auth/index.js";
 import { ok, fail } from "../../../shared/envelope.js";
+import { notifyUsers } from "../../notifications/index.js";
 import {
   DuplicateExamCodeError,
   ExamSessionInUseError,
@@ -237,7 +238,16 @@ export async function examsRoutes(fastify: FastifyInstance) {
       const schoolId = schoolOf(request, reply);
       if (!schoolId) return;
       const result = await publishSchoolExam(schoolId, request.params.id);
-      return result ? ok(result) : reply.status(404).send(fail("not_found"));
+      if (!result) return reply.status(404).send(fail("not_found"));
+      // Fire-and-forget: notifyUsers never throws (see notifications/index.ts),
+      // and a slow/failed push must never hold up the publish response.
+      void notifyUsers(result.studentUserIds, {
+        type: "exam_results_published",
+        title: "Results published",
+        body: `Your results for ${result.exam.name} are ready.`,
+        link: `/student/results/${result.exam.id}`,
+      });
+      return ok(result);
     },
   );
 

@@ -85,7 +85,7 @@ export const FEATURES: Record<FeatureKey, FeatureMeta> = {
   student_import: { label: "Student Import", ready: false },
   student_portal: { label: "Student Portal", ready: false },
   parent_portal: { label: "Parent Portal", ready: false },
-  notifications: { label: "Notifications", ready: false },
+  notifications: { label: "Notifications", ready: true },
   account_settings: { label: "My Account", ready: false },
   // A staff member's own profile + self-service academic document upload
   // (docs/design/teacher-staff-module.md) — distinct from `account_settings`,

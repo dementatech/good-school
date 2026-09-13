@@ -5,6 +5,7 @@ import { ToastProvider } from "@/components/ui/ToastProvider";
 import { AuthProvider } from "@/components/auth/AuthContext";
 import { RegisterServiceWorker } from "@/components/RegisterServiceWorker";
 import { InstallPrompt } from "@/components/InstallPrompt";
+import { PushNotificationPrompt } from "@/components/PushNotificationPrompt";
 
 const quicksand = Quicksand({
   subsets: ["latin"],
@@ -35,7 +36,10 @@ export default function RootLayout({
     >
       <body className="min-h-full font-sans">
         <ToastProvider>
-          <AuthProvider>{children}</AuthProvider>
+          <AuthProvider>
+            {children}
+            <PushNotificationPrompt />
+          </AuthProvider>
         </ToastProvider>
         <RegisterServiceWorker />
         <InstallPrompt />

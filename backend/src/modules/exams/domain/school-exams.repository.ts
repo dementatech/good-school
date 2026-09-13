@@ -287,6 +287,10 @@ export interface PublishResult {
    * ships with zero bands until a school fills them in). */
   resultsGraded: number;
   resultsUngraded: number;
+  /** Every student with at least one result on this exam — who the route
+   * handler notifies once results go live. Collected here rather than a
+   * separate post-publish query since `results` is already in hand. */
+  studentUserIds: string[];
 }
 
 // Freezes every exam_result on this exam against the school's current
@@ -299,6 +303,7 @@ export async function publishSchoolExam(schoolId: string, id: string): Promise<P
   const client = await pool.connect();
   let resultsGraded = 0;
   let resultsUngraded = 0;
+  let studentUserIds: string[] = [];
   try {
     await client.query("begin");
     const owner = await client.query<{ academic_year_id: string }>(
@@ -329,6 +334,7 @@ export async function publishSchoolExam(schoolId: string, id: string): Promise<P
     // before grading, same weighting the mark sheet's "Final" column uses.
     const variantsBySubject = new Map<string, SubjectVariantSummary[]>();
     const subjectIds = [...new Set(results.map((r) => r.subject_id))];
+    studentUserIds = [...new Set(results.map((r) => r.student_user_id))];
     if (subjectIds.length > 0) {
       const { rows: variantRows } = await client.query<{
         subject_id: string;
@@ -420,7 +426,7 @@ export async function publishSchoolExam(schoolId: string, id: string): Promise<P
     client.release();
   }
   const exam = await getSchoolExam(schoolId, id);
-  return exam ? { exam, resultsGraded, resultsUngraded } : null;
+  return exam ? { exam, resultsGraded, resultsUngraded, studentUserIds } : null;
 }
 
 // Clears the freeze marker only — leaves computed_grade/grading_scheme_id on
