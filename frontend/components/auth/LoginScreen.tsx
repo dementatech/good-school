@@ -143,6 +143,8 @@ export const LoginScreen: React.FC<{
           </button>
 
           <div className="text-center mb-10">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/logo.png" alt="" className="w-14 h-14 mx-auto mb-4 object-contain" />
             <h1 className="text-2xl font-bold tracking-tight text-primary-900">Reset password</h1>
             <p className="text-sm text-text-muted mt-2">
               Enter your System ID or email and we&apos;ll send a reset link to the address on file.
@@ -205,8 +207,11 @@ export const LoginScreen: React.FC<{
           </button>
         )}
 
-        {/* Logo — free-standing, no container */}
+        {/* Logo — always the platform default here, never a school's own:
+            nobody's signed in yet, so there's no school to brand this for. */}
         <div className="text-center mb-10">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/logo.png" alt="" className="w-14 h-14 mx-auto mb-4 object-contain" />
           <h1 className="text-3xl font-bold tracking-tight text-primary-900">
             Good School
           </h1>
