@@ -37,7 +37,9 @@ import {
   UnknownSlotError,
   examCompletion,
   getMarkSheet,
+  getStudentExamResult,
   listAssignedExams,
+  listPublishedExamsForStudent,
   reopenMarkSheet,
   saveMarks,
   submitMarkSheet,
@@ -58,6 +60,7 @@ const SCHOOL = requireAuth(["admin", "school_admin", "super_admin"]);
 const TEACHER = requireAuth(["teacher"]);
 // Marks entry: the assigned teacher, or a school admin acting as an override.
 const MARKS = requireAuth(["teacher", "admin", "school_admin"]);
+const STUDENT = requireAuth(["student"]);
 
 function actorOf(request: FastifyRequest): MarkSheetActor {
   const auth = request.authUser!;
@@ -343,4 +346,19 @@ export async function examsRoutes(fastify: FastifyInstance) {
       }
     },
   );
+
+  // ═══ Student self-service — published results only (roadmap Step 4) ═════
+
+  fastify.get("/me", { preHandler: STUDENT }, async (request, reply) => {
+    const schoolId = schoolOf(request, reply);
+    if (!schoolId) return;
+    return ok(await listPublishedExamsForStudent(schoolId, request.authUser!.user_id));
+  });
+
+  fastify.get<{ Params: { id: string } }>("/me/:id", { preHandler: STUDENT }, async (request, reply) => {
+    const schoolId = schoolOf(request, reply);
+    if (!schoolId) return;
+    const result = await getStudentExamResult(schoolId, request.params.id, request.authUser!.user_id);
+    return result ? ok(result) : reply.status(404).send(fail("not_found"));
+  });
 }

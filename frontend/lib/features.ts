@@ -148,14 +148,14 @@ const ROUTE_FEATURES: { prefix: string; key: FeatureKey }[] = [
   { prefix: "/school-admin/performance", key: "performance" },
 
   { prefix: "/parent/notifications", key: "notifications" },
-  { prefix: "/parent/results", key: "parent_portal" },
+  { prefix: "/parent/results", key: "exams" },
   { prefix: "/parent/attendance", key: "parent_portal" },
   { prefix: "/parent/lessons", key: "parent_portal" },
   { prefix: "/parent/library", key: "parent_portal" },
   { prefix: "/parent/dashboard", key: "portal_home" },
 
   { prefix: "/student/library", key: "student_portal" },
-  { prefix: "/student/results", key: "student_portal" },
+  { prefix: "/student/results", key: "exams" },
   { prefix: "/student/list", key: "student_portal" },
   { prefix: "/student/take", key: "student_portal" },
   { prefix: "/student/paper", key: "student_portal" },
