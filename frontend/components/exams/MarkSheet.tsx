@@ -327,12 +327,16 @@ export function MarkSheet({
                 </th>
               ))}
               {hasVariant && <th className="py-2.5 px-2 w-24">Final</th>}
+              {sheet.exam.publishedAt && <th className="py-2.5 px-2 w-20">Grade</th>}
             </tr>
           </thead>
           <tbody>
             {sheet.rows.length === 0 && (
               <tr>
-                <td colSpan={2 + columns.length + (hasVariant ? 1 : 0)} className="py-8 text-center text-text-muted">
+                <td
+                  colSpan={2 + columns.length + (hasVariant ? 1 : 0) + (sheet.exam.publishedAt ? 1 : 0)}
+                  className="py-8 text-center text-text-muted"
+                >
                   No students on this sheet.
                 </td>
               </tr>
@@ -388,6 +392,15 @@ export function MarkSheet({
                       <span className="text-text-faint font-normal">—</span>
                     ) : (
                       r.rawScore
+                    )}
+                  </td>
+                )}
+                {sheet.exam.publishedAt && (
+                  <td className="py-1.5 px-2">
+                    {r.computedGrade ? (
+                      <Badge variant="accent">{r.computedGrade}</Badge>
+                    ) : (
+                      <span className="text-text-faint">—</span>
                     )}
                   </td>
                 )}

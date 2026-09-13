@@ -19,12 +19,15 @@ import {
   createSchoolExam,
   deleteSchoolExam,
   listSchoolExams,
+  publishSchoolExam,
   setSchoolExamStatus,
+  unpublishSchoolExam,
   updateSchoolExam,
   type CreateSchoolExamInput,
   type UpdateSchoolExamInput,
 } from "../domain/school-exams.repository.js";
 import {
+  ExamPublishedError,
   IncompleteMarkSheetError,
   InvalidScoreError,
   MarkSheetLockedError,
@@ -75,7 +78,8 @@ function replyMarksError(err: unknown, reply: FastifyReply): FastifyReply {
   if (
     err instanceof MarksEntryClosedError ||
     err instanceof MarkSheetLockedError ||
-    err instanceof IncompleteMarkSheetError
+    err instanceof IncompleteMarkSheetError ||
+    err instanceof ExamPublishedError
   ) {
     return reply.status(409).send(fail(err.message));
   }
@@ -219,6 +223,28 @@ export async function examsRoutes(fastify: FastifyInstance) {
       const schoolId = schoolOf(request, reply);
       if (!schoolId) return;
       const updated = await setSchoolExamStatus(schoolId, request.params.id, "active");
+      return updated ? ok(updated) : reply.status(404).send(fail("not_found"));
+    },
+  );
+
+  fastify.post<{ Params: { id: string } }>(
+    "/:id/publish",
+    { preHandler: SCHOOL },
+    async (request, reply) => {
+      const schoolId = schoolOf(request, reply);
+      if (!schoolId) return;
+      const result = await publishSchoolExam(schoolId, request.params.id);
+      return result ? ok(result) : reply.status(404).send(fail("not_found"));
+    },
+  );
+
+  fastify.post<{ Params: { id: string } }>(
+    "/:id/unpublish",
+    { preHandler: SCHOOL },
+    async (request, reply) => {
+      const schoolId = schoolOf(request, reply);
+      if (!schoolId) return;
+      const updated = await unpublishSchoolExam(schoolId, request.params.id);
       return updated ? ok(updated) : reply.status(404).send(fail("not_found"));
     },
   );

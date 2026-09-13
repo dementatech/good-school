@@ -184,6 +184,24 @@ export async function getGradingScheme(schoolId: string, id: string): Promise<Gr
   return rows[0] ? mapRow(rows[0]) : null;
 }
 
+// The scheme a subject's marks should be graded against at publish time —
+// the school's active scheme for that subject's own curriculum and phase.
+// Null when the school hasn't set one up (or none is active) for that
+// combination; publish degrades gracefully rather than failing on this.
+export async function getActiveSchemeForSubject(
+  schoolId: string,
+  subjectId: string,
+): Promise<GradingSchemeRecord | null> {
+  const { rows } = await pool.query<SchemeRow>(
+    `${SELECT_SCHEME}
+     where gs.school_id = $1 and gs.is_active
+       and gs.curriculum_id = (select curriculum_id from subject where id = $2)
+       and gs.applies_to = (select phase from subject where id = $2)`,
+    [schoolId, subjectId],
+  );
+  return rows[0] ? mapRow(rows[0]) : null;
+}
+
 export async function listGradingSchemes(
   schoolId: string,
   curriculumId?: string,

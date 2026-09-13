@@ -112,6 +112,7 @@ export default function SchoolAdminExamsPage() {
             {e.status === 'active' ? 'Active' : 'Closed'}
           </Badge>
           {e.marksEntryOpen && <Badge variant="accent">Marks entry open</Badge>}
+          {e.publishedAt && <Badge variant="accent">Published</Badge>}
         </span>
       ),
     },
@@ -134,6 +135,31 @@ export default function SchoolAdminExamsPage() {
           label: 'Reopen',
           icon: LockOpen,
           onClick: () => void act(`/api/v1/exams/${e.id}/reopen`, 'POST', 'Exam reopened.'),
+        },
+    e.publishedAt
+      ? {
+          label: 'Unpublish',
+          icon: LockOpen,
+          separatorBefore: true,
+          onClick: () =>
+            void act(
+              `/api/v1/exams/${e.id}/unpublish`,
+              'POST',
+              'Results unpublished — marks can be edited again.',
+              `Unpublish "${e.name}"? Grades will no longer be visible downstream until re-published.`,
+            ),
+        }
+      : {
+          label: 'Publish results',
+          icon: Lock,
+          separatorBefore: true,
+          onClick: () =>
+            void act(
+              `/api/v1/exams/${e.id}/publish`,
+              'POST',
+              'Results published.',
+              `Publish "${e.name}"? This freezes grades and blocks further mark edits until unpublished.`,
+            ),
         },
     {
       label: 'Delete',

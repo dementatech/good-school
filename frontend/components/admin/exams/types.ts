@@ -27,6 +27,7 @@ export interface SchoolExam {
   marksDueOn: string;
   status: SchoolExamStatus;
   marksEntryOpen: boolean;
+  publishedAt: string | null;
   createdAt: string;
   updatedAt: string;
 }

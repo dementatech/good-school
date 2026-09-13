@@ -23,6 +23,8 @@ export interface MarkSheetRow {
   isAbsent: boolean;
   /** Present only when subject.hasVariant — one entry per subject.variants. */
   variantScores?: VariantScore[];
+  /** Set only once the exam is published — null until then. */
+  computedGrade?: string | null;
 }
 
 export interface MarkSheet {
@@ -35,6 +37,7 @@ export interface MarkSheet {
     marksDueOn: string;
     status: 'active' | 'closed';
     marksEntryOpen: boolean;
+    publishedAt: string | null;
   };
   subject: { id: string; code: string; name: string; hasVariant: boolean; variants: SubjectVariantSummary[] };
   class: { id: string; name: string };

@@ -1,5 +1,12 @@
 import { pool } from "../../../shared/db/index.js";
-import { getCurrentAcademicYear, getCurrentTerm } from "../../academic-structure/index.js";
+import {
+  computeGrade,
+  getActiveSchemeForSubject,
+  getCurrentAcademicYear,
+  getCurrentTerm,
+  type GradeBandRecord,
+} from "../../academic-structure/index.js";
+import { mergeVariantScore, type SubjectVariantSummary } from "./exam-results.repository.js";
 
 // A school's activated exam — an instance of a super_admin exam_session,
 // pinned to the school's current academic year + current term at creation.
@@ -23,6 +30,10 @@ export interface SchoolExamRecord {
   status: SchoolExamStatus;
   /** Derived: status is active AND today is within [startsOn, marksDueOn]. */
   marksEntryOpen: boolean;
+  /** Set by publishSchoolExam — freezes exam_result.computed_grade and
+   * blocks further mark edits until unpublishSchoolExam clears it. See
+   * migration 1700000054000_publish-exam-results. */
+  publishedAt: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -92,6 +103,7 @@ interface SchoolExamRow {
   marks_due_on: string;
   status: SchoolExamStatus;
   marks_entry_open: boolean;
+  published_at: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -100,7 +112,7 @@ const SELECT_SCHOOL_EXAM = `
   select se.id, se.school_id, se.exam_session_id, es.exam_code,
          se.academic_year_id, ay.year_name as academic_year_name,
          se.term_id, t.name as term_name,
-         se.name, se.starts_on, se.ends_on, se.marks_due_on, se.status,
+         se.name, se.starts_on, se.ends_on, se.marks_due_on, se.status, se.published_at,
          (se.status = 'active' and current_date between se.starts_on and se.marks_due_on)
            as marks_entry_open,
          se.created_at, se.updated_at
@@ -129,6 +141,7 @@ function mapRow(row: SchoolExamRow): SchoolExamRecord {
     marksDueOn: row.marks_due_on,
     status: row.status,
     marksEntryOpen: row.marks_entry_open,
+    publishedAt: row.published_at,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -262,6 +275,153 @@ export async function setSchoolExamStatus(
   const result = await pool.query(
     `update school_exam set status = $1, updated_at = now() where id = $2 and school_id = $3`,
     [status, id, schoolId],
+  );
+  if ((result.rowCount ?? 0) === 0) return null;
+  return getSchoolExam(schoolId, id);
+}
+
+export interface PublishResult {
+  exam: SchoolExamRecord;
+  /** How many exam_result rows got a computed_grade vs. were left null —
+   * missing an active/complete grading_scheme for a subject degrades
+   * gracefully rather than failing the whole publish (e.g. the UACE scheme
+   * ships with zero bands until a school fills them in). */
+  resultsGraded: number;
+  resultsUngraded: number;
+}
+
+// Freezes every exam_result on this exam against the school's current
+// grading_scheme(s), and blocks further mark edits (exam-results.repository.ts
+// checks publishedAt) until unpublishSchoolExam. An explicit, idempotent
+// action — re-publishing recomputes every row from current marks/schemes,
+// never automatic, so a published grade doesn't drift out from under a
+// later edit. See migration 1700000054000_publish-exam-results.
+export async function publishSchoolExam(schoolId: string, id: string): Promise<PublishResult | null> {
+  const client = await pool.connect();
+  let resultsGraded = 0;
+  let resultsUngraded = 0;
+  try {
+    await client.query("begin");
+    const owner = await client.query(`select 1 from school_exam where id = $1 and school_id = $2`, [
+      id,
+      schoolId,
+    ]);
+    if (owner.rowCount === 0) {
+      await client.query("rollback");
+      return null;
+    }
+
+    const { rows: results } = await client.query<{
+      id: string;
+      student_user_id: string;
+      subject_id: string;
+      subject_variant_id: string | null;
+      raw_score: string | null;
+      is_absent: boolean;
+    }>(
+      `select id, student_user_id, subject_id, subject_variant_id, raw_score, is_absent
+         from exam_result where school_exam_id = $1`,
+      [id],
+    );
+
+    // One scheme lookup per subject, not per result row.
+    const schemeBySubject = new Map<string, { schemeId: string; bands: GradeBandRecord[] } | null>();
+    // One variant-list lookup per subject — needed to merge a variant
+    // subject's papers (each entered out of 100%) back into a single score
+    // before grading, same weighting the mark sheet's "Final" column uses.
+    const variantsBySubject = new Map<string, SubjectVariantSummary[]>();
+    const subjectIds = [...new Set(results.map((r) => r.subject_id))];
+    if (subjectIds.length > 0) {
+      const { rows: variantRows } = await client.query<{
+        subject_id: string;
+        id: string;
+        name: string;
+        code: string;
+        contribution_percent: string;
+      }>(
+        `select subject_id, id, name, code, contribution_percent
+           from subject_variant where subject_id = any($1::uuid[])`,
+        [subjectIds],
+      );
+      for (const v of variantRows) {
+        const list = variantsBySubject.get(v.subject_id) ?? [];
+        list.push({ id: v.id, name: v.name, code: v.code, contributionPercent: Number(v.contribution_percent) });
+        variantsBySubject.set(v.subject_id, list);
+      }
+    }
+
+    // Group by (student, subject) — a variant subject's papers must be
+    // merged into one score before grading, not graded independently.
+    const groups = new Map<string, typeof results>();
+    for (const r of results) {
+      const key = `${r.student_user_id}:${r.subject_id}`;
+      const list = groups.get(key);
+      if (list) list.push(r);
+      else groups.set(key, [r]);
+    }
+
+    for (const rows of groups.values()) {
+      const subjectId = rows[0].subject_id;
+      const variants = variantsBySubject.get(subjectId) ?? [];
+
+      if (!schemeBySubject.has(subjectId)) {
+        const scheme = await getActiveSchemeForSubject(schoolId, subjectId);
+        schemeBySubject.set(subjectId, scheme ? { schemeId: scheme.id, bands: scheme.bands } : null);
+      }
+      const scheme = schemeBySubject.get(subjectId) ?? null;
+
+      // Merge, even for a "group" of one plain (non-variant) row — mergeVariantScore
+      // with an empty variants list degenerates to that row's own score.
+      const merged =
+        variants.length > 0
+          ? mergeVariantScore(
+              rows.map((r) => ({
+                variantId: r.subject_variant_id ?? "",
+                rawScore: r.raw_score !== null ? Number(r.raw_score) : null,
+                isAbsent: r.is_absent,
+              })),
+              variants,
+            )
+          : { rawScore: rows[0].raw_score !== null ? Number(rows[0].raw_score) : null, isAbsent: rows[0].is_absent };
+
+      let grade: string | null = null;
+      let gradingSchemeId: string | null = null;
+      if (!merged.isAbsent && merged.rawScore !== null && scheme) {
+        grade = computeGrade(merged.rawScore, scheme.bands)?.label ?? null;
+        gradingSchemeId = scheme.schemeId;
+      }
+      if (grade !== null) resultsGraded++;
+      else resultsUngraded++;
+
+      // Same grade onto every row in the group — a variant subject's papers
+      // are entered separately but graded as one subject.
+      for (const r of rows) {
+        await client.query(
+          `update exam_result set computed_grade = $1, grading_scheme_id = $2, updated_at = now() where id = $3`,
+          [grade, gradingSchemeId, r.id],
+        );
+      }
+    }
+
+    await client.query(`update school_exam set published_at = now(), updated_at = now() where id = $1`, [id]);
+    await client.query("commit");
+  } catch (err) {
+    await client.query("rollback");
+    throw err;
+  } finally {
+    client.release();
+  }
+  const exam = await getSchoolExam(schoolId, id);
+  return exam ? { exam, resultsGraded, resultsUngraded } : null;
+}
+
+// Clears the freeze marker only — leaves computed_grade/grading_scheme_id on
+// exam_result as-is (a subsequent publish recomputes every row anyway), same
+// "reopen to unlock editing" shape as reopenMarkSheet.
+export async function unpublishSchoolExam(schoolId: string, id: string): Promise<SchoolExamRecord | null> {
+  const result = await pool.query(
+    `update school_exam set published_at = null, updated_at = now() where id = $1 and school_id = $2`,
+    [id, schoolId],
   );
   if ((result.rowCount ?? 0) === 0) return null;
   return getSchoolExam(schoolId, id);
