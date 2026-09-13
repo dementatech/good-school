@@ -3,77 +3,46 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
-import { DataTable, type DataTableColumn } from '@/components/ui/DataTable';
-import { type DropdownMenuItem } from '@/components/ui/DropdownMenu';
-import { useToast } from '@/components/ui/ToastProvider';
+import { Card } from '@/components/ui/Card';
 import { Loader } from '@/components/ui/loader';
-import { Pencil, Plus, Trash2 } from 'lucide-react';
-import { GradingSchemeFormModal } from '@/components/admin/grading/GradingSchemeFormModal';
+import { Settings2 } from 'lucide-react';
+import { ChangeGradeSystemModal } from '@/components/admin/grading/ChangeGradeSystemModal';
 import {
-  APPLIES_TO_LABEL,
   fetchList,
   REGIME_LABEL,
-  submitJson,
+  type GradeRoleScope,
   type GradingAppliesTo,
-  type GradingScheme,
+  type SchoolGradingSchemeSelection,
 } from '@/components/admin/grading/types';
 
+// One card per phase/track a school can independently pick a grade system
+// for. A-Level splits into Principal and Subsidiary because the two are
+// graded on genuinely different scales (A-E worth points vs. a 2-band
+// Fail/Pass) — see grading-schemes.repository.ts.
+const CARDS: { appliesTo: GradingAppliesTo; roleScope: GradeRoleScope; title: string }[] = [
+  { appliesTo: 'O_LEVEL', roleScope: 'any', title: 'O-Level' },
+  { appliesTo: 'A_LEVEL', roleScope: 'principal', title: 'A-Level — Principal subjects' },
+  { appliesTo: 'A_LEVEL', roleScope: 'subsidiary', title: 'A-Level — Subsidiary subjects' },
+];
+
 export default function SchoolAdminGradingSchemesPage() {
-  const toast = useToast();
   const [loading, setLoading] = useState(true);
   const [curriculumId, setCurriculumId] = useState('');
-  const [schemes, setSchemes] = useState<GradingScheme[]>([]);
-  const [modal, setModal] = useState<{ appliesTo: GradingAppliesTo; initial?: GradingScheme } | null>(null);
+  const [selections, setSelections] = useState<SchoolGradingSchemeSelection[]>([]);
+  const [changeModal, setChangeModal] = useState<(typeof CARDS)[number] | null>(null);
 
-  const load = useCallback(async (curId: string) => {
-    if (!curId) return;
-    setSchemes(await fetchList<GradingScheme>(`/api/v1/academic/grading-schemes?curriculumId=${curId}`));
+  const load = useCallback(async () => {
+    setSelections(await fetchList<SchoolGradingSchemeSelection>('/api/v1/academic/school-grading-schemes'));
   }, []);
 
   useEffect(() => {
     void (async () => {
       const schoolCurricula = await fetchList<{ curriculumId: string }>('/api/v1/academic/school-curricula');
-      const curId = schoolCurricula[0]?.curriculumId ?? '';
-      setCurriculumId(curId);
-      await load(curId);
+      setCurriculumId(schoolCurricula[0]?.curriculumId ?? '');
+      await load();
       setLoading(false);
     })();
   }, [load]);
-
-  async function del(scheme: GradingScheme) {
-    if (!confirm(`Delete "${scheme.name}"?`)) return;
-    const res = await submitJson(`/api/v1/academic/grading-schemes/${scheme.id}`, 'DELETE');
-    if (res.ok) {
-      toast.success('Grading scheme deleted.');
-      await load(curriculumId);
-    } else {
-      toast.error(res.error!);
-    }
-  }
-
-  const columns: DataTableColumn<GradingScheme>[] = [
-    { key: 'name', header: 'Name', value: (s) => s.name, render: (s) => <span className="font-medium">{s.name}</span> },
-    { key: 'regime', header: 'Regime', value: (s) => REGIME_LABEL[s.regime] ?? s.regime },
-    { key: 'bands', header: 'Bands', value: (s) => s.bands.length, align: 'right' },
-    {
-      key: 'isActive',
-      header: 'Status',
-      value: (s) => (s.isActive ? 'Active' : 'Inactive'),
-      render: (s) => <Badge variant={s.isActive ? 'success' : 'muted'}>{s.isActive ? 'Active' : 'Inactive'}</Badge>,
-    },
-  ];
-
-  const rowActions = (appliesTo: GradingAppliesTo) => (s: GradingScheme): DropdownMenuItem[] => [
-    { label: 'Edit', icon: Pencil, onClick: () => setModal({ appliesTo, initial: s }) },
-    { label: 'Delete', icon: Trash2, danger: true, separatorBefore: true, onClick: () => void del(s) },
-  ];
-
-  const addBtn = (appliesTo: GradingAppliesTo) => (
-    <Button onClick={() => setModal({ appliesTo })} disabled={!curriculumId}>
-      <Plus className="w-4 h-4 mr-1.5" aria-hidden />
-      Add scheme
-    </Button>
-  );
 
   if (loading) {
     return (
@@ -83,42 +52,76 @@ export default function SchoolAdminGradingSchemesPage() {
     );
   }
 
-  const byPhase = (phase: GradingAppliesTo) => schemes.filter((s) => s.appliesTo === phase);
+  const selectionFor = (appliesTo: GradingAppliesTo, roleScope: GradeRoleScope) =>
+    selections.find((s) => s.appliesTo === appliesTo && s.roleScope === roleScope) ?? null;
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-primary-900 mb-1">Grading Schemes</h1>
         <p className="text-sm text-text-muted">
-          How raw scores turn into grades — bands are yours to edit, seeded with UNEB&apos;s current
-          O-Level scale as a starting point. Each phase has one active scheme at a time.
+          How raw scores turn into grades — pick from the schemes a super-admin has published for your
+          curriculum. Your school no longer defines its own bands here.
         </p>
       </div>
 
-      {(Object.keys(APPLIES_TO_LABEL) as GradingAppliesTo[]).map((phase) => (
-        <div key={phase} className="space-y-2">
-          <h2 className="text-sm font-bold text-primary-900">{APPLIES_TO_LABEL[phase]} schemes</h2>
-          <DataTable
-            rows={byPhase(phase)}
-            columns={columns}
-            rowActions={rowActions(phase)}
-            rowKey={(s) => s.id}
-            initialSort={{ key: 'name', direction: 'asc' }}
-            emptyMessage={`No ${APPLIES_TO_LABEL[phase]} grading schemes yet.`}
-            exportFileName={`${phase.toLowerCase()}-grading-schemes`}
-            actions={addBtn(phase)}
-          />
-        </div>
-      ))}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        {CARDS.map((card) => {
+          const sel = selectionFor(card.appliesTo, card.roleScope);
+          return (
+            <Card key={`${card.appliesTo}-${card.roleScope}`} className="space-y-3">
+              <div>
+                <h2 className="text-sm font-bold text-primary-900">{card.title}</h2>
+                {sel ? (
+                  <p className="text-xs text-text-muted mt-0.5">
+                    {REGIME_LABEL[sel.scheme.regime] ?? sel.scheme.regime}
+                  </p>
+                ) : (
+                  <p className="text-xs text-text-faint mt-0.5">No scheme selected yet.</p>
+                )}
+              </div>
 
-      {modal && (
-        <GradingSchemeFormModal
+              {sel && (
+                <div>
+                  <p className="font-medium text-primary-900">{sel.scheme.name}</p>
+                  <div className="flex flex-wrap gap-1 mt-1.5">
+                    {[...sel.scheme.bands]
+                      .sort((a, b) => b.minPct - a.minPct)
+                      .map((b) => (
+                        <Badge key={b.id} variant="muted">
+                          {b.label}
+                          {b.points !== null ? ` · ${b.points}pt` : ''}
+                        </Badge>
+                      ))}
+                    {sel.scheme.bands.length === 0 && <span className="text-xs text-text-faint">No bands yet</span>}
+                  </div>
+                </div>
+              )}
+
+              <Button
+                variant="outline"
+                onClick={() => setChangeModal(card)}
+                disabled={!curriculumId}
+                className="w-full"
+              >
+                <Settings2 className="w-4 h-4 mr-1.5" aria-hidden />
+                Change Grade System
+              </Button>
+            </Card>
+          );
+        })}
+      </div>
+
+      {changeModal && (
+        <ChangeGradeSystemModal
           open
-          onClose={() => setModal(null)}
-          onSaved={() => load(curriculumId)}
+          onClose={() => setChangeModal(null)}
+          onSaved={load}
           curriculumId={curriculumId}
-          appliesTo={modal.appliesTo}
-          initial={modal.initial}
+          appliesTo={changeModal.appliesTo}
+          roleScope={changeModal.roleScope}
+          currentSchemeId={selectionFor(changeModal.appliesTo, changeModal.roleScope)?.scheme.id ?? null}
+          cardTitle={changeModal.title}
         />
       )}
     </div>

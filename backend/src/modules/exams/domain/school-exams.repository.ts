@@ -4,7 +4,6 @@ import {
   getActiveSchemeForSubject,
   getCurrentAcademicYear,
   getCurrentTerm,
-  type GradeBandRecord,
 } from "../../academic-structure/index.js";
 import { mergeVariantScore, type SubjectVariantSummary } from "./exam-results.repository.js";
 
@@ -302,14 +301,15 @@ export async function publishSchoolExam(schoolId: string, id: string): Promise<P
   let resultsUngraded = 0;
   try {
     await client.query("begin");
-    const owner = await client.query(`select 1 from school_exam where id = $1 and school_id = $2`, [
-      id,
-      schoolId,
-    ]);
+    const owner = await client.query<{ academic_year_id: string }>(
+      `select academic_year_id from school_exam where id = $1 and school_id = $2`,
+      [id, schoolId],
+    );
     if (owner.rowCount === 0) {
       await client.query("rollback");
       return null;
     }
+    const academicYearId = owner.rows[0].academic_year_id;
 
     const { rows: results } = await client.query<{
       id: string;
@@ -324,8 +324,6 @@ export async function publishSchoolExam(schoolId: string, id: string): Promise<P
       [id],
     );
 
-    // One scheme lookup per subject, not per result row.
-    const schemeBySubject = new Map<string, { schemeId: string; bands: GradeBandRecord[] } | null>();
     // One variant-list lookup per subject — needed to merge a variant
     // subject's papers (each entered out of 100%) back into a single score
     // before grading, same weighting the mark sheet's "Final" column uses.
@@ -362,13 +360,14 @@ export async function publishSchoolExam(schoolId: string, id: string): Promise<P
 
     for (const rows of groups.values()) {
       const subjectId = rows[0].subject_id;
+      const studentUserId = rows[0].student_user_id;
       const variants = variantsBySubject.get(subjectId) ?? [];
 
-      if (!schemeBySubject.has(subjectId)) {
-        const scheme = await getActiveSchemeForSubject(schoolId, subjectId);
-        schemeBySubject.set(subjectId, scheme ? { schemeId: scheme.id, bands: scheme.bands } : null);
-      }
-      const scheme = schemeBySubject.get(subjectId) ?? null;
+      // Which scheme applies depends on this STUDENT's role for the subject
+      // (principal vs. subsidiary at A-Level), not the subject alone — the
+      // same subject can be one student's principal and another's
+      // subsidiary choice, so this can't be cached across the whole exam.
+      const scheme = await getActiveSchemeForSubject(schoolId, subjectId, { academicYearId, studentUserId });
 
       // Build one entry per DEFINED variant (not per row that happens to
       // exist) — a variant with no exam_result row at all (never entered)
@@ -397,7 +396,7 @@ export async function publishSchoolExam(schoolId: string, id: string): Promise<P
       let gradingSchemeId: string | null = null;
       if (!merged.isAbsent && merged.rawScore !== null && scheme) {
         grade = computeGrade(merged.rawScore, scheme.bands)?.label ?? null;
-        gradingSchemeId = scheme.schemeId;
+        gradingSchemeId = scheme.id;
       }
       if (grade !== null) resultsGraded++;
       else resultsUngraded++;

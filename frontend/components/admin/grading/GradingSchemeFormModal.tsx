@@ -4,9 +4,18 @@ import { useState } from 'react';
 import { Modal } from '@/components/ui/Modal';
 import { Input } from '@/components/ui/Input';
 import { Button } from '@/components/ui/Button';
+import { Badge } from '@/components/ui/Badge';
 import { useToast } from '@/components/ui/ToastProvider';
 import { Plus, Trash2 } from 'lucide-react';
-import { APPLIES_TO_LABEL, submitJson, type GradeBand, type GradingAppliesTo, type GradingScheme } from './types';
+import {
+  APPLIES_TO_LABEL,
+  ROLE_SCOPE_LABEL,
+  submitJson,
+  type GradeBand,
+  type GradeRoleScope,
+  type GradingAppliesTo,
+  type GradingScheme,
+} from './types';
 
 /** A band row mid-edit — pct fields stay text so "" / "7." don't fight the
  * input while typing; parsed to a number only on submit. Same precedent as
@@ -17,6 +26,7 @@ interface BandDraft {
   maxPct: string;
   points: string;
   legacyEquivalent: string;
+  comment: string;
 }
 
 const toDraft = (b: GradeBand): BandDraft => ({
@@ -25,9 +35,12 @@ const toDraft = (b: GradeBand): BandDraft => ({
   maxPct: String(b.maxPct),
   points: b.points === null ? '' : String(b.points),
   legacyEquivalent: b.legacyEquivalent ?? '',
+  comment: b.comment,
 });
 
-const BLANK_BAND: BandDraft = { label: '', minPct: '', maxPct: '', points: '', legacyEquivalent: '' };
+const BLANK_BAND: BandDraft = { label: '', minPct: '', maxPct: '', points: '', legacyEquivalent: '', comment: '' };
+
+const ROLE_SCOPES: GradeRoleScope[] = ['principal', 'subsidiary'];
 
 /** Sorted by minPct, checks each band touches the next at hundredths (no gap,
  * no overlap) and the set spans 0-100 — mirrors assertBandsValid on the
@@ -60,9 +73,9 @@ export function GradingSchemeFormModal({
   open: boolean;
   onClose: () => void;
   onSaved: () => Promise<void> | void;
-  /** The school's curriculum — schemes are created within it. */
+  /** Used only when creating — schemes are created within a curriculum. */
   curriculumId: string;
-  /** Preselects the phase for a new scheme; locked implicitly by `initial` on edit. */
+  /** Preselects the phase for a new scheme; fixed (shown read-only) on edit. */
   appliesTo: GradingAppliesTo;
   initial?: GradingScheme;
 }) {
@@ -71,6 +84,7 @@ export function GradingSchemeFormModal({
     name: initial?.name ?? '',
     regime: initial?.regime ?? '',
     appliesTo: initial?.appliesTo ?? appliesTo,
+    roleScope: initial?.roleScope ?? (appliesTo === 'A_LEVEL' ? ROLE_SCOPES[0] : 'any'),
     isActive: initial?.isActive ?? true,
   });
   const [bands, setBands] = useState<BandDraft[]>(
@@ -96,6 +110,10 @@ export function GradingSchemeFormModal({
       toast.error('Every band needs a label.');
       return;
     }
+    if (bands.some((b) => !b.comment.trim())) {
+      toast.error('Every band needs a comment — it shows on the report card.');
+      return;
+    }
     if (issue) {
       toast.error(issue);
       return;
@@ -106,9 +124,9 @@ export function GradingSchemeFormModal({
     }
     setSaving(true);
     const payload = {
-      curriculumId,
       regime: form.regime.trim(),
       appliesTo: form.appliesTo,
+      roleScope: form.appliesTo === 'O_LEVEL' ? 'any' : form.roleScope,
       name: form.name.trim(),
       isActive: form.isActive,
       bands: bands.map((b) => ({
@@ -117,11 +135,12 @@ export function GradingSchemeFormModal({
         maxPct: Number(b.maxPct),
         points: b.points.trim() === '' ? null : Number(b.points),
         legacyEquivalent: b.legacyEquivalent.trim() || null,
+        comment: b.comment.trim(),
       })),
     };
     const res = initial
       ? await submitJson(`/api/v1/academic/grading-schemes/${initial.id}`, 'PATCH', payload)
-      : await submitJson('/api/v1/academic/grading-schemes', 'POST', payload);
+      : await submitJson(`/api/v1/academic/grading-schemes?curriculumId=${curriculumId}`, 'POST', payload);
     setSaving(false);
     if (res.ok) {
       toast.success(initial ? 'Grading scheme updated.' : 'Grading scheme added.');
@@ -154,31 +173,62 @@ export function GradingSchemeFormModal({
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
-            <label className="block text-xs font-medium text-text-muted tracking-wide mb-1">Applies to</label>
-            <select
-              value={form.appliesTo}
-              onChange={(e) => setForm({ ...form, appliesTo: e.target.value as GradingAppliesTo })}
-              className="w-full border border-border rounded-lg px-3 py-2.5 text-sm"
-            >
-              {(Object.keys(APPLIES_TO_LABEL) as GradingAppliesTo[]).map((p) => (
-                <option key={p} value={p}>
-                  {APPLIES_TO_LABEL[p]}
-                </option>
-              ))}
-            </select>
+            <p className="block text-xs font-medium text-text-muted tracking-wide mb-1">Applies to</p>
+            {initial ? (
+              <Badge variant="muted">{APPLIES_TO_LABEL[form.appliesTo]}</Badge>
+            ) : (
+              <select
+                value={form.appliesTo}
+                onChange={(e) => {
+                  const next = e.target.value as GradingAppliesTo;
+                  setForm({ ...form, appliesTo: next, roleScope: next === 'A_LEVEL' ? ROLE_SCOPES[0] : 'any' });
+                }}
+                className="w-full border border-border rounded-lg px-3 py-2.5 text-sm"
+              >
+                {(Object.keys(APPLIES_TO_LABEL) as GradingAppliesTo[]).map((p) => (
+                  <option key={p} value={p}>
+                    {APPLIES_TO_LABEL[p]}
+                  </option>
+                ))}
+              </select>
+            )}
           </div>
-          <div className="flex items-end">
-            <label className="flex items-center gap-2 text-sm text-[#12333F]">
-              <input
-                type="checkbox"
-                checked={form.isActive}
-                onChange={(e) => setForm({ ...form, isActive: e.target.checked })}
-                className="rounded border-[#E5E5E5]"
-              />
-              Active (the scheme in effect for this phase)
-            </label>
-          </div>
+          {form.appliesTo === 'A_LEVEL' && (
+            <div>
+              <p className="block text-xs font-medium text-text-muted tracking-wide mb-1">Subject track</p>
+              {initial ? (
+                <Badge variant="muted">{ROLE_SCOPE_LABEL[form.roleScope]}</Badge>
+              ) : (
+                <select
+                  value={form.roleScope}
+                  onChange={(e) => setForm({ ...form, roleScope: e.target.value as GradeRoleScope })}
+                  className="w-full border border-border rounded-lg px-3 py-2.5 text-sm"
+                >
+                  {ROLE_SCOPES.map((rs) => (
+                    <option key={rs} value={rs}>
+                      {ROLE_SCOPE_LABEL[rs]}
+                    </option>
+                  ))}
+                </select>
+              )}
+            </div>
+          )}
         </div>
+        {initial && (
+          <p className="text-xs text-text-faint -mt-2">
+            Phase and subject track are fixed once created — a real change is a new scheme.
+          </p>
+        )}
+
+        <label className="flex items-center gap-2 text-sm text-[#12333F]">
+          <input
+            type="checkbox"
+            checked={form.isActive}
+            onChange={(e) => setForm({ ...form, isActive: e.target.checked })}
+            className="rounded border-[#E5E5E5]"
+          />
+          Active (offered in the catalog for schools to pick)
+        </label>
 
         <div className="border-t border-border pt-3">
           <p className="text-xs font-medium text-text-muted tracking-wide mb-2">Bands</p>
@@ -226,6 +276,12 @@ export function GradingSchemeFormModal({
                   placeholder="Legacy equiv. (D1/D2)"
                   value={b.legacyEquivalent}
                   onChange={(e) => updateBand(i, { legacyEquivalent: e.target.value })}
+                  className="w-32 border border-border rounded-lg px-2.5 py-1.5 text-sm"
+                />
+                <input
+                  placeholder="Comment (Excellent)"
+                  value={b.comment}
+                  onChange={(e) => updateBand(i, { comment: e.target.value })}
                   className="flex-1 min-w-[8rem] border border-border rounded-lg px-2.5 py-1.5 text-sm"
                 />
                 <button

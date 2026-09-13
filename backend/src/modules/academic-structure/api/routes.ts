@@ -91,9 +91,15 @@ import {
 import {
   createGradingScheme,
   deleteGradingScheme,
+  getSchoolGradingSchemes,
+  GradingSchemeInUseError,
+  GradingSchemeMismatchError,
   InvalidGradingSchemeError,
   listGradingSchemes,
+  setSchoolGradingScheme,
+  UnknownGradingSchemeError,
   updateGradingScheme,
+  type GradeRoleScope,
   type GradingAppliesTo,
   type GradingSchemeInput,
 } from "../domain/grading-schemes.repository.js";
@@ -103,6 +109,7 @@ import {
   combinationBodySchema,
   curriculumBodySchema,
   gradingSchemeBodySchema,
+  schoolGradingSchemeBodySchema,
   schoolCombinationBodySchema,
   schoolCurriculumBodySchema,
   stageBodySchema,
@@ -675,25 +682,27 @@ export async function academicStructureRoutes(fastify: FastifyInstance) {
     },
   );
 
-  // -- Grading schemes (Exams roadmap Step 2) — per-school, school_admin/admin ----
-  fastify.get<{ Querystring: { curriculumId?: string; appliesTo?: GradingAppliesTo } }>(
+  // -- Grading schemes catalog — curriculum-wide, super_admin manages it, --
+  // -- same shape as subjects/combinations. Schools pick from it below. ----
+  fastify.get<{ Querystring: { curriculumId?: string; appliesTo?: GradingAppliesTo; roleScope?: GradeRoleScope } }>(
     "/grading-schemes",
     { preHandler: SCHOOL },
-    async (request, reply) => {
-      const schoolId = schoolOf(request, reply);
-      if (!schoolId) return;
-      return ok(await listGradingSchemes(schoolId, request.query.curriculumId, request.query.appliesTo));
+    async (request) => {
+      return ok(
+        await listGradingSchemes(request.query.curriculumId, request.query.appliesTo, request.query.roleScope),
+      );
     },
   );
 
-  fastify.post<{ Body: GradingSchemeInput }>(
+  fastify.post<{ Querystring: { curriculumId?: string }; Body: GradingSchemeInput }>(
     "/grading-schemes",
-    { preHandler: SCHOOL, schema: { body: gradingSchemeBodySchema } },
+    { preHandler: REFERENCE, schema: { body: gradingSchemeBodySchema } },
     async (request, reply) => {
-      const schoolId = schoolOf(request, reply);
-      if (!schoolId) return;
+      if (!request.query.curriculumId) {
+        return reply.status(400).send(fail("curriculumId query param required"));
+      }
       try {
-        const created = await createGradingScheme(schoolId, request.body);
+        const created = await createGradingScheme(request.query.curriculumId, request.body);
         return reply.status(201).send(ok(created));
       } catch (err) {
         if (err instanceof InvalidGradingSchemeError) {
@@ -706,12 +715,10 @@ export async function academicStructureRoutes(fastify: FastifyInstance) {
 
   fastify.patch<{ Params: { id: string }; Body: GradingSchemeInput }>(
     "/grading-schemes/:id",
-    { preHandler: SCHOOL, schema: { body: gradingSchemeBodySchema } },
+    { preHandler: REFERENCE, schema: { body: gradingSchemeBodySchema } },
     async (request, reply) => {
-      const schoolId = schoolOf(request, reply);
-      if (!schoolId) return;
       try {
-        const updated = await updateGradingScheme(schoolId, request.params.id, request.body);
+        const updated = await updateGradingScheme(request.params.id, request.body);
         return updated ? ok(updated) : reply.status(404).send(fail("not_found"));
       } catch (err) {
         if (err instanceof InvalidGradingSchemeError) {
@@ -724,12 +731,47 @@ export async function academicStructureRoutes(fastify: FastifyInstance) {
 
   fastify.delete<{ Params: { id: string } }>(
     "/grading-schemes/:id",
-    { preHandler: SCHOOL },
+    { preHandler: REFERENCE },
+    async (request, reply) => {
+      try {
+        const deleted = await deleteGradingScheme(request.params.id);
+        return deleted ? ok(null) : reply.status(404).send(fail("not_found"));
+      } catch (err) {
+        if (err instanceof GradingSchemeInUseError) {
+          return reply.status(409).send(fail(err.message));
+        }
+        throw err;
+      }
+    },
+  );
+
+  // -- A school's current pick per phase/role — "Change Grade System" -------
+  fastify.get("/school-grading-schemes", { preHandler: SCHOOL }, async (request, reply) => {
+    const schoolId = schoolOf(request, reply);
+    if (!schoolId) return;
+    return ok(await getSchoolGradingSchemes(schoolId));
+  });
+
+  fastify.put<{ Body: { appliesTo: GradingAppliesTo; roleScope: GradeRoleScope; gradingSchemeId: string } }>(
+    "/school-grading-schemes",
+    { preHandler: SCHOOL, schema: { body: schoolGradingSchemeBodySchema } },
     async (request, reply) => {
       const schoolId = schoolOf(request, reply);
       if (!schoolId) return;
-      const deleted = await deleteGradingScheme(schoolId, request.params.id);
-      return deleted ? ok(null) : reply.status(404).send(fail("not_found"));
+      try {
+        const selection = await setSchoolGradingScheme(
+          schoolId,
+          request.body.appliesTo,
+          request.body.roleScope,
+          request.body.gradingSchemeId,
+        );
+        return ok(selection);
+      } catch (err) {
+        if (err instanceof UnknownGradingSchemeError || err instanceof GradingSchemeMismatchError) {
+          return reply.status(400).send(fail(err.message));
+        }
+        throw err;
+      }
     },
   );
 
