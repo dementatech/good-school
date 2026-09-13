@@ -790,6 +790,188 @@ export async function listAssignedExams(
   return out;
 }
 
+// ─── Student / parent self-service (published results only) ───────────────
+
+export interface PublishedExamSummary {
+  id: string;
+  name: string;
+  termName: string;
+  startsOn: string;
+  endsOn: string;
+  publishedAt: string;
+}
+
+// Every exam a student has published results for. Scoped entirely by their
+// own exam_result rows — no need to know their class/stream, same shortcut
+// publishSchoolExam relies on.
+export async function listPublishedExamsForStudent(
+  schoolId: string,
+  studentUserId: string,
+): Promise<PublishedExamSummary[]> {
+  const { rows } = await pool.query<{
+    id: string;
+    name: string;
+    term_name: string;
+    starts_on: string;
+    ends_on: string;
+    published_at: string;
+  }>(
+    `select distinct se.id, se.name, t.name as term_name, se.starts_on, se.ends_on, se.published_at
+       from exam_result er
+       join school_exam se on se.id = er.school_exam_id
+       join terms t on t.id = se.term_id
+      where er.student_user_id = $1 and se.school_id = $2 and se.published_at is not null
+      order by se.starts_on desc`,
+    [studentUserId, schoolId],
+  );
+  return rows.map((r) => ({
+    id: r.id,
+    name: r.name,
+    termName: r.term_name,
+    startsOn: r.starts_on,
+    endsOn: r.ends_on,
+    publishedAt: r.published_at,
+  }));
+}
+
+export interface StudentSubjectResult {
+  subjectId: string;
+  subjectName: string;
+  subjectCode: string;
+  hasVariant: boolean;
+  variantScores?: { variantId: string; name: string; rawScore: number | null; isAbsent: boolean }[];
+  rawScore: number | null;
+  isAbsent: boolean;
+  computedGrade: string | null;
+  comment: string | null;
+}
+
+export interface StudentExamResult {
+  exam: { id: string; name: string; termName: string; startsOn: string; endsOn: string; publishedAt: string };
+  subjects: StudentSubjectResult[];
+}
+
+// A single student's full breakdown for one published exam. Returns null if
+// the exam doesn't belong to this school, isn't published, or the student has
+// no results on it at all — every case is a plain 404 to the caller.
+export async function getStudentExamResult(
+  schoolId: string,
+  examId: string,
+  studentUserId: string,
+): Promise<StudentExamResult | null> {
+  const { rows: examRows } = await pool.query<{
+    id: string;
+    name: string;
+    term_name: string;
+    starts_on: string;
+    ends_on: string;
+    published_at: string | null;
+  }>(
+    `select se.id, se.name, t.name as term_name, se.starts_on, se.ends_on, se.published_at
+       from school_exam se
+       join terms t on t.id = se.term_id
+      where se.id = $1 and se.school_id = $2`,
+    [examId, schoolId],
+  );
+  const exam = examRows[0];
+  if (!exam || !exam.published_at) return null;
+
+  const { rows } = await pool.query<{
+    subject_id: string;
+    subject_name: string;
+    subject_code: string;
+    has_variant: boolean;
+    subject_variant_id: string | null;
+    variant_name: string | null;
+    variant_contribution_percent: string | null;
+    raw_score: string | null;
+    is_absent: boolean;
+    computed_grade: string | null;
+    grading_scheme_id: string | null;
+    comment: string | null;
+  }>(
+    `select er.subject_id, sub.name as subject_name, sub.code as subject_code, sub.has_variant,
+            er.subject_variant_id, sv.name as variant_name, sv.contribution_percent as variant_contribution_percent,
+            er.raw_score, er.is_absent, er.computed_grade, er.grading_scheme_id,
+            gb.comment
+       from exam_result er
+       join subject sub on sub.id = er.subject_id
+       left join subject_variant sv on sv.id = er.subject_variant_id
+       left join grade_band gb
+         on gb.grading_scheme_id = er.grading_scheme_id and gb.label = er.computed_grade
+      where er.school_exam_id = $1 and er.student_user_id = $2
+      order by sub.name, sv.code`,
+    [examId, studentUserId],
+  );
+  if (rows.length === 0) return null;
+
+  const bySubject = new Map<string, typeof rows>();
+  for (const r of rows) {
+    const list = bySubject.get(r.subject_id);
+    if (list) list.push(r);
+    else bySubject.set(r.subject_id, [r]);
+  }
+
+  const subjects: StudentSubjectResult[] = [...bySubject.values()].map((subjectRows) => {
+    const first = subjectRows[0];
+    const computedGrade = subjectRows.find((r) => r.computed_grade !== null)?.computed_grade ?? null;
+    const comment = subjectRows.find((r) => r.comment !== null)?.comment ?? null;
+
+    if (!first.has_variant) {
+      return {
+        subjectId: first.subject_id,
+        subjectName: first.subject_name,
+        subjectCode: first.subject_code,
+        hasVariant: false,
+        rawScore: first.raw_score !== null ? Number(first.raw_score) : null,
+        isAbsent: first.is_absent,
+        computedGrade,
+        comment,
+      };
+    }
+
+    const variantRows = subjectRows.filter((r) => r.subject_variant_id !== null);
+    const variantScores = variantRows.map((r) => ({
+      variantId: r.subject_variant_id!,
+      name: r.variant_name ?? "",
+      rawScore: r.raw_score !== null ? Number(r.raw_score) : null,
+      isAbsent: r.is_absent,
+    }));
+    const merged = mergeVariantScore(
+      variantScores.map((v) => ({ variantId: v.variantId, rawScore: v.rawScore, isAbsent: v.isAbsent })),
+      variantRows.map((r) => ({
+        id: r.subject_variant_id!,
+        name: r.variant_name ?? "",
+        code: r.variant_name ?? "",
+        contributionPercent: r.variant_contribution_percent !== null ? Number(r.variant_contribution_percent) : 0,
+      })),
+    );
+    return {
+      subjectId: first.subject_id,
+      subjectName: first.subject_name,
+      subjectCode: first.subject_code,
+      hasVariant: true,
+      variantScores,
+      rawScore: merged.rawScore,
+      isAbsent: merged.isAbsent,
+      computedGrade,
+      comment,
+    };
+  });
+
+  return {
+    exam: {
+      id: exam.id,
+      name: exam.name,
+      termName: exam.term_name,
+      startsOn: exam.starts_on,
+      endsOn: exam.ends_on,
+      publishedAt: exam.published_at,
+    },
+    subjects,
+  };
+}
+
 // Admin completion view for one exam — every teaching slot with progress.
 export async function examCompletion(
   schoolId: string,
