@@ -1,4 +1,5 @@
 import { ImageResponse } from "next/og";
+import { getLogoDataUrl } from "@/lib/pwaIconLogo";
 
 export const size = { width: 180, height: 180 };
 export const contentType = "image/png";
@@ -14,14 +15,10 @@ export default function AppleIcon() {
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
-          background: "#990000",
-          fontFamily: "sans-serif",
-          fontSize: 90,
-          fontWeight: 700,
-          color: "#FFCC99",
+          background: "#ffffff",
         }}
       >
-        S
+        <img src={getLogoDataUrl()} width={158} height={158} alt="" />
       </div>
     ),
     { ...size }

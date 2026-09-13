@@ -1,4 +1,5 @@
 import { ImageResponse } from "next/og";
+import { getLogoDataUrl } from "@/lib/pwaIconLogo";
 
 export const size = { width: 512, height: 512 };
 export const contentType = "image/png";
@@ -13,15 +14,12 @@ export async function GET() {
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
-          background: "#990000",
+          background: "#ffffff",
           borderRadius: 96,
-          fontFamily: "sans-serif",
-          fontSize: 256,
-          fontWeight: 700,
-          color: "#FFCC99",
         }}
       >
-        S
+        {/* eslint-disable-next-line @next/next/no-img-element -- next/og renders via Satori, not the DOM */}
+        <img src={getLogoDataUrl()} width={452} height={452} alt="" />
       </div>
     ),
     { ...size }
