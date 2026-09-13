@@ -13,6 +13,7 @@ export interface User {
   email?: string;
   role: string;
   school: string;
+  logoUrl?: string | null;
   schoolId?: string | null;
   className?: string | null;
 }

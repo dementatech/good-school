@@ -365,3 +365,23 @@ export async function findSchoolOnboardingStatus(
   );
   return rows[0]?.onboarding_status ?? null;
 }
+
+// The bare minimum the portal chrome needs to brand itself for a signed-in
+// user (sidebar/topbar name + logo) — see GET /api/v1/auth/me.
+export async function findSchoolBrandingById(
+  schoolId: string,
+): Promise<{ name: string; logoUrl: string | null } | null> {
+  const { rows } = await pool.query<{
+    name: string;
+    logo_path: string | null;
+    logo_provider: StorageProvider | null;
+  }>(`select name, logo_path, logo_provider from schools where id = $1`, [schoolId]);
+  const row = rows[0];
+  if (!row) return null;
+  return {
+    name: row.name,
+    logoUrl: row.logo_path
+      ? fileUrl({ provider: row.logo_provider ?? "local", ref: row.logo_path, mimeType: "image/jpeg" })
+      : null,
+  };
+}

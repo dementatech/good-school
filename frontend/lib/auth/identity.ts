@@ -58,6 +58,8 @@ interface MeResponse {
   systemId: string | null;
   role: string;
   schoolId: string | null;
+  schoolName: string | null;
+  schoolLogoUrl: string | null;
   mustChangePassword?: boolean;
 }
 
@@ -68,7 +70,8 @@ export function meToUser(me: MeResponse): User {
     name: me.name ?? me.systemId ?? me.email ?? "",
     email: me.email ?? undefined,
     role: normalizeRole(me.role),
-    school: "",
+    school: me.schoolName ?? "",
+    logoUrl: me.schoolLogoUrl,
     schoolId: me.schoolId,
     className: null,
   };

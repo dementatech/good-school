@@ -92,6 +92,8 @@ export const meResponseSchema = {
       systemId: { type: ["string", "null"] },
       role: { type: "string" },
       schoolId: { type: ["string", "null"] },
+      schoolName: { type: ["string", "null"] },
+      schoolLogoUrl: { type: ["string", "null"] },
       mustChangePassword: { type: "boolean" },
     },
   },
