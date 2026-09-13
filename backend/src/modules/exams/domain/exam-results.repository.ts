@@ -33,10 +33,6 @@ export interface VariantScore {
   variantId: string;
   rawScore: number | null;
   isAbsent: boolean;
-  /** Set only by publishing — that variant's own paper grade. Grading the
-   * MERGED subject score for a variant subject (rather than each paper on
-   * its own) is deferred past this slice — see publishSchoolExam. */
-  computedGrade?: string | null;
 }
 
 export interface MarkSheetRow {
@@ -52,9 +48,11 @@ export interface MarkSheetRow {
    * `subject.variants` order. */
   variantScores?: VariantScore[];
   /** Set only by publishing the exam (school-exams.repository.ts
-   * publishSchoolExam) — null until then, and for a variant subject this is
-   * the merged score's grade, not any one variant's. See migration
-   * 1700000054000_publish-exam-results. */
+   * publishSchoolExam) — null until then. For a variant subject this is the
+   * grade of the MERGED score (mergeVariantScore), not any one paper's —
+   * publish writes it identically onto every variant row for the student,
+   * since papers are entered out of 100% each but graded as one subject.
+   * See migration 1700000054000_publish-exam-results. */
   computedGrade?: string | null;
 }
 
@@ -403,7 +401,7 @@ async function roster(db: Db, exam: ExamContext, slot: SlotRef): Promise<RosterE
 //   - any variant still unmarked (and not absent) -> not yet computable
 //     (null score, not absent — "incomplete", distinct from "absent")
 //   - every variant has a real score -> the weighted sum
-function mergeVariantScore(
+export function mergeVariantScore(
   variantScores: VariantScore[],
   variants: SubjectVariantSummary[],
 ): { rawScore: number | null; isAbsent: boolean } {
@@ -491,10 +489,12 @@ export async function getMarkSheet(
           variantId: v.id,
           rawScore: m && m.raw_score !== null ? Number(m.raw_score) : null,
           isAbsent: m?.is_absent ?? false,
-          computedGrade: m?.computed_grade ?? null,
         };
       });
       const merged = mergeVariantScore(variantScores, variants);
+      // Publishing writes the SAME grade (of the merged score) onto every
+      // variant row for a student — any row's computed_grade is the subject's.
+      const computedGrade = studentMarks.find((m) => m.computed_grade !== null)?.computed_grade ?? null;
       return {
         studentUserId: s.studentUserId,
         studentName: s.studentName,
@@ -502,6 +502,7 @@ export async function getMarkSheet(
         rawScore: merged.rawScore,
         isAbsent: merged.isAbsent,
         variantScores,
+        computedGrade,
       };
     }),
   };

@@ -11,8 +11,6 @@ export interface VariantScore {
   variantId: string;
   rawScore: number | null;
   isAbsent: boolean;
-  /** Set only once the exam is published — that variant's own paper grade. */
-  computedGrade?: string | null;
 }
 
 export interface MarkSheetRow {

@@ -6,6 +6,7 @@ import {
   getCurrentTerm,
   type GradeBandRecord,
 } from "../../academic-structure/index.js";
+import { mergeVariantScore, type SubjectVariantSummary } from "./exam-results.repository.js";
 
 // A school's activated exam — an instance of a super_admin exam_session,
 // pinned to the school's current academic year + current term at creation.
@@ -312,31 +313,94 @@ export async function publishSchoolExam(schoolId: string, id: string): Promise<P
 
     const { rows: results } = await client.query<{
       id: string;
+      student_user_id: string;
       subject_id: string;
+      subject_variant_id: string | null;
       raw_score: string | null;
       is_absent: boolean;
-    }>(`select id, subject_id, raw_score, is_absent from exam_result where school_exam_id = $1`, [id]);
+    }>(
+      `select id, student_user_id, subject_id, subject_variant_id, raw_score, is_absent
+         from exam_result where school_exam_id = $1`,
+      [id],
+    );
 
     // One scheme lookup per subject, not per result row.
     const schemeBySubject = new Map<string, { schemeId: string; bands: GradeBandRecord[] } | null>();
-    for (const r of results) {
-      if (!schemeBySubject.has(r.subject_id)) {
-        const scheme = await getActiveSchemeForSubject(schoolId, r.subject_id);
-        schemeBySubject.set(r.subject_id, scheme ? { schemeId: scheme.id, bands: scheme.bands } : null);
+    // One variant-list lookup per subject — needed to merge a variant
+    // subject's papers (each entered out of 100%) back into a single score
+    // before grading, same weighting the mark sheet's "Final" column uses.
+    const variantsBySubject = new Map<string, SubjectVariantSummary[]>();
+    const subjectIds = [...new Set(results.map((r) => r.subject_id))];
+    if (subjectIds.length > 0) {
+      const { rows: variantRows } = await client.query<{
+        subject_id: string;
+        id: string;
+        name: string;
+        code: string;
+        contribution_percent: string;
+      }>(
+        `select subject_id, id, name, code, contribution_percent
+           from subject_variant where subject_id = any($1::uuid[])`,
+        [subjectIds],
+      );
+      for (const v of variantRows) {
+        const list = variantsBySubject.get(v.subject_id) ?? [];
+        list.push({ id: v.id, name: v.name, code: v.code, contributionPercent: Number(v.contribution_percent) });
+        variantsBySubject.set(v.subject_id, list);
       }
-      const scheme = schemeBySubject.get(r.subject_id) ?? null;
+    }
+
+    // Group by (student, subject) — a variant subject's papers must be
+    // merged into one score before grading, not graded independently.
+    const groups = new Map<string, typeof results>();
+    for (const r of results) {
+      const key = `${r.student_user_id}:${r.subject_id}`;
+      const list = groups.get(key);
+      if (list) list.push(r);
+      else groups.set(key, [r]);
+    }
+
+    for (const rows of groups.values()) {
+      const subjectId = rows[0].subject_id;
+      const variants = variantsBySubject.get(subjectId) ?? [];
+
+      if (!schemeBySubject.has(subjectId)) {
+        const scheme = await getActiveSchemeForSubject(schoolId, subjectId);
+        schemeBySubject.set(subjectId, scheme ? { schemeId: scheme.id, bands: scheme.bands } : null);
+      }
+      const scheme = schemeBySubject.get(subjectId) ?? null;
+
+      // Merge, even for a "group" of one plain (non-variant) row — mergeVariantScore
+      // with an empty variants list degenerates to that row's own score.
+      const merged =
+        variants.length > 0
+          ? mergeVariantScore(
+              rows.map((r) => ({
+                variantId: r.subject_variant_id ?? "",
+                rawScore: r.raw_score !== null ? Number(r.raw_score) : null,
+                isAbsent: r.is_absent,
+              })),
+              variants,
+            )
+          : { rawScore: rows[0].raw_score !== null ? Number(rows[0].raw_score) : null, isAbsent: rows[0].is_absent };
+
       let grade: string | null = null;
       let gradingSchemeId: string | null = null;
-      if (!r.is_absent && r.raw_score !== null && scheme) {
-        grade = computeGrade(Number(r.raw_score), scheme.bands)?.label ?? null;
+      if (!merged.isAbsent && merged.rawScore !== null && scheme) {
+        grade = computeGrade(merged.rawScore, scheme.bands)?.label ?? null;
         gradingSchemeId = scheme.schemeId;
       }
       if (grade !== null) resultsGraded++;
       else resultsUngraded++;
-      await client.query(
-        `update exam_result set computed_grade = $1, grading_scheme_id = $2, updated_at = now() where id = $3`,
-        [grade, gradingSchemeId, r.id],
-      );
+
+      // Same grade onto every row in the group — a variant subject's papers
+      // are entered separately but graded as one subject.
+      for (const r of rows) {
+        await client.query(
+          `update exam_result set computed_grade = $1, grading_scheme_id = $2, updated_at = now() where id = $3`,
+          [grade, gradingSchemeId, r.id],
+        );
+      }
     }
 
     await client.query(`update school_exam set published_at = now(), updated_at = now() where id = $1`, [id]);
