@@ -2,10 +2,10 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { Badge } from '@/components/ui/Badge';
-import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { Loader } from '@/components/ui/loader';
-import { Pencil, Settings2 } from 'lucide-react';
+import { DropdownMenu, type DropdownMenuItem } from '@/components/ui/DropdownMenu';
+import { MoreVertical, Pencil, Settings2 } from 'lucide-react';
 import { ChangeGradeSystemModal } from '@/components/admin/grading/ChangeGradeSystemModal';
 import { EditGradingRangesModal } from '@/components/admin/grading/EditGradingRangesModal';
 import {
@@ -72,17 +72,38 @@ export default function SchoolAdminGradingSchemesPage() {
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
         {CARDS.map((card) => {
           const sel = selectionFor(card.appliesTo, card.roleScope);
+          const menuItems: DropdownMenuItem[] = [
+            {
+              label: 'Change Grade System',
+              icon: Settings2,
+              onClick: () => setChangeModal(card),
+              disabled: !curriculumId,
+            },
+          ];
+          if (card.roleScope !== 'subsidiary') {
+            menuItems.push({
+              label: 'Edit my ranges',
+              icon: Pencil,
+              onClick: () => setEditModal(card),
+              disabled: !sel,
+            });
+          }
           return (
             <Card key={`${card.appliesTo}-${card.roleScope}`} className="space-y-3">
-              <div>
-                <h2 className="text-sm font-bold text-primary-900">{card.title}</h2>
-                {sel ? (
-                  <p className="text-xs text-text-muted mt-0.5">
-                    {REGIME_LABEL[sel.scheme.regime] ?? sel.scheme.regime}
-                  </p>
-                ) : (
-                  <p className="text-xs text-text-faint mt-0.5">No scheme selected yet.</p>
-                )}
+              <div className="flex items-start justify-between gap-2">
+                <div>
+                  <h2 className="text-sm font-bold text-primary-900">{card.title}</h2>
+                  {sel ? (
+                    <p className="text-xs text-text-muted mt-0.5">
+                      {REGIME_LABEL[sel.scheme.regime] ?? sel.scheme.regime}
+                    </p>
+                  ) : (
+                    <p className="text-xs text-text-faint mt-0.5">No scheme selected yet.</p>
+                  )}
+                </div>
+                <div className="shrink-0">
+                  <DropdownMenu items={menuItems} label={`${card.title} actions`} icon={MoreVertical} />
+                </div>
               </div>
 
               {sel && (
@@ -104,29 +125,6 @@ export default function SchoolAdminGradingSchemesPage() {
                   </div>
                 </div>
               )}
-
-              <div className="flex gap-2">
-                <Button
-                  variant="outline"
-                  onClick={() => setChangeModal(card)}
-                  disabled={!curriculumId}
-                  className="flex-1"
-                >
-                  <Settings2 className="w-4 h-4 mr-1.5" aria-hidden />
-                  Change Grade System
-                </Button>
-                {card.roleScope !== 'subsidiary' && (
-                  <Button
-                    variant="outline"
-                    onClick={() => setEditModal(card)}
-                    disabled={!sel}
-                    className="flex-1"
-                  >
-                    <Pencil className="w-4 h-4 mr-1.5" aria-hidden />
-                    Edit my ranges
-                  </Button>
-                )}
-              </div>
             </Card>
           );
         })}
