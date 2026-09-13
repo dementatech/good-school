@@ -370,16 +370,25 @@ export async function publishSchoolExam(schoolId: string, id: string): Promise<P
       }
       const scheme = schemeBySubject.get(subjectId) ?? null;
 
-      // Merge, even for a "group" of one plain (non-variant) row — mergeVariantScore
-      // with an empty variants list degenerates to that row's own score.
+      // Build one entry per DEFINED variant (not per row that happens to
+      // exist) — a variant with no exam_result row at all (never entered)
+      // must show up as rawScore: null so mergeVariantScore treats the
+      // subject as still-incomplete, same as getMarkSheet does. Building
+      // this from `rows` alone would silently drop a missing paper instead
+      // of blocking the merge, producing a wrong partial score — publish
+      // isn't gated on mark-sheet submission, so a partly-entered variant
+      // subject is a real case, not hypothetical.
       const merged =
         variants.length > 0
           ? mergeVariantScore(
-              rows.map((r) => ({
-                variantId: r.subject_variant_id ?? "",
-                rawScore: r.raw_score !== null ? Number(r.raw_score) : null,
-                isAbsent: r.is_absent,
-              })),
+              variants.map((v) => {
+                const r = rows.find((x) => x.subject_variant_id === v.id);
+                return {
+                  variantId: v.id,
+                  rawScore: r && r.raw_score !== null ? Number(r.raw_score) : null,
+                  isAbsent: r?.is_absent ?? false,
+                };
+              }),
               variants,
             )
           : { rawScore: rows[0].raw_score !== null ? Number(rows[0].raw_score) : null, isAbsent: rows[0].is_absent };
