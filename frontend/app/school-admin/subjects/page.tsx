@@ -45,6 +45,7 @@ interface OfferingRow {
   code: string;
   name: string;
   category: string;
+  phase: 'O_LEVEL' | 'A_LEVEL';
   isOffered: boolean;
   isCompulsory: boolean;
 }
@@ -61,7 +62,11 @@ export default function SchoolAdminSubjectsPage() {
   const [combinations, setCombinations] = useState<SchoolCombination[]>([]);
   const [comboModal, setComboModal] = useState<{ combination?: SchoolCombination } | null>(null);
   const [gaps, setGaps] = useState<AllocationGap[]>([]);
-  const [teacherModal, setTeacherModal] = useState<{ subjectId: string; subjectName: string } | null>(null);
+  const [teacherModal, setTeacherModal] = useState<{
+    subjectId: string;
+    subjectName: string;
+    subjectPhase: 'O_LEVEL' | 'A_LEVEL';
+  } | null>(null);
   const [proposeModal, setProposeModal] = useState<{ phase: Phase } | null>(null);
 
   const currentYear = years.find((y) => y.isCurrent) ?? years[0];
@@ -144,6 +149,7 @@ export default function SchoolAdminSubjectsPage() {
           code: s.code,
           name: s.name,
           category: s.category,
+          phase: s.phase,
           isOffered: o?.isOffered ?? false,
           isCompulsory: o?.isCompulsory ?? false,
         };
@@ -207,7 +213,7 @@ export default function SchoolAdminSubjectsPage() {
         r.isOffered ? (
           <button
             type="button"
-            onClick={() => setTeacherModal({ subjectId: r.subjectId, subjectName: r.name })}
+            onClick={() => setTeacherModal({ subjectId: r.subjectId, subjectName: r.name, subjectPhase: r.phase })}
             className="inline-flex items-center gap-1.5 text-xs font-medium text-primary-700 hover:underline"
           >
             <UserCog className="w-3.5 h-3.5" aria-hidden />
@@ -438,6 +444,7 @@ export default function SchoolAdminSubjectsPage() {
           academicYearId={effectiveYearId}
           subjectId={teacherModal.subjectId}
           subjectName={teacherModal.subjectName}
+          subjectPhase={teacherModal.subjectPhase}
         />
       )}
     </div>
