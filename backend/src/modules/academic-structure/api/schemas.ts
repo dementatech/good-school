@@ -244,3 +244,16 @@ export const schoolGradingSchemeBodySchema = {
   },
   additionalProperties: false,
 } as const;
+
+// A school customizing its own bands for one phase/role (O-Level or
+// A-Level Principal only — Subsidiary is rejected server-side).
+export const schoolGradingRangesBodySchema = {
+  type: "object",
+  required: ["appliesTo", "roleScope", "bands"],
+  properties: {
+    appliesTo: { type: "string", enum: ["O_LEVEL", "A_LEVEL"] },
+    roleScope: { type: "string", enum: ["any", "principal", "subsidiary"] },
+    bands: { type: "array", items: gradeBandSchema, minItems: 1 },
+  },
+  additionalProperties: false,
+} as const;

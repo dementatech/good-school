@@ -5,8 +5,9 @@ import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { Loader } from '@/components/ui/loader';
-import { Settings2 } from 'lucide-react';
+import { Pencil, Settings2 } from 'lucide-react';
 import { ChangeGradeSystemModal } from '@/components/admin/grading/ChangeGradeSystemModal';
+import { EditGradingRangesModal } from '@/components/admin/grading/EditGradingRangesModal';
 import {
   fetchList,
   REGIME_LABEL,
@@ -30,6 +31,7 @@ export default function SchoolAdminGradingSchemesPage() {
   const [curriculumId, setCurriculumId] = useState('');
   const [selections, setSelections] = useState<SchoolGradingSchemeSelection[]>([]);
   const [changeModal, setChangeModal] = useState<(typeof CARDS)[number] | null>(null);
+  const [editModal, setEditModal] = useState<(typeof CARDS)[number] | null>(null);
 
   const load = useCallback(async () => {
     setSelections(await fetchList<SchoolGradingSchemeSelection>('/api/v1/academic/school-grading-schemes'));
@@ -60,8 +62,10 @@ export default function SchoolAdminGradingSchemesPage() {
       <div>
         <h1 className="text-2xl font-bold text-primary-900 mb-1">Grading Schemes</h1>
         <p className="text-sm text-text-muted">
-          How raw scores turn into grades — pick from the schemes a super-admin has published for your
-          curriculum. Your school no longer defines its own bands here.
+          How raw scores turn into grades. Pick a scheme a super-admin has published for your
+          curriculum, then adjust its ranges and comments to your liking — for O-Level and A-Level
+          Principal subjects. A-Level Subsidiary grading is fixed (a uniform UACE rule) and can only
+          be switched between published options.
         </p>
       </div>
 
@@ -83,7 +87,10 @@ export default function SchoolAdminGradingSchemesPage() {
 
               {sel && (
                 <div>
-                  <p className="font-medium text-primary-900">{sel.scheme.name}</p>
+                  <p className="font-medium text-primary-900 flex items-center gap-1.5">
+                    {sel.scheme.name}
+                    {sel.scheme.schoolId && <Badge variant="accent">Customized</Badge>}
+                  </p>
                   <div className="flex flex-wrap gap-1 mt-1.5">
                     {[...sel.scheme.bands]
                       .sort((a, b) => b.minPct - a.minPct)
@@ -98,15 +105,28 @@ export default function SchoolAdminGradingSchemesPage() {
                 </div>
               )}
 
-              <Button
-                variant="outline"
-                onClick={() => setChangeModal(card)}
-                disabled={!curriculumId}
-                className="w-full"
-              >
-                <Settings2 className="w-4 h-4 mr-1.5" aria-hidden />
-                Change Grade System
-              </Button>
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  onClick={() => setChangeModal(card)}
+                  disabled={!curriculumId}
+                  className="flex-1"
+                >
+                  <Settings2 className="w-4 h-4 mr-1.5" aria-hidden />
+                  Change Grade System
+                </Button>
+                {card.roleScope !== 'subsidiary' && (
+                  <Button
+                    variant="outline"
+                    onClick={() => setEditModal(card)}
+                    disabled={!sel}
+                    className="flex-1"
+                  >
+                    <Pencil className="w-4 h-4 mr-1.5" aria-hidden />
+                    Edit my ranges
+                  </Button>
+                )}
+              </div>
             </Card>
           );
         })}
@@ -122,6 +142,18 @@ export default function SchoolAdminGradingSchemesPage() {
           roleScope={changeModal.roleScope}
           currentSchemeId={selectionFor(changeModal.appliesTo, changeModal.roleScope)?.scheme.id ?? null}
           cardTitle={changeModal.title}
+        />
+      )}
+
+      {editModal && (
+        <EditGradingRangesModal
+          open
+          onClose={() => setEditModal(null)}
+          onSaved={load}
+          appliesTo={editModal.appliesTo}
+          roleScope={editModal.roleScope}
+          currentBands={selectionFor(editModal.appliesTo, editModal.roleScope)?.scheme.bands ?? []}
+          cardTitle={editModal.title}
         />
       )}
     </div>
