@@ -13,6 +13,7 @@ import { registerExamsModule } from "./modules/exams/index.js";
 import { registerAdminModule } from "./modules/admin/index.js";
 import { registerParentsModule } from "./modules/parents/index.js";
 import { registerNotificationsModule } from "./modules/notifications/index.js";
+import { registerExportModule } from "./modules/export/index.js";
 import { ensureUploadsRoot, uploadsRoot } from "./shared/uploads.js";
 
 const fastify = Fastify({
@@ -48,6 +49,7 @@ await registerExamsModule(fastify);
 await registerAdminModule(fastify);
 await registerParentsModule(fastify);
 await registerNotificationsModule(fastify);
+await registerExportModule(fastify);
 
 const port = Number(process.env.PORT ?? 4000);
 
