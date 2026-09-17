@@ -6,12 +6,14 @@ import { useAuth } from '@/components/auth/AuthContext';
 import { PortalGate } from '@/components/auth/PortalGate';
 import { FeatureGate } from '@/components/FeatureGate';
 import { NotificationBell } from '@/components/ui/NotificationBell';
+import { AccountMenu } from '@/components/ui/AccountMenu';
+import { TopbarSearch } from '@/components/ui/TopbarSearch';
 import { MobileNavDrawer } from '@/components/ui/MobileNavDrawer';
 import { PortalSidebar } from '@/components/ui/PortalSidebar';
 import {
   LayoutDashboard, FileText,
   School, Users, CalendarDays,
-  ClipboardList,
+  ClipboardList, CalendarClock,
   UserCircle,
 } from 'lucide-react';
 import type { Role } from '@/lib/auth/session';
@@ -30,6 +32,7 @@ const NAV = [
 const SYSTEM_NAV = [
   { href: '/admin/system/curriculum', label: 'Curriculum & Subjects', icon: CalendarDays },
   { href: '/admin/system/exams', label: 'Exam Sessions', icon: ClipboardList },
+  { href: '/admin/system/events', label: 'Global Events', icon: CalendarClock },
   { href: '/admin/system/schools', label: 'Schools', icon: School },
   { href: '/admin/system/accounts', label: 'Accounts', icon: Users },
 ];
@@ -49,22 +52,24 @@ function AdminShell({ children }: { children: React.ReactNode }) {
   const router = useRouter();
 
   return (
-    <div className="min-h-screen bg-bg flex">
+    <div className="min-h-screen bg-bg-canvas flex">
       <PortalSidebar
         brandLogoUrl={user?.logoUrl}
         brandLabel={user?.school || 'Good School'}
         subtitle={user?.name}
         nav={NAV}
         secondaryNav={user?.role === 'super_admin' ? { label: 'System', items: SYSTEM_NAV } : undefined}
-        footerNav={ACCOUNT_NAV}
-        onSignOut={() => { logout(); router.push('/auth'); }}
       />
 
       <div className="flex-1 min-w-0 flex flex-col">
-        {/* Desktop header strip: the sidebar has no room for the bell, and it
-            must stay reachable from every page. */}
-        <div className="hidden md:flex items-center justify-end gap-2 px-8 py-2 border-b border-border bg-bg-card print:hidden">
-          <NotificationBell />
+        {/* Desktop header strip: the sidebar has no room for the bell or
+            account menu, and both must stay reachable from every page. */}
+        <div className="hidden md:flex items-center justify-between gap-4 px-8 py-2 border-b border-border bg-bg-card print:hidden">
+          <TopbarSearch items={user?.role === 'super_admin' ? [...NAV, ...SYSTEM_NAV] : NAV} />
+          <div className="flex items-center gap-2 shrink-0">
+            <NotificationBell />
+            <AccountMenu accountHref="/admin/account" onSignOut={() => { logout(); router.push('/auth'); }} />
+          </div>
         </div>
 
         {/* Mobile top bar: hamburger + branding + the bell; nav lives in the drawer. */}

@@ -2,6 +2,7 @@ node_modules/
 dist/
 .env
 *.log
+scripts/seed-test-school-logins.txt
 # Local-disk upload store (backend/src/shared/uploads.ts) — dev-only; the
 # Docker image mounts a named volume here instead (docker-compose.yml).
 uploads/

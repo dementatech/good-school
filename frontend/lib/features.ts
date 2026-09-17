@@ -18,6 +18,7 @@ export type FeatureKey =
   | "performance"
   | "lessons"
   | "attendance"
+  | "events"
   | "practical"
   | "behaviour"
   | "forms"
@@ -55,6 +56,11 @@ export const FEATURES: Record<FeatureKey, FeatureMeta> = {
   performance: { label: "Performance", ready: false },
   lessons: { label: "Lessons", ready: false },
   attendance: { label: "Attendance", ready: false },
+  // The school calendar (backend/src/modules/events) — holidays, meetings,
+  // deadlines. Management page at /school-admin/events; every role's
+  // dashboard rail (DashboardRightRail) reads from the same API once this
+  // is true, regardless of whether that role has a dedicated events page.
+  events: { label: "Events", ready: true },
   practical: { label: "Practical Observations", ready: false },
   behaviour: { label: "Behaviour Rating", ready: false },
   forms: { label: "Data Forms", ready: false },
@@ -110,6 +116,7 @@ const ROUTE_FEATURES: { prefix: string; key: FeatureKey }[] = [
   // Bulk student CSV import stays its own (still-unwired) sub-route.
   { prefix: "/admin/system/students/import", key: "student_import" },
   { prefix: "/admin/system/exams", key: "exams" },
+  { prefix: "/admin/system/events", key: "events" },
   { prefix: "/admin/system/accounts", key: "accounts" },
   { prefix: "/admin/system/library", key: "library" },
   { prefix: "/admin/system", key: "portal_home" },
@@ -141,6 +148,7 @@ const ROUTE_FEATURES: { prefix: string; key: FeatureKey }[] = [
   { prefix: "/school-admin/exams", key: "exams" },
   { prefix: "/school-admin/grading-schemes", key: "exams" },
   { prefix: "/school-admin/students", key: "students" },
+  { prefix: "/school-admin/events", key: "events" },
   { prefix: "/school-admin/attendance", key: "attendance" },
   { prefix: "/school-admin/lessons", key: "lessons" },
   { prefix: "/school-admin/assessments", key: "assessments" },

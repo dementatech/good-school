@@ -7,6 +7,8 @@ import { PortalGate } from '@/components/auth/PortalGate';
 import { SchoolThemeApplier } from '@/components/theme/SchoolThemeApplier';
 import { FeatureGate } from '@/components/FeatureGate';
 import { NotificationBell } from '@/components/ui/NotificationBell';
+import { AccountMenu } from '@/components/ui/AccountMenu';
+import { TopbarSearch } from '@/components/ui/TopbarSearch';
 import { MobileNavDrawer } from '@/components/ui/MobileNavDrawer';
 import { PortalSidebar } from '@/components/ui/PortalSidebar';
 import { Select } from '@/components/ui/Select';
@@ -44,19 +46,22 @@ function ParentShell({ children: nodes }: { children: React.ReactNode }) {
   const router = useRouter();
 
   return (
-    <div className="min-h-screen bg-bg flex">
+    <div className="min-h-screen bg-bg-canvas flex">
       <PortalSidebar
         brandLogoUrl={user?.logoUrl}
         brandLabel={user?.school || 'Good School'}
         subtitle={user?.name}
         nav={NAV}
-        onSignOut={() => { logout(); router.push('/auth'); }}
       />
 
       <div className="flex-1 min-w-0 flex flex-col">
-        <div className="hidden md:flex items-center justify-end gap-3 px-8 py-2 border-b border-border bg-bg-card">
-          <ChildSwitcher />
-          <NotificationBell />
+        <div className="hidden md:flex items-center justify-between gap-4 px-8 py-2 border-b border-border bg-bg-card">
+          <TopbarSearch items={NAV} />
+          <div className="flex items-center gap-3 shrink-0">
+            <ChildSwitcher />
+            <NotificationBell />
+            <AccountMenu onSignOut={() => { logout(); router.push('/auth'); }} />
+          </div>
         </div>
 
         <div className="md:hidden flex flex-col gap-2 px-4 py-3 border-b border-border bg-bg-card">

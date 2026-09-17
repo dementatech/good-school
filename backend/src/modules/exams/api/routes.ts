@@ -2,6 +2,7 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { requireAuth } from "../../auth/index.js";
 import { ok, fail } from "../../../shared/envelope.js";
 import { notifyUsers } from "../../notifications/index.js";
+import { syncEventForExam } from "../../events/index.js";
 import {
   DuplicateExamCodeError,
   ExamSessionInUseError,
@@ -34,9 +35,11 @@ import {
   MarkSheetLockedError,
   MarksEntryClosedError,
   NotAssignedError,
+  UnknownClassError,
   UnknownExamError,
   UnknownSlotError,
   examCompletion,
+  getExamReportCard,
   getMarkSheet,
   getStudentExamResult,
   listAssignedExams,
@@ -51,10 +54,12 @@ import {
   examSessionBodySchema,
   markSheetSlotBodySchema,
   markSheetSlotQuerySchema,
+  reportCardQuerySchema,
   saveMarksBodySchema,
   schoolExamBodySchema,
   schoolExamUpdateBodySchema,
 } from "./schemas.js";
+import { renderReportCardsPdf } from "../domain/report-card-pdf.js";
 
 const REFERENCE = requireAuth(["super_admin"]);
 const SCHOOL = requireAuth(["admin", "school_admin", "super_admin"]);
@@ -62,6 +67,10 @@ const TEACHER = requireAuth(["teacher"]);
 // Marks entry: the assigned teacher, or a school admin acting as an override.
 const MARKS = requireAuth(["teacher", "admin", "school_admin"]);
 const STUDENT = requireAuth(["student"]);
+// The report-cards print page is school_admin-only (PortalGate on that
+// frontend route) — this must match, or a super_admin's cookie would just
+// get redirected by the frontend gate when Puppeteer navigates there.
+const SCHOOL_ADMIN_ONLY = requireAuth(["school_admin"]);
 
 function actorOf(request: FastifyRequest): MarkSheetActor {
   const auth = request.authUser!;
@@ -77,6 +86,7 @@ function slotOf(src: { subjectId: string; classId: string; streamId?: string | n
 function replyMarksError(err: unknown, reply: FastifyReply): FastifyReply {
   if (err instanceof UnknownExamError) return reply.status(404).send(fail(err.message));
   if (err instanceof UnknownSlotError) return reply.status(404).send(fail(err.message));
+  if (err instanceof UnknownClassError) return reply.status(404).send(fail(err.message));
   if (err instanceof NotAssignedError) return reply.status(403).send(fail(err.message));
   if (err instanceof InvalidScoreError) return reply.status(400).send(fail(err.message));
   if (
@@ -176,6 +186,7 @@ export async function examsRoutes(fastify: FastifyInstance) {
       if (!schoolId) return;
       try {
         const created = await createSchoolExam(schoolId, request.authUser!.user_id, request.body);
+        await syncEventForExam(schoolId, created.id, { title: created.name, eventDate: created.startsOn });
         return reply.status(201).send(ok(created));
       } catch (err) {
         if (
@@ -200,6 +211,7 @@ export async function examsRoutes(fastify: FastifyInstance) {
       if (!schoolId) return;
       try {
         const updated = await updateSchoolExam(schoolId, request.params.id, request.body);
+        if (updated) await syncEventForExam(schoolId, updated.id, { title: updated.name, eventDate: updated.startsOn });
         return updated ? ok(updated) : reply.status(404).send(fail("not_found"));
       } catch (err) {
         if (err instanceof InvalidExamDatesError) return reply.status(400).send(fail(err.message));
@@ -293,6 +305,55 @@ export async function examsRoutes(fastify: FastifyInstance) {
       }
     },
   );
+
+  // Compiled report card — every subject's summary plus per-student totals,
+  // rank and grade for one class (or one stream of it) in this exam.
+  fastify.get<{ Params: { id: string }; Querystring: { classId: string; streamId?: string } }>(
+    "/:id/report-card",
+    { preHandler: SCHOOL, schema: { querystring: reportCardQuerySchema } },
+    async (request, reply) => {
+      const schoolId = schoolOf(request, reply);
+      if (!schoolId) return;
+      try {
+        return ok(
+          await getExamReportCard(schoolId, request.params.id, request.query.classId, request.query.streamId || null),
+        );
+      } catch (err) {
+        return replyMarksError(err, reply);
+      }
+    },
+  );
+
+  // Real, vector-text PDF of the report-cards print page (one student, a
+  // class, a stream, or the whole school) — headless Chrome renders the
+  // actual frontend page (report-card-pdf.ts), so this is never a
+  // screenshot and never a second, hand-maintained template.
+  fastify.get<{
+    Params: { id: string };
+    Querystring: { classId?: string; streamId?: string; studentId?: string; all?: string; yearId?: string };
+  }>("/:id/report-cards/pdf", { preHandler: SCHOOL_ADMIN_ONLY }, async (request, reply) => {
+    const { classId, streamId, studentId, all, yearId } = request.query;
+    if (!classId && all !== "1") {
+      return reply.status(400).send(fail("classId (or all=1) is required"));
+    }
+    const qs = new URLSearchParams();
+    if (classId) qs.set("classId", classId);
+    if (streamId) qs.set("streamId", streamId);
+    if (studentId) qs.set("studentId", studentId);
+    if (all) qs.set("all", all);
+    if (yearId) qs.set("yearId", yearId);
+    const path = `/school-admin/exams/${request.params.id}/report-cards?${qs.toString()}`;
+    try {
+      const pdf = await renderReportCardsPdf(path, request.headers.cookie);
+      return reply
+        .header("Content-Type", "application/pdf")
+        .header("Content-Disposition", 'attachment; filename="report-cards.pdf"')
+        .send(pdf);
+    } catch (err) {
+      request.log.error(err);
+      return reply.status(502).send(fail("Could not generate the PDF. Try again."));
+    }
+  });
 
   // One mark sheet — roster + current marks for a (subject, class, stream) slot.
   fastify.get<{ Params: { id: string }; Querystring: { subjectId: string; classId: string; streamId?: string } }>(

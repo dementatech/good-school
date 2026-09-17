@@ -1,10 +1,10 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { createPortal } from 'react-dom';
-import { ChevronDown, ChevronLeft, ChevronRight, LogOut } from 'lucide-react';
+import { ChevronDown, ChevronLeft, ChevronRight, LifeBuoy } from 'lucide-react';
 import type { NavItem } from './MobileNavDrawer';
 
 const STORAGE_KEY = 'school_os_sidebar_collapsed';
@@ -95,6 +95,26 @@ function NavGroupNode({
   const groupActive = isActive(item, pathname);
   const [open, setOpen] = useState(groupActive);
   const [hoverAnchor, setHoverAnchor] = useState<HTMLElement | null>(null);
+  // The flyout is a portal onto document.body, 8px to the right of the
+  // trigger — not a DOM descendant of it, so the cursor leaves the trigger's
+  // own mouseleave zone before it ever reaches the flyout. Closing on a
+  // short delay (cancelled by entering either the trigger or the flyout)
+  // gives the pointer time to cross that gap instead of closing on contact.
+  const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  function cancelClose() {
+    if (closeTimer.current) {
+      clearTimeout(closeTimer.current);
+      closeTimer.current = null;
+    }
+  }
+  function openFlyout(el: HTMLElement) {
+    cancelClose();
+    setHoverAnchor(el);
+  }
+  function scheduleClose() {
+    closeTimer.current = setTimeout(() => setHoverAnchor(null), 200);
+  }
+  useEffect(() => cancelClose, []);
 
   const childLink = (child: NavItem, onFlyout: boolean) => {
     const active = isActive(child, pathname);
@@ -122,8 +142,8 @@ function NavGroupNode({
     return (
       <div
         className="relative"
-        onMouseEnter={(e) => setHoverAnchor(e.currentTarget)}
-        onMouseLeave={() => setHoverAnchor(null)}
+        onMouseEnter={(e) => openFlyout(e.currentTarget)}
+        onMouseLeave={scheduleClose}
       >
         <button
           type="button"
@@ -139,6 +159,8 @@ function NavGroupNode({
             <div
               className="fixed z-[100] min-w-44 rounded-xl border border-primary-100 bg-white p-1.5 shadow-xl"
               style={{ top: hoverAnchor.getBoundingClientRect().top, left: hoverAnchor.getBoundingClientRect().right + 8 }}
+              onMouseEnter={cancelClose}
+              onMouseLeave={scheduleClose}
             >
               <p className="px-2.5 pt-1 pb-1.5 text-[10px] font-bold uppercase tracking-widest text-text-faint">
                 {item.label}
@@ -193,17 +215,15 @@ export interface PortalSidebarProps {
   nav: NavItem[];
   /** Admin's "System" block — only rendered when given. */
   secondaryNav?: { label: string; items: NavItem[] };
-  /** Own-account links pinned above Sign out. */
-  footerNav?: NavItem[];
-  onSignOut: () => void;
 }
 
 /**
  * The desktop sidebar shared by every portal — filled with the brand color,
  * collapsible to an icon+tooltip rail (collapsed by default; the choice is
- * remembered per browser via localStorage). Mobile keeps its own off-canvas
- * `MobileNavDrawer`, fed the same `nav`/`secondaryNav`/`footerNav` data, so
- * there is exactly one nav-item list per portal either way.
+ * remembered per browser via localStorage). Account/Sign out live in the
+ * topbar's `AccountMenu`, not here — mobile keeps its own off-canvas
+ * `MobileNavDrawer`, fed the same `nav`/`secondaryNav` data plus its own
+ * footer, so there is exactly one nav-item list per portal either way.
  */
 export function PortalSidebar({
   brandLogoUrl,
@@ -211,8 +231,6 @@ export function PortalSidebar({
   subtitle,
   nav,
   secondaryNav,
-  footerNav = [],
-  onSignOut,
 }: PortalSidebarProps) {
   const pathname = usePathname();
   const [collapsed, setCollapsed] = useState(true);
@@ -299,23 +317,20 @@ export function PortalSidebar({
         )}
       </nav>
 
-      <div className="p-3 border-t border-white/10 space-y-1">
-        {footerNav.map((item) => (
-          <NavNode key={item.href ?? item.label} item={item} collapsed={collapsed} pathname={pathname} />
-        ))}
-
-        <button
-          type="button"
-          onClick={onSignOut}
-          title={collapsed ? 'Sign out' : undefined}
-          className={`w-full flex items-center gap-3 rounded-lg text-sm text-red-200 hover:bg-white/10 hover:text-red-100 transition-colors ${
-            collapsed ? 'justify-center px-0 py-2.5' : 'px-3 py-2.5'
-          }`}
-        >
-          <LogOut className="w-4.5 h-4.5 shrink-0" aria-hidden />
-          {!collapsed && 'Sign out'}
-        </button>
-      </div>
+      {/* Bottom-pinned, hidden collapsed — no room for the copy in the
+          icon-only rail, and it's not critical nav. Account/Sign out moved to
+          the topbar's AccountMenu, so this is the last thing in the shell. */}
+      {ready && !collapsed && (
+        <div className="p-3">
+          <div className="rounded-xl bg-white/10 p-4 text-center">
+            <div className="w-9 h-9 rounded-full bg-white/15 flex items-center justify-center mx-auto mb-2">
+              <LifeBuoy className="w-4.5 h-4.5 text-white" aria-hidden />
+            </div>
+            <p className="text-sm font-semibold text-white mb-1">Need help?</p>
+            <p className="text-xs text-primary-100">Reach out to your school admin for support.</p>
+          </div>
+        </div>
+      )}
     </aside>
   );
 }

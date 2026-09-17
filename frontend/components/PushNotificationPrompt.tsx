@@ -117,7 +117,7 @@ export function PushNotificationPrompt() {
     // bottom-24 rather than bottom-4 (InstallPrompt/iOS banner's spot) — the
     // two can legitimately be visible at once (not yet installed AND not yet
     // subscribed), and this stacks above it instead of overlapping.
-    <div className="fixed inset-x-4 bottom-24 z-50 flex items-center gap-3 rounded-xl bg-primary-700 px-4 py-3 text-white shadow-lg sm:inset-x-auto sm:right-4 sm:max-w-sm">
+    <div className="print:hidden fixed inset-x-4 bottom-24 z-50 flex items-center gap-3 rounded-xl bg-primary-700 px-4 py-3 text-white shadow-lg sm:inset-x-auto sm:right-4 sm:max-w-sm">
       <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-white/15">
         <Bell className="h-5 w-5" aria-hidden="true" />
       </span>

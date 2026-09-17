@@ -96,7 +96,7 @@ export function InstallPrompt() {
 
   if (deferredPrompt) {
     return (
-      <div className="fixed inset-x-4 bottom-4 z-50 flex items-center justify-between gap-3 rounded-xl bg-primary-700 px-4 py-3 text-white shadow-lg sm:inset-x-auto sm:right-4 sm:max-w-sm">
+      <div className="print:hidden fixed inset-x-4 bottom-4 z-50 flex items-center justify-between gap-3 rounded-xl bg-primary-700 px-4 py-3 text-white shadow-lg sm:inset-x-auto sm:right-4 sm:max-w-sm">
         <p className="text-sm">Install Good School for quicker, full-screen access.</p>
         <div className="flex shrink-0 gap-2">
           <button
@@ -120,7 +120,7 @@ export function InstallPrompt() {
 
   if (iosMode) {
     return (
-      <div className="fixed inset-x-4 bottom-4 z-50 flex items-center gap-3 rounded-xl bg-primary-700 px-4 py-3 text-white shadow-lg sm:inset-x-auto sm:right-4 sm:max-w-sm">
+      <div className="print:hidden fixed inset-x-4 bottom-4 z-50 flex items-center gap-3 rounded-xl bg-primary-700 px-4 py-3 text-white shadow-lg sm:inset-x-auto sm:right-4 sm:max-w-sm">
         <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-white/15">
           <Share className="h-5 w-5" aria-hidden="true" />
         </span>

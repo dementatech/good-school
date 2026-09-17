@@ -3,6 +3,10 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { Card } from '@/components/ui/Card';
+import { StatCard } from '@/components/ui/StatCard';
+import { DashboardGrid } from '@/components/ui/DashboardGrid';
+import { DashboardShell } from '@/components/ui/DashboardShell';
+import { WelcomeBanner } from '@/components/ui/WelcomeBanner';
 import { Sparkline } from '@/components/ui/Sparkline';
 import { CheckSquare, ClipboardCheck, ClipboardList, FileText, TrendingUp } from 'lucide-react';
 
@@ -49,12 +53,11 @@ export default function StaffDashboard() {
   }, []);
 
   return (
-    <div className="w-full">
-      <h1 className="text-2xl font-bold text-primary-900 mb-1">Dashboard</h1>
-      <p className="text-sm text-text-muted mb-6">Your lesson reports, papers and marking.</p>
+    <DashboardShell>
+      <WelcomeBanner subtitle="Your lesson reports, papers and marking." />
 
       <Link href="/staff/exam-marks" className="block mb-4">
-        <Card hover className="p-4 sm:p-5 flex items-center gap-3">
+        <Card hover className="flex items-center gap-3">
           <div className="p-2.5 rounded-xl bg-primary-700 shrink-0">
             <ClipboardCheck className="w-5 h-5 text-white" />
           </div>
@@ -65,39 +68,28 @@ export default function StaffDashboard() {
         </Card>
       </Link>
 
-      <div className="grid grid-cols-2 lg:grid-cols-3 gap-2.5 sm:gap-4">
-        {CARDS.map((c) => {
-          const Icon = c.icon;
-          return (
-            <Link key={c.key} href={c.href}>
-              <Card hover className="p-3 sm:p-5">
-                <div className="p-2 sm:p-2.5 rounded-xl bg-bg-muted w-fit mb-2 sm:mb-3">
-                  <Icon className="w-5 h-5 text-primary-700" />
-                </div>
-                <p className="text-2xl sm:text-3xl font-bold text-primary-900 tabular-nums">
-                  {loading ? '—' : (stats[c.key] ?? 0)}
-                </p>
-                <p className="text-sm text-text-muted mt-1">{c.label}</p>
-              </Card>
-            </Link>
-          );
-        })}
+      <DashboardGrid>
+        {CARDS.map((c, i) => (
+          <StatCard
+            key={c.key}
+            icon={c.icon}
+            label={c.label}
+            href={c.href}
+            value={stats[c.key] ?? 0}
+            loading={loading}
+            accent={i === 0 ? 'hero' : 'neutral'}
+          />
+        ))}
 
-        <Link href="/staff/performance">
-          <Card hover className="p-3 sm:p-5">
-            <div className="p-2 sm:p-2.5 rounded-xl bg-accent-lighter w-fit mb-2 sm:mb-3">
-              <TrendingUp className="w-5 h-5 text-accent-dark" />
-            </div>
-            <p className="text-2xl sm:text-3xl font-bold text-primary-900 tabular-nums">
-              {trend.length > 0 ? `${trend[trend.length - 1].value}%` : '—'}
-            </p>
-            <div className="flex flex-col xs:flex-row xs:items-center xs:justify-between gap-1 mt-1">
-              <p className="text-sm text-text-muted">Performance</p>
-              <div className="shrink-0"><Sparkline points={trend.map((t) => t.value)} /></div>
-            </div>
-          </Card>
-        </Link>
-      </div>
-    </div>
+        <StatCard
+          icon={TrendingUp}
+          label="Performance"
+          href="/staff/performance"
+          value={trend.length > 0 ? `${trend[trend.length - 1].value}%` : '—'}
+          accent="gold"
+          trailing={<Sparkline points={trend.map((t) => t.value)} />}
+        />
+      </DashboardGrid>
+    </DashboardShell>
   );
 }

@@ -1,7 +1,8 @@
 'use client';
 
 import { useState } from 'react';
-import { Cell, Legend, Pie, PieChart, ResponsiveContainer, Tooltip } from 'recharts';
+import { arc as d3arc, pie as d3pie } from 'd3';
+import { useElementSize } from '@/lib/useElementSize';
 
 interface GenderBreakdownEntry {
   gender: 'male' | 'female' | 'unspecified';
@@ -26,12 +27,15 @@ const LABELS: Record<GenderBreakdownEntry['gender'], string> = {
   unspecified: 'Unspecified',
 };
 
+const CHART_HEIGHT = 220;
+
 interface GenderDonutChartProps {
   data: GenderBreakdownEntry[];
 }
 
 export function GenderDonutChart({ data }: GenderDonutChartProps) {
   const [view, setView] = useState<'chart' | 'table'>('chart');
+  const { ref, width } = useElementSize<HTMLDivElement>();
   const total = data.reduce((sum, d) => sum + d.count, 0);
 
   if (total === 0) {
@@ -43,6 +47,21 @@ export function GenderDonutChart({ data }: GenderDonutChartProps) {
     label: LABELS[d.gender],
     percent: Math.round((d.count / total) * 1000) / 10,
   }));
+
+  const size = Math.min(width, CHART_HEIGHT);
+  const radius = size / 2;
+  const pie = d3pie<GenderBreakdownEntry>()
+    .value((d) => d.count)
+    .padAngle(0.015)
+    .sort(null);
+  const arc = d3arc<{ startAngle: number; endAngle: number; padAngle: number }>()
+    .innerRadius(radius * 0.55)
+    .outerRadius(radius * 0.8)
+    .cornerRadius(2);
+  const labelArc = d3arc<{ startAngle: number; endAngle: number; padAngle: number }>()
+    .innerRadius(radius * 0.9)
+    .outerRadius(radius * 0.9);
+  const arcs = pie(data);
 
   return (
     <div>
@@ -64,26 +83,42 @@ export function GenderDonutChart({ data }: GenderDonutChartProps) {
       </div>
 
       {view === 'chart' ? (
-        <div style={{ width: '100%', height: 220 }}>
-          <ResponsiveContainer>
-            <PieChart>
-              <Pie
-                data={chartData}
-                dataKey="count"
-                nameKey="label"
-                innerRadius="55%"
-                outerRadius="80%"
-                paddingAngle={2}
-                label={({ percent }) => `${Math.round((percent ?? 0) * 100)}%`}
-              >
-                {chartData.map((entry) => (
-                  <Cell key={entry.gender} fill={COLORS[entry.gender]} stroke="var(--color-bg-card)" strokeWidth={2} />
-                ))}
-              </Pie>
-              <Tooltip formatter={(value, name) => [`${value} (${name})`, 'Students']} />
-              <Legend verticalAlign="bottom" height={28} />
-            </PieChart>
-          </ResponsiveContainer>
+        <div ref={ref} style={{ width: '100%', height: CHART_HEIGHT }} className="flex flex-col items-center">
+          {width > 0 && (
+            <svg width={size} height={size} role="img" aria-label="Gender breakdown of enrolled students">
+              <g transform={`translate(${size / 2}, ${size / 2})`}>
+                {arcs.map((a) => {
+                  const pct = Math.round((a.data.count / total) * 100);
+                  return (
+                    <g key={a.data.gender}>
+                      <title>{`${LABELS[a.data.gender]}: ${a.data.count} (${pct}%)`}</title>
+                      <path d={arc(a) ?? undefined} fill={COLORS[a.data.gender]} stroke="var(--color-bg-card)" strokeWidth={2} />
+                      {pct > 0 && (
+                        <text
+                          transform={`translate(${labelArc.centroid(a)})`}
+                          textAnchor="middle"
+                          dominantBaseline="middle"
+                          className="fill-[var(--color-text-secondary)]"
+                          fontSize={11}
+                          fontWeight={600}
+                        >
+                          {pct}%
+                        </text>
+                      )}
+                    </g>
+                  );
+                })}
+              </g>
+            </svg>
+          )}
+          <div className="flex items-center justify-center gap-4 mt-2 text-xs text-text-muted">
+            {chartData.map((d) => (
+              <span key={d.gender} className="flex items-center gap-1.5">
+                <span className="inline-block w-2.5 h-2.5 rounded-full" style={{ background: COLORS[d.gender] }} />
+                {d.label}
+              </span>
+            ))}
+          </div>
         </div>
       ) : (
         <table className="w-full text-sm">

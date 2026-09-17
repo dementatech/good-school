@@ -1,9 +1,11 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import Link from 'next/link';
-import { Card } from '@/components/ui/Card';
-import { School, UserCog, GraduationCap, Contact, Library, ShieldCheck } from 'lucide-react';
+import { StatCard } from '@/components/ui/StatCard';
+import { DashboardGrid } from '@/components/ui/DashboardGrid';
+import { DashboardShell } from '@/components/ui/DashboardShell';
+import { WelcomeBanner } from '@/components/ui/WelcomeBanner';
+import { School, UserCog, Library, ShieldCheck } from 'lucide-react';
 
 interface Stats {
   schools: number;
@@ -15,12 +17,13 @@ interface Stats {
   libraryPending: number;
 }
 
+// Strictly 4: the account breakdown (students/parents) already lives on the
+// main /admin dashboard — this page stays focused on what's unique to
+// system administration (school count, school-admin count, staff, approvals).
 const CARDS = [
   { key: 'schools' as const, label: 'Schools', href: '/admin/system/schools', icon: School },
   { key: 'schoolAdmins' as const, label: 'School Admins', href: '/admin/system/accounts', icon: ShieldCheck },
   { key: 'staff' as const, label: 'Staff', href: '/admin/system/accounts', icon: UserCog },
-  { key: 'students' as const, label: 'Students', href: '/admin/system/accounts', icon: GraduationCap },
-  { key: 'parents' as const, label: 'Parents', href: '/admin/system/accounts', icon: Contact },
   { key: 'libraryPending' as const, label: 'Library approvals pending', href: '/admin/system/library', icon: Library },
 ];
 
@@ -61,28 +64,22 @@ export default function SystemDashboard() {
   }, []);
 
   return (
-    <div className="w-full">
-      <h1 className="text-2xl font-bold text-primary-900 mb-1">System</h1>
-      <p className="text-sm text-text-muted mb-6">Schools, curriculum and every account. Super admin only.</p>
+    <DashboardShell>
+      <WelcomeBanner subtitle="Schools, curriculum and every account. Super admin only." />
 
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-4">
-        {CARDS.map((c) => {
-          const Icon = c.icon;
-          return (
-            <Link key={c.label} href={c.href}>
-              <Card hover className="p-3 sm:p-5">
-                <div className="p-2 sm:p-2.5 rounded-xl bg-bg-muted w-fit mb-2 sm:mb-3">
-                  <Icon className="w-5 h-5 text-primary-700" />
-                </div>
-                <p className="text-2xl sm:text-3xl font-bold text-primary-900 tabular-nums">
-                  {loading ? '—' : stats[c.key]}
-                </p>
-                <p className="text-sm text-text-muted mt-1">{c.label}</p>
-              </Card>
-            </Link>
-          );
-        })}
-      </div>
-    </div>
+      <DashboardGrid>
+        {CARDS.map((c, i) => (
+          <StatCard
+            key={c.label}
+            icon={c.icon}
+            label={c.label}
+            href={c.href}
+            value={stats[c.key]}
+            loading={loading}
+            accent={i === 0 ? 'hero' : 'neutral'}
+          />
+        ))}
+      </DashboardGrid>
+    </DashboardShell>
   );
 }
