@@ -469,7 +469,10 @@ function ReportCardsContent() {
       const res = await fetch(`/api/v1/exams/${examId}/report-cards/pdf?${search.toString()}`, {
         credentials: 'include',
       });
-      if (!res.ok) throw new Error('failed');
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.error ?? body.message ?? `The PDF request failed (${res.status}).`);
+      }
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
@@ -479,8 +482,8 @@ function ReportCardsContent() {
       a.click();
       a.remove();
       URL.revokeObjectURL(url);
-    } catch {
-      toast.error('Could not generate the PDF. Please try again.');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Couldn't reach the server — check your connection and try again.");
     } finally {
       setDownloading(false);
     }

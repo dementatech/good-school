@@ -59,7 +59,7 @@ import {
   schoolExamBodySchema,
   schoolExamUpdateBodySchema,
 } from "./schemas.js";
-import { renderReportCardsPdf } from "../domain/report-card-pdf.js";
+import { renderReportCardsPdf, ReportCardPdfError } from "../domain/report-card-pdf.js";
 
 const REFERENCE = requireAuth(["super_admin"]);
 const SCHOOL = requireAuth(["admin", "school_admin", "super_admin"]);
@@ -351,7 +351,16 @@ export async function examsRoutes(fastify: FastifyInstance) {
         .send(pdf);
     } catch (err) {
       request.log.error(err);
-      return reply.status(502).send(fail("Could not generate the PDF. Try again."));
+      // ReportCardPdfError's message is already written to be shown as-is
+      // (e.g. "Could not load the report page (status 401)."). Anything
+      // else — a headless-Chrome launch failure, say — could carry internal
+      // paths/stack detail, so it stays server-log-only and the caller gets
+      // a generic message instead of a silent, unexplained "try again".
+      const message =
+        err instanceof ReportCardPdfError
+          ? err.message
+          : "Could not generate the PDF right now. Try again, and let us know if it keeps happening.";
+      return reply.status(502).send(fail(message));
     }
   });
 
