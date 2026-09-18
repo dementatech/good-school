@@ -105,18 +105,18 @@ function ReportSubjectTable({ title, subjects }: { title: string; subjects: Repo
       <table className="w-full text-sm border border-border">
         <thead>
           <tr className="bg-bg-subtle text-left text-[10.5px] font-bold uppercase tracking-wide text-text-faint">
-            <th className="py-1.5 px-2 border-b border-r border-border w-8 text-center">#</th>
-            <th className="py-1.5 px-2 border-b border-r border-border">Subject</th>
-            <th className="py-1.5 px-2 border-b border-r border-border text-right">Score</th>
-            <th className="py-1.5 px-2 border-b border-r border-border text-center">Grade</th>
-            <th className="py-1.5 px-2 border-b border-border">Remarks</th>
+            <th className="py-1 px-2 border-b border-r border-border w-8 text-center">#</th>
+            <th className="py-1 px-2 border-b border-r border-border">Subject</th>
+            <th className="py-1 px-2 border-b border-r border-border text-right">Score</th>
+            <th className="py-1 px-2 border-b border-r border-border text-center">Grade</th>
+            <th className="py-1 px-2 border-b border-border">Remarks</th>
           </tr>
         </thead>
         <tbody>
           {subjects.map((s, i) => (
             <tr key={s.subjectId} className="border-b border-border last:border-0">
-              <td className="py-1.5 px-2 border-r border-border text-center text-text-faint tabular-nums">{i + 1}</td>
-              <td className="py-1.5 px-2 border-r border-border">
+              <td className="py-1 px-2 border-r border-border text-center text-text-faint tabular-nums">{i + 1}</td>
+              <td className="py-1 px-2 border-r border-border">
                 {s.subjectName}
                 {s.hasVariant && s.variantScores && (
                   <span className="block text-[10px] text-text-faint">
@@ -126,7 +126,7 @@ function ReportSubjectTable({ title, subjects }: { title: string; subjects: Repo
                   </span>
                 )}
               </td>
-              <td className="py-1.5 px-2 border-r border-border text-right tabular-nums font-semibold">
+              <td className="py-1 px-2 border-r border-border text-right tabular-nums font-semibold">
                 {s.isAbsent ? (
                   <span className="text-text-muted font-normal">Absent</span>
                 ) : s.rawScore !== null ? (
@@ -135,7 +135,7 @@ function ReportSubjectTable({ title, subjects }: { title: string; subjects: Repo
                   '—'
                 )}
               </td>
-              <td className="py-1.5 px-2 border-r border-border text-center">
+              <td className="py-1 px-2 border-r border-border text-center">
                 {s.computedGrade ? (
                   <span
                     className={`inline-flex min-w-6 justify-center px-1.5 py-0.5 rounded-md text-[11px] font-extrabold ${
@@ -148,7 +148,7 @@ function ReportSubjectTable({ title, subjects }: { title: string; subjects: Repo
                   <span className="text-text-faint">—</span>
                 )}
               </td>
-              <td className="py-1.5 px-2 text-text-faint">&nbsp;</td>
+              <td className="py-1 px-2 text-text-faint">&nbsp;</td>
             </tr>
           ))}
         </tbody>
@@ -163,7 +163,7 @@ function StatRow({ items }: { items: { label: string; value: string }[] }) {
       <thead>
         <tr className="bg-bg-subtle text-[10.5px] font-bold uppercase tracking-wide text-text-faint">
           {items.map((it) => (
-            <th key={it.label} className="py-1.5 px-2 border-b border-r border-border last:border-r-0 text-center">
+            <th key={it.label} className="py-1 px-2 border-b border-r border-border last:border-r-0 text-center">
               {it.label}
             </th>
           ))}
@@ -174,7 +174,7 @@ function StatRow({ items }: { items: { label: string; value: string }[] }) {
           {items.map((it) => (
             <td
               key={it.label}
-              className="py-2 px-2 border-r border-border last:border-r-0 text-center font-extrabold text-primary-900"
+              className="py-1.5 px-2 border-r border-border last:border-r-0 text-center font-extrabold text-primary-900"
             >
               {it.value}
             </td>
@@ -188,8 +188,8 @@ function StatRow({ items }: { items: { label: string; value: string }[] }) {
 function RemarksBox({ lines }: { lines: { label: string; text: string | null }[] }) {
   const content = lines.filter((l) => l.text);
   return (
-    <div className="border border-border p-3 min-h-[3.5rem]">
-      <p className="text-[10px] font-bold uppercase tracking-wide text-text-faint mb-1">Remarks</p>
+    <div className="border border-border p-2 min-h-[2.5rem]">
+      <p className="text-[10px] font-bold uppercase tracking-wide text-text-faint mb-0.5">Remarks</p>
       {content.length === 0 ? (
         <p className="text-xs text-text-faint">—</p>
       ) : (
@@ -208,8 +208,8 @@ function GradingLegend({ bands }: { bands: GradeBand[] }) {
   if (bands.length === 0) return null;
   const sorted = [...bands].sort((a, b) => b.minPct - a.minPct);
   return (
-    <div className="mt-4 pt-2.5 border-t border-border">
-      <div className="grid grid-cols-2 gap-x-6 gap-y-0.5 text-[10px] text-text-secondary">
+    <div className="mt-2 pt-1.5 border-t border-border">
+      <div className="grid grid-cols-2 gap-x-6 gap-y-0 text-[9px] leading-tight text-text-secondary">
         {sorted.map((b) => (
           <p key={b.label}>
             <span className="font-semibold text-text-muted">
@@ -247,44 +247,44 @@ function StudentReportCardSheet({
     : new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
 
   return (
-    <div className="report-sheet bg-white p-3 max-w-[800px] mx-auto">
+    <div className="report-sheet bg-white p-2 max-w-[800px] mx-auto">
       {/* Certificate-style double frame, matching the school's printed marksheet layout. */}
       <div className="border-4 border-primary-700 p-1">
-        <div className="border border-primary-700 p-6">
-          <div className="flex items-start justify-between gap-4 mb-4">
-            <div className="w-16 h-16 rounded-full border-2 border-primary-700 flex items-center justify-center overflow-hidden shrink-0 bg-primary-50">
+        <div className="border border-primary-700 p-4">
+          <div className="flex items-start justify-between gap-3 mb-2.5">
+            <div className="w-12 h-12 rounded-full border-2 border-primary-700 flex items-center justify-center overflow-hidden shrink-0 bg-primary-50">
               {schoolInfo?.logoUrl ? (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img src={schoolInfo.logoUrl} alt="" className="w-full h-full object-contain" />
               ) : (
-                <span className="text-primary-700 font-extrabold text-lg">{initialsOf(schoolName)}</span>
+                <span className="text-primary-700 font-extrabold text-sm">{initialsOf(schoolName)}</span>
               )}
             </div>
             <div className="flex-1 text-center">
-              <p className="text-2xl font-extrabold text-primary-700 uppercase tracking-wide leading-tight">
+              <p className="text-xl font-extrabold text-primary-700 uppercase tracking-wide leading-tight">
                 {schoolName}
               </p>
               {subtitle && (
-                <p className="text-[11px] font-semibold text-text-muted uppercase tracking-wide mt-0.5">{subtitle}</p>
+                <p className="text-[10px] font-semibold text-text-muted uppercase tracking-wide">{subtitle}</p>
               )}
-              <p className="text-xs font-bold text-primary-700 uppercase tracking-wide mt-1.5">
+              <p className="text-[11px] font-bold text-primary-700 uppercase tracking-wide mt-1">
                 {exam.name} &middot; {exam.termName}
               </p>
-              <span className="inline-block mt-2 px-4 py-1 rounded-full text-xs font-extrabold uppercase tracking-widest text-white bg-gradient-to-r from-accent-dark to-accent">
+              <span className="inline-block mt-1 px-3 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-widest text-white bg-gradient-to-r from-accent-dark to-accent">
                 Report Card
               </span>
             </div>
-            <div className="w-16 h-20 border border-border shrink-0" aria-hidden />
+            <div className="w-12 h-14 border border-border shrink-0" aria-hidden />
           </div>
 
-          <div className="space-y-1.5 text-sm mb-5 border-t border-b border-border py-2.5">
+          <div className="space-y-1 text-sm mb-2.5 border-t border-b border-border py-1.5">
             <p className="flex items-baseline gap-2">
               <span className="text-text-muted shrink-0">Student Name:</span>
               <span className="flex-1 border-b border-dotted border-border-strong font-semibold text-primary-900 pb-0.5">
                 {student.studentName}
               </span>
             </p>
-            <div className="flex flex-wrap gap-x-8 gap-y-1.5">
+            <div className="flex flex-wrap gap-x-8 gap-y-1">
               <p className="flex items-baseline gap-2">
                 <span className="text-text-muted">Class:</span>
                 <span className="font-semibold text-primary-900 border-b border-dotted border-border-strong px-2 min-w-16 inline-block">
@@ -308,10 +308,10 @@ function StudentReportCardSheet({
           </div>
 
           {isALevel ? (
-            <div className="space-y-4">
+            <div className="space-y-2.5">
               <ReportSubjectTable title="Principal Subjects" subjects={principalSubjects} />
               <ReportSubjectTable title="Subsidiary Subjects" subjects={subsidiarySubjects} />
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-2 gap-2.5">
                 <StatRow
                   items={[
                     { label: 'Principal Avg', value: student.principalAverage !== null ? `${round(student.principalAverage)}%` : '—' },
@@ -333,7 +333,7 @@ function StudentReportCardSheet({
               />
             </div>
           ) : (
-            <div className="space-y-4">
+            <div className="space-y-2.5">
               <ReportSubjectTable title="Subjects" subjects={student.subjects} />
               <StatRow
                 items={[
@@ -345,17 +345,17 @@ function StudentReportCardSheet({
             </div>
           )}
 
-          <div className="grid grid-cols-3 gap-6 mt-10 text-xs text-text-muted text-center">
+          <div className="grid grid-cols-3 gap-6 mt-4 text-xs text-text-muted text-center">
             <div>
-              <div className="h-8 border-b border-border mb-1" />
+              <div className="h-5 border-b border-border mb-1" />
               Class Teacher&apos;s Signature
             </div>
             <div>
-              <div className="h-8 border-b border-border mb-1" />
+              <div className="h-5 border-b border-border mb-1" />
               Parent/Guardian&apos;s Signature
             </div>
             <div>
-              <div className="h-8 border-b border-border mb-1" />
+              <div className="h-5 border-b border-border mb-1" />
               Head Teacher&apos;s Signature
             </div>
           </div>
