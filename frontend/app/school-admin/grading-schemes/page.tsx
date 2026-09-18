@@ -5,6 +5,7 @@ import { Badge } from '@/components/ui/Badge';
 import { Card } from '@/components/ui/Card';
 import { Loader } from '@/components/ui/loader';
 import { DropdownMenu, type DropdownMenuItem } from '@/components/ui/DropdownMenu';
+import { useToast } from '@/components/ui/ToastProvider';
 import { MoreVertical, Pencil, Settings2 } from 'lucide-react';
 import { ChangeGradeSystemModal } from '@/components/admin/grading/ChangeGradeSystemModal';
 import { EditGradingRangesModal } from '@/components/admin/grading/EditGradingRangesModal';
@@ -27,6 +28,7 @@ const CARDS: { appliesTo: GradingAppliesTo; roleScope: GradeRoleScope; title: st
 ];
 
 export default function SchoolAdminGradingSchemesPage() {
+  const toast = useToast();
   const [loading, setLoading] = useState(true);
   const [curriculumId, setCurriculumId] = useState('');
   const [selections, setSelections] = useState<SchoolGradingSchemeSelection[]>([]);
@@ -34,12 +36,12 @@ export default function SchoolAdminGradingSchemesPage() {
   const [editModal, setEditModal] = useState<(typeof CARDS)[number] | null>(null);
 
   const load = useCallback(async () => {
-    setSelections(await fetchList<SchoolGradingSchemeSelection>('/api/v1/academic/school-grading-schemes'));
+    setSelections(await fetchList<SchoolGradingSchemeSelection>('/api/v1/academic/school-grading-schemes', toast.error));
   }, []);
 
   useEffect(() => {
     void (async () => {
-      const schoolCurricula = await fetchList<{ curriculumId: string }>('/api/v1/academic/school-curricula');
+      const schoolCurricula = await fetchList<{ curriculumId: string }>('/api/v1/academic/school-curricula', toast.error);
       setCurriculumId(schoolCurricula[0]?.curriculumId ?? '');
       await load();
       setLoading(false);

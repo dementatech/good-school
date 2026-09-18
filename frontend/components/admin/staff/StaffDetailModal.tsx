@@ -121,7 +121,7 @@ function AssignPositionForm({ staff, positions, onDone }: { staff: Staff; positi
 
   useEffect(() => {
     void (async () => {
-      const list = await fetchList<AcademicYear>('/api/v1/academic/years');
+      const list = await fetchList<AcademicYear>('/api/v1/academic/years', toast.error);
       setYears(list);
       const current = list.find((y) => y.isCurrent) ?? list[0];
       if (current) setAcademicYearId(current.id);
@@ -181,8 +181,8 @@ function PositionsPanel({ staff, onChanged }: { staff: Staff; onChanged: () => P
   const [showAssign, setShowAssign] = useState(false);
 
   const load = async () => {
-    setStaffPositions(await fetchList<StaffPosition>(`/api/v1/organization/staff/${staff.userId}/positions`));
-    setAllPositions(await fetchList<Position>('/api/v1/organization/positions'));
+    setStaffPositions(await fetchList<StaffPosition>(`/api/v1/organization/staff/${staff.userId}/positions`, toast.error));
+    setAllPositions(await fetchList<Position>('/api/v1/organization/positions', toast.error));
   };
 
   useEffect(() => {
@@ -267,7 +267,7 @@ function NewAssignmentForm({ staff, onDone }: { staff: Staff; onDone: () => Prom
 
   useEffect(() => {
     void (async () => {
-      const list = await fetchList<AcademicYear>('/api/v1/academic/years');
+      const list = await fetchList<AcademicYear>('/api/v1/academic/years', toast.error);
       setYears(list);
       const current = list.find((y) => y.isCurrent) ?? list[0];
       if (current) setAcademicYearId(current.id);
@@ -358,10 +358,10 @@ function SpecializationsPanel({ staff, onChanged }: { staff: Staff; onChanged: (
 
   useEffect(() => {
     void (async () => {
-      const schoolCurricula = await fetchList<{ curriculumId: string }>('/api/v1/academic/school-curricula');
+      const schoolCurricula = await fetchList<{ curriculumId: string }>('/api/v1/academic/school-curricula', toast.error);
       const curriculumId = schoolCurricula[0]?.curriculumId;
       if (curriculumId) {
-        setSubjects(await fetchList<CatalogSubject>(`/api/v1/academic/subjects?curriculumId=${curriculumId}`));
+        setSubjects(await fetchList<CatalogSubject>(`/api/v1/academic/subjects?curriculumId=${curriculumId}`, toast.error));
       }
     })();
   }, []);
@@ -436,14 +436,15 @@ export function StaffDetailModal({
   onChanged: () => Promise<void> | void;
   staff: Staff;
 }) {
+  const toast = useToast();
   const [history, setHistory] = useState<StaffAssignment[] | null>(null);
   const [teachingLoad, setTeachingLoad] = useState<SubjectTeacherAssignment[] | null>(null);
   const [showEnd, setShowEnd] = useState(false);
   const [showNewAssignment, setShowNewAssignment] = useState(false);
 
   const load = async () => {
-    setHistory(await fetchList<StaffAssignment>(`/api/v1/staff/${staff.userId}/assignments`));
-    setTeachingLoad(await fetchList<SubjectTeacherAssignment>(`/api/v1/staff/${staff.userId}/teaching-load`));
+    setHistory(await fetchList<StaffAssignment>(`/api/v1/staff/${staff.userId}/assignments`, toast.error));
+    setTeachingLoad(await fetchList<SubjectTeacherAssignment>(`/api/v1/staff/${staff.userId}/teaching-load`, toast.error));
   };
 
   useEffect(() => {

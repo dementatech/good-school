@@ -35,7 +35,7 @@ export function SchoolExamFormModal({
 
   useEffect(() => {
     if (initial) return;
-    void fetchList<ExamSession>('/api/v1/exams/sessions').then(setSessions);
+    void fetchList<ExamSession>('/api/v1/exams/sessions', toast.error).then(setSessions);
   }, [initial]);
 
   // Until the user hand-edits the name, it mirrors the chosen session's name.

@@ -107,7 +107,7 @@ export function MarkSheet({
 
   const load = useCallback(async () => {
     setLoading(true);
-    const data = await fetchOne<MarkSheetData>(`/api/v1/exams/${examId}/marksheet?${qs}`);
+    const data = await fetchOne<MarkSheetData>(`/api/v1/exams/${examId}/marksheet?${qs}`, toast.error);
     if (data) {
       setSheet(data);
       setDraft(buildDraft(data));

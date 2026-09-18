@@ -421,7 +421,7 @@ function AdmissionWizard({
 
   useEffect(() => {
     void (async () => {
-      const list = await fetchList<AcademicYear>('/api/v1/academic/years');
+      const list = await fetchList<AcademicYear>('/api/v1/academic/years', toast.error);
       setYears(list);
       const current = list.find((y) => y.isCurrent) ?? list[0];
       if (current) setAcademicYearId(current.id);
@@ -430,7 +430,7 @@ function AdmissionWizard({
 
   useEffect(() => {
     if (!academicYearId) return;
-    void fetchList<SchoolClass>(`/api/v1/academic/classes?academicYearId=${academicYearId}`).then((list) => {
+    void fetchList<SchoolClass>(`/api/v1/academic/classes?academicYearId=${academicYearId}`, toast.error).then((list) => {
       setClasses(list);
       setClassId('');
     });
@@ -440,7 +440,7 @@ function AdmissionWizard({
 
   useEffect(() => {
     if (!classId || !selectedClass?.hasStreams) return;
-    void fetchList<Stream>(`/api/v1/academic/streams?classId=${classId}`).then((list) => {
+    void fetchList<Stream>(`/api/v1/academic/streams?classId=${classId}`, toast.error).then((list) => {
       setStreams(list);
       setStreamId('');
     });

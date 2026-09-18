@@ -55,7 +55,7 @@ export function PriorExamsSection({ studentUserId }: { studentUserId: string }) 
   const [form, setForm] = useState<FormState | null>(null);
   const [saving, setSaving] = useState(false);
 
-  const load = async () => setExams(await fetchList<PriorExam>(`/api/v1/students/${studentUserId}/prior-exams`));
+  const load = async () => setExams(await fetchList<PriorExam>(`/api/v1/students/${studentUserId}/prior-exams`, toast.error));
 
   useEffect(() => {
     void (async () => {

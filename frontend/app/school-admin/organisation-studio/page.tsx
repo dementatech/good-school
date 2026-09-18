@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { Loader } from '@/components/ui/loader';
+import { useToast } from '@/components/ui/ToastProvider';
 import { fetchList } from '@/lib/api/envelope';
 import { DepartmentsPanel } from '@/components/admin/organization/DepartmentsPanel';
 import { DepartmentPositionsTabs } from '@/components/admin/organization/DepartmentPositionsTabs';
@@ -10,6 +11,7 @@ import type { Department, DepartmentCatalogEntry, Position } from '@/components/
 // docs/design/departments-module.md + organization-studio.md — the school's
 // department/position setup and the literal org chart it generates.
 export default function OrganisationStudioPage() {
+  const toast = useToast();
   const [departments, setDepartments] = useState<Department[]>([]);
   const [catalog, setCatalog] = useState<DepartmentCatalogEntry[]>([]);
   const [positions, setPositions] = useState<Position[]>([]);
@@ -17,9 +19,9 @@ export default function OrganisationStudioPage() {
 
   const load = useCallback(async () => {
     const [d, c, p] = await Promise.all([
-      fetchList<Department>('/api/v1/organization/departments'),
-      fetchList<DepartmentCatalogEntry>('/api/v1/organization/department-catalog'),
-      fetchList<Position>('/api/v1/organization/positions'),
+      fetchList<Department>('/api/v1/organization/departments', toast.error),
+      fetchList<DepartmentCatalogEntry>('/api/v1/organization/department-catalog', toast.error),
+      fetchList<Position>('/api/v1/organization/positions', toast.error),
     ]);
     setDepartments(d);
     setCatalog(c);

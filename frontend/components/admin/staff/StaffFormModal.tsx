@@ -151,15 +151,15 @@ export function StaffFormModal({
   useEffect(() => {
     if (isEdit) return;
     void (async () => {
-      const list = await fetchList<AcademicYear>('/api/v1/academic/years');
+      const list = await fetchList<AcademicYear>('/api/v1/academic/years', toast.error);
       setYears(list);
       const current = list.find((y) => y.isCurrent) ?? list[0];
       if (current) setAcademicYearId(current.id);
 
-      const schoolCurricula = await fetchList<{ curriculumId: string }>('/api/v1/academic/school-curricula');
+      const schoolCurricula = await fetchList<{ curriculumId: string }>('/api/v1/academic/school-curricula', toast.error);
       const curriculumId = schoolCurricula[0]?.curriculumId;
       if (curriculumId) {
-        setSubjects(await fetchList<CatalogSubject>(`/api/v1/academic/subjects?curriculumId=${curriculumId}`));
+        setSubjects(await fetchList<CatalogSubject>(`/api/v1/academic/subjects?curriculumId=${curriculumId}`, toast.error));
       }
     })();
   }, [isEdit]);

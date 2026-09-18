@@ -97,7 +97,7 @@ export default function SystemSchoolsPage() {
   const [adminSchool, setAdminSchool] = useState<School | null>(null);
 
   const load = useCallback(async () => {
-    setSchools(await fetchList<School>('/api/v1/schools'));
+    setSchools(await fetchList<School>('/api/v1/schools', toast.error));
     setLoading(false);
   }, []);
 

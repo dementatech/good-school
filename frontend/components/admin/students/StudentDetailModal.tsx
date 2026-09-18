@@ -149,6 +149,7 @@ function AddGuardianForm({ student, onDone }: { student: Student; onDone: () => 
         setSearching(true);
         const list = await fetchList<GuardianSearchResult>(
           `/api/v1/students/guardians/search?search=${encodeURIComponent(q)}`,
+          toast.error,
         );
         if (!controller.signal.aborted) setResults(list);
         setSearching(false);
@@ -324,7 +325,7 @@ function NewEnrollmentForm({ student, onDone }: { student: Student; onDone: () =
 
   useEffect(() => {
     void (async () => {
-      const list = await fetchList<AcademicYear>('/api/v1/academic/years');
+      const list = await fetchList<AcademicYear>('/api/v1/academic/years', toast.error);
       setYears(list);
       const current = list.find((y) => y.isCurrent) ?? list[0];
       if (current) setAcademicYearId(current.id);
@@ -333,14 +334,14 @@ function NewEnrollmentForm({ student, onDone }: { student: Student; onDone: () =
 
   useEffect(() => {
     if (!academicYearId) return;
-    void fetchList<SchoolClass>(`/api/v1/academic/classes?academicYearId=${academicYearId}`).then(setClasses);
+    void fetchList<SchoolClass>(`/api/v1/academic/classes?academicYearId=${academicYearId}`, toast.error).then(setClasses);
   }, [academicYearId]);
 
   const selectedClass = classes.find((c) => c.id === classId) ?? null;
 
   useEffect(() => {
     if (!classId || !selectedClass?.hasStreams) return;
-    void fetchList<Stream>(`/api/v1/academic/streams?classId=${classId}`).then(setStreams);
+    void fetchList<Stream>(`/api/v1/academic/streams?classId=${classId}`, toast.error).then(setStreams);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [classId]);
 
@@ -452,8 +453,8 @@ export function StudentDetailModal({
   const [showAddGuardian, setShowAddGuardian] = useState(false);
 
   const load = async () => {
-    setGuardians(await fetchList<StudentGuardian>(`/api/v1/students/${student.userId}/guardians`));
-    setHistory(await fetchList<EnrollmentRecord>(`/api/v1/students/${student.userId}/enrollments`));
+    setGuardians(await fetchList<StudentGuardian>(`/api/v1/students/${student.userId}/guardians`, toast.error));
+    setHistory(await fetchList<EnrollmentRecord>(`/api/v1/students/${student.userId}/enrollments`, toast.error));
   };
 
   // No synchronous setState at the top of this effect (react-hooks/set-state-in-effect)

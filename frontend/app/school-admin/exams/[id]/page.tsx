@@ -7,6 +7,7 @@ import { Card } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { Loader } from '@/components/ui/loader';
+import { useToast } from '@/components/ui/ToastProvider';
 import { fetchOne } from '@/lib/api/envelope';
 import { ArrowLeft } from 'lucide-react';
 import {
@@ -42,11 +43,12 @@ function Progress({ slot }: { slot: ExamCompletionSlot }) {
 export default function SchoolAdminExamDetailPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
+  const toast = useToast();
   const [data, setData] = useState<ExamCompletion | null>(null);
   const [loading, setLoading] = useState(true);
 
   const load = useCallback(async () => {
-    setData(await fetchOne<ExamCompletion>(`/api/v1/exams/${id}/completion`));
+    setData(await fetchOne<ExamCompletion>(`/api/v1/exams/${id}/completion`, toast.error));
     setLoading(false);
   }, [id]);
 

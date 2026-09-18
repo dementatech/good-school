@@ -38,7 +38,7 @@ export default function SchoolAdminExamsPage() {
 
   useEffect(() => {
     void (async () => {
-      const list = await fetchList<AcademicYear>('/api/v1/academic/years');
+      const list = await fetchList<AcademicYear>('/api/v1/academic/years', toast.error);
       setYears(list);
       const current = list.find((y) => y.isCurrent) ?? list[0];
       setYearId(current?.id ?? '');
@@ -48,7 +48,7 @@ export default function SchoolAdminExamsPage() {
   useEffect(() => {
     if (!yearId) return;
     void (async () => {
-      setTerms(await fetchList<Term>(`/api/v1/academic/terms?academicYearId=${yearId}`));
+      setTerms(await fetchList<Term>(`/api/v1/academic/terms?academicYearId=${yearId}`, toast.error));
     })();
   }, [yearId]);
 
@@ -56,7 +56,7 @@ export default function SchoolAdminExamsPage() {
     if (!yearId) return;
     const qs = new URLSearchParams({ academicYearId: yearId });
     if (termId) qs.set('termId', termId);
-    const rows = await fetchList<SchoolExam>(`/api/v1/exams?${qs.toString()}`);
+    const rows = await fetchList<SchoolExam>(`/api/v1/exams?${qs.toString()}`, toast.error);
     setExams(rows);
     setLoading(false);
   }, [yearId, termId]);

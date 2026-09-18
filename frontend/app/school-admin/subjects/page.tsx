@@ -75,8 +75,8 @@ export default function SchoolAdminSubjectsPage() {
   const loadSubjects = useCallback(async (curId: string) => {
     if (!curId) return;
     const [subjectsRes, stagesRes] = await Promise.all([
-      fetchList<CatalogSubject>(`/api/v1/academic/subjects?curriculumId=${curId}`),
-      fetchList<Stage>(`/api/v1/academic/stages?curriculumId=${curId}`),
+      fetchList<CatalogSubject>(`/api/v1/academic/subjects?curriculumId=${curId}`, toast.error),
+      fetchList<Stage>(`/api/v1/academic/stages?curriculumId=${curId}`, toast.error),
     ]);
     setCatalogSubjects(subjectsRes);
     setStages(stagesRes);
@@ -85,8 +85,8 @@ export default function SchoolAdminSubjectsPage() {
   useEffect(() => {
     void (async () => {
       const [yearsRes, schoolCurricula] = await Promise.all([
-        fetchList<AcademicYear>('/api/v1/academic/years'),
-        fetchList<{ curriculumId: string }>('/api/v1/academic/school-curricula'),
+        fetchList<AcademicYear>('/api/v1/academic/years', toast.error),
+        fetchList<{ curriculumId: string }>('/api/v1/academic/school-curricula', toast.error),
       ]);
       setYears(yearsRes);
       const curId = schoolCurricula[0]?.curriculumId ?? '';
@@ -99,9 +99,9 @@ export default function SchoolAdminSubjectsPage() {
   const load = useCallback(async () => {
     if (!effectiveYearId) return;
     const [offeringsRes, combosRes, gapsRes] = await Promise.all([
-      fetchList<SubjectOffering>(`/api/v1/academic/subject-offerings?academicYearId=${effectiveYearId}`),
-      fetchList<SchoolCombination>(`/api/v1/academic/school-combinations?academicYearId=${effectiveYearId}`),
-      fetchList<AllocationGap>(`/api/v1/subject-teacher-assignments/gaps?academicYearId=${effectiveYearId}`),
+      fetchList<SubjectOffering>(`/api/v1/academic/subject-offerings?academicYearId=${effectiveYearId}`, toast.error),
+      fetchList<SchoolCombination>(`/api/v1/academic/school-combinations?academicYearId=${effectiveYearId}`, toast.error),
+      fetchList<AllocationGap>(`/api/v1/subject-teacher-assignments/gaps?academicYearId=${effectiveYearId}`, toast.error),
     ]);
     setOfferings(offeringsRes);
     setCombinations(combosRes);

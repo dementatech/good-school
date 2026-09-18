@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Loader } from '@/components/ui/loader';
+import { useToast } from '@/components/ui/ToastProvider';
 import { fetchList } from '@/lib/api/envelope';
 import { useParentChildren } from '@/components/parent/ParentChildrenContext';
 import { Award, Calendar } from 'lucide-react';
@@ -13,13 +14,14 @@ import type { PublishedExamSummary } from '@/components/exams/publishedResults';
 const fmt = (d: string) => new Date(d).toLocaleDateString();
 
 export default function ParentResultsPage() {
+  const toast = useToast();
   const { selectedId, loading: childrenLoading } = useParentChildren();
   const [exams, setExams] = useState<PublishedExamSummary[]>([]);
   const [loading, setLoading] = useState(true);
 
   const load = useCallback(async (studentId: string) => {
     setLoading(true);
-    setExams(await fetchList<PublishedExamSummary>(`/api/v1/parent/results?studentId=${studentId}`));
+    setExams(await fetchList<PublishedExamSummary>(`/api/v1/parent/results?studentId=${studentId}`, toast.error));
     setLoading(false);
   }, []);
 

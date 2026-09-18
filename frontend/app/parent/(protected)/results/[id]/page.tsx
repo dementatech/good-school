@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { Card } from '@/components/ui/Card';
 import { Loader } from '@/components/ui/loader';
+import { useToast } from '@/components/ui/ToastProvider';
 import { fetchOne } from '@/lib/api/envelope';
 import { useParentChildren } from '@/components/parent/ParentChildrenContext';
 import { ArrowLeft } from 'lucide-react';
@@ -13,13 +14,14 @@ import type { StudentExamResult } from '@/components/exams/publishedResults';
 export default function ParentResultDetailPage() {
   const params = useParams<{ id: string }>();
   const router = useRouter();
+  const toast = useToast();
   const { selectedId, loading: childrenLoading } = useParentChildren();
   const [result, setResult] = useState<StudentExamResult | null>(null);
   const [loading, setLoading] = useState(true);
 
   const load = useCallback(async (studentId: string) => {
     setLoading(true);
-    setResult(await fetchOne<StudentExamResult>(`/api/v1/parent/results/${params.id}?studentId=${studentId}`));
+    setResult(await fetchOne<StudentExamResult>(`/api/v1/parent/results/${params.id}?studentId=${studentId}`, toast.error));
     setLoading(false);
   }, [params.id]);
 

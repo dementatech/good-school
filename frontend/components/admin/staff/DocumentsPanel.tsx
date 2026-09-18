@@ -21,7 +21,7 @@ export function DocumentsPanel({ staffId }: { staffId: string }) {
   const [uploading, setUploading] = useState(false);
 
   const load = async () => {
-    setDocuments(await fetchList<StaffDocument>(`/api/v1/staff/${staffId}/documents`));
+    setDocuments(await fetchList<StaffDocument>(`/api/v1/staff/${staffId}/documents`, toast.error));
   };
 
   useEffect(() => {

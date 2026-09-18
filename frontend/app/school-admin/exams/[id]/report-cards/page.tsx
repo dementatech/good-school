@@ -50,6 +50,24 @@ interface SchoolClass {
   stageName: string;
   stagePhase: 'O_LEVEL' | 'A_LEVEL';
 }
+interface SchoolInfo {
+  name: string;
+  district: string | null;
+  address: string | null;
+  logoUrl: string | null;
+}
+interface GradeBand {
+  label: string;
+  minPct: number;
+  maxPct: number;
+  points: number | null;
+  comment: string;
+}
+interface SchoolGradingSchemeSelection {
+  appliesTo: 'O_LEVEL' | 'A_LEVEL';
+  roleScope: 'any' | 'principal' | 'subsidiary';
+  scheme: { bands: GradeBand[] };
+}
 
 const GRADE_CHIP: Record<string, string> = {
   A: 'bg-success-bg text-success',
@@ -64,6 +82,11 @@ const GRADE_CHIP: Record<string, string> = {
 
 function round(n: number): number {
   return Math.round(n);
+}
+
+function initialsOf(name: string): string {
+  const words = name.trim().split(/\s+/).filter(Boolean);
+  return (words[0]?.[0] ?? '') + (words[1]?.[0] ?? '');
 }
 
 interface Sheet {
@@ -82,15 +105,18 @@ function ReportSubjectTable({ title, subjects }: { title: string; subjects: Repo
       <table className="w-full text-sm border border-border">
         <thead>
           <tr className="bg-bg-subtle text-left text-[10.5px] font-bold uppercase tracking-wide text-text-faint">
-            <th className="py-1.5 px-2 border-b border-border">Subject</th>
-            <th className="py-1.5 px-2 border-b border-border text-right">Score</th>
-            <th className="py-1.5 px-2 border-b border-border text-center">Grade</th>
+            <th className="py-1 px-2 border-b border-r border-border w-8 text-center">#</th>
+            <th className="py-1 px-2 border-b border-r border-border">Subject</th>
+            <th className="py-1 px-2 border-b border-r border-border text-right">Score</th>
+            <th className="py-1 px-2 border-b border-r border-border text-center">Grade</th>
+            <th className="py-1 px-2 border-b border-border">Remarks</th>
           </tr>
         </thead>
         <tbody>
-          {subjects.map((s) => (
+          {subjects.map((s, i) => (
             <tr key={s.subjectId} className="border-b border-border last:border-0">
-              <td className="py-1.5 px-2">
+              <td className="py-1 px-2 border-r border-border text-center text-text-faint tabular-nums">{i + 1}</td>
+              <td className="py-1 px-2 border-r border-border">
                 {s.subjectName}
                 {s.hasVariant && s.variantScores && (
                   <span className="block text-[10px] text-text-faint">
@@ -100,7 +126,7 @@ function ReportSubjectTable({ title, subjects }: { title: string; subjects: Repo
                   </span>
                 )}
               </td>
-              <td className="py-1.5 px-2 text-right tabular-nums font-semibold">
+              <td className="py-1 px-2 border-r border-border text-right tabular-nums font-semibold">
                 {s.isAbsent ? (
                   <span className="text-text-muted font-normal">Absent</span>
                 ) : s.rawScore !== null ? (
@@ -109,7 +135,7 @@ function ReportSubjectTable({ title, subjects }: { title: string; subjects: Repo
                   '—'
                 )}
               </td>
-              <td className="py-1.5 px-2 text-center">
+              <td className="py-1 px-2 border-r border-border text-center">
                 {s.computedGrade ? (
                   <span
                     className={`inline-flex min-w-6 justify-center px-1.5 py-0.5 rounded-md text-[11px] font-extrabold ${
@@ -122,6 +148,7 @@ function ReportSubjectTable({ title, subjects }: { title: string; subjects: Repo
                   <span className="text-text-faint">—</span>
                 )}
               </td>
+              <td className="py-1 px-2 text-text-faint">&nbsp;</td>
             </tr>
           ))}
         </tbody>
@@ -130,107 +157,212 @@ function ReportSubjectTable({ title, subjects }: { title: string; subjects: Repo
   );
 }
 
-function SummaryBox({
-  label,
-  average,
-  grade,
-  comment,
-}: {
-  label: string;
-  average: number | null;
-  grade: string | null;
-  comment: string | null;
-}) {
+function StatRow({ items }: { items: { label: string; value: string }[] }) {
   return (
-    <div className="rounded-lg border border-border bg-bg-subtle p-3">
-      <div className="flex items-center justify-between gap-2">
-        <p className="text-xs font-bold text-text-muted">{label}</p>
-        <p className="text-sm font-extrabold text-primary-900 whitespace-nowrap">
-          {average !== null ? `${round(average)}%` : '—'}
-          {grade && <span className="text-text-muted font-semibold ml-1.5">{grade}</span>}
-        </p>
-      </div>
-      {comment && <p className="text-xs text-text-secondary italic mt-1.5">&ldquo;{comment}&rdquo;</p>}
+    <table className="w-full border border-border text-sm">
+      <thead>
+        <tr className="bg-bg-subtle text-[10.5px] font-bold uppercase tracking-wide text-text-faint">
+          {items.map((it) => (
+            <th key={it.label} className="py-1 px-2 border-b border-r border-border last:border-r-0 text-center">
+              {it.label}
+            </th>
+          ))}
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          {items.map((it) => (
+            <td
+              key={it.label}
+              className="py-1.5 px-2 border-r border-border last:border-r-0 text-center font-extrabold text-primary-900"
+            >
+              {it.value}
+            </td>
+          ))}
+        </tr>
+      </tbody>
+    </table>
+  );
+}
+
+function RemarksBox({ lines }: { lines: { label: string; text: string | null }[] }) {
+  const content = lines.filter((l) => l.text);
+  return (
+    <div className="border border-border p-2 min-h-[2.5rem]">
+      <p className="text-[10px] font-bold uppercase tracking-wide text-text-faint mb-0.5">Remarks</p>
+      {content.length === 0 ? (
+        <p className="text-xs text-text-faint">—</p>
+      ) : (
+        content.map((l) => (
+          <p key={l.label} className="text-xs text-text-secondary">
+            <span className="font-semibold">{l.label}: </span>
+            <span className="italic">&ldquo;{l.text}&rdquo;</span>
+          </p>
+        ))
+      )}
     </div>
   );
 }
 
-function StudentReportCardSheet({ sheet, schoolName, logoUrl }: { sheet: Sheet; schoolName?: string; logoUrl?: string | null }) {
+function GradingLegend({ bands }: { bands: GradeBand[] }) {
+  if (bands.length === 0) return null;
+  const sorted = [...bands].sort((a, b) => b.minPct - a.minPct);
+  return (
+    <div className="mt-2 pt-1.5 border-t border-border">
+      <div className="grid grid-cols-2 gap-x-6 gap-y-0 text-[9px] leading-tight text-text-secondary">
+        {sorted.map((b) => (
+          <p key={b.label}>
+            <span className="font-semibold text-text-muted">
+              {round(b.minPct)}%–{round(b.maxPct)}%:
+            </span>{' '}
+            {b.label} Grade — {b.comment}
+          </p>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function StudentReportCardSheet({
+  sheet,
+  schoolInfo,
+  oLevelBands,
+  principalBands,
+  subsidiaryBands,
+}: {
+  sheet: Sheet;
+  schoolInfo: SchoolInfo | null;
+  oLevelBands: GradeBand[];
+  principalBands: GradeBand[];
+  subsidiaryBands: GradeBand[];
+}) {
   const { student, exam, klass, stream, totalInClass } = sheet;
   const isALevel = klass.phase === 'A_LEVEL';
   const principalSubjects = student.subjects.filter((s) => s.role === 'principal');
   const subsidiarySubjects = student.subjects.filter((s) => s.role === 'subsidiary');
+  const schoolName = schoolInfo?.name ?? 'School';
+  const subtitle = [schoolInfo?.address, schoolInfo?.district].filter(Boolean).join(', ');
+  const issuedOn = exam.publishedAt
+    ? new Date(exam.publishedAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })
+    : new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
 
   return (
-    <div className="report-sheet bg-white p-8 max-w-[800px] mx-auto">
-      <div className="flex items-center justify-between border-b-2 border-primary-700 pb-4 mb-5">
-        <div className="flex items-center gap-3">
-          {logoUrl && (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src={logoUrl} alt="" className="w-14 h-14 rounded-lg object-contain border border-border" />
+    <div className="report-sheet bg-white p-2 max-w-[800px] mx-auto">
+      {/* Certificate-style double frame, matching the school's printed marksheet layout. */}
+      <div className="border-4 border-primary-700 p-1">
+        <div className="border border-primary-700 p-4">
+          <div className="flex items-start justify-between gap-3 mb-2.5">
+            <div className="w-12 h-12 rounded-full border-2 border-primary-700 flex items-center justify-center overflow-hidden shrink-0 bg-primary-50">
+              {schoolInfo?.logoUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={schoolInfo.logoUrl} alt="" className="w-full h-full object-contain" />
+              ) : (
+                <span className="text-primary-700 font-extrabold text-sm">{initialsOf(schoolName)}</span>
+              )}
+            </div>
+            <div className="flex-1 text-center">
+              <p className="text-xl font-extrabold text-primary-700 uppercase tracking-wide leading-tight">
+                {schoolName}
+              </p>
+              {subtitle && (
+                <p className="text-[10px] font-semibold text-text-muted uppercase tracking-wide">{subtitle}</p>
+              )}
+              <p className="text-[11px] font-bold text-primary-700 uppercase tracking-wide mt-1">
+                {exam.name} &middot; {exam.termName}
+              </p>
+              <span className="inline-block mt-1 px-3 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-widest text-white bg-gradient-to-r from-accent-dark to-accent">
+                Report Card
+              </span>
+            </div>
+            <div className="w-12 h-14 border border-border shrink-0" aria-hidden />
+          </div>
+
+          <div className="space-y-1 text-sm mb-2.5 border-t border-b border-border py-1.5">
+            <p className="flex items-baseline gap-2">
+              <span className="text-text-muted shrink-0">Student Name:</span>
+              <span className="flex-1 border-b border-dotted border-border-strong font-semibold text-primary-900 pb-0.5">
+                {student.studentName}
+              </span>
+            </p>
+            <div className="flex flex-wrap gap-x-8 gap-y-1">
+              <p className="flex items-baseline gap-2">
+                <span className="text-text-muted">Class:</span>
+                <span className="font-semibold text-primary-900 border-b border-dotted border-border-strong px-2 min-w-16 inline-block">
+                  {klass.name}
+                  {(stream?.name ?? student.streamName) ? ` ${stream?.name ?? student.streamName}` : ''}
+                </span>
+              </p>
+              <p className="flex items-baseline gap-2">
+                <span className="text-text-muted">Student ID:</span>
+                <span className="font-semibold text-primary-900 border-b border-dotted border-border-strong px-2 min-w-16 inline-block">
+                  {student.systemId ?? '—'}
+                </span>
+              </p>
+              <p className="flex items-baseline gap-2">
+                <span className="text-text-muted">Position:</span>
+                <span className="font-semibold text-primary-900 border-b border-dotted border-border-strong px-2 min-w-16 inline-block">
+                  {student.rank ? `${student.rank} of ${totalInClass}` : '—'}
+                </span>
+              </p>
+            </div>
+          </div>
+
+          {isALevel ? (
+            <div className="space-y-2.5">
+              <ReportSubjectTable title="Principal Subjects" subjects={principalSubjects} />
+              <ReportSubjectTable title="Subsidiary Subjects" subjects={subsidiarySubjects} />
+              <div className="grid grid-cols-2 gap-2.5">
+                <StatRow
+                  items={[
+                    { label: 'Principal Avg', value: student.principalAverage !== null ? `${round(student.principalAverage)}%` : '—' },
+                    { label: 'Principal Grade', value: student.principalGrade ?? '—' },
+                  ]}
+                />
+                <StatRow
+                  items={[
+                    { label: 'Subsidiary Avg', value: student.subsidiaryAverage !== null ? `${round(student.subsidiaryAverage)}%` : '—' },
+                    { label: 'Subsidiary Grade', value: student.subsidiaryGrade ?? '—' },
+                  ]}
+                />
+              </div>
+              <RemarksBox
+                lines={[
+                  { label: 'Principal', text: student.principalComment },
+                  { label: 'Subsidiary', text: student.subsidiaryComment },
+                ]}
+              />
+            </div>
+          ) : (
+            <div className="space-y-2.5">
+              <ReportSubjectTable title="Subjects" subjects={student.subjects} />
+              <StatRow
+                items={[
+                  { label: 'Average', value: student.average !== null ? `${round(student.average)}%` : '—' },
+                  { label: 'Overall Grade', value: student.overallGrade ?? '—' },
+                ]}
+              />
+              <RemarksBox lines={[{ label: 'Overall', text: student.overallComment }]} />
+            </div>
           )}
-          <div>
-            <p className="text-lg font-extrabold text-primary-900">{schoolName ?? 'School'}</p>
-            <p className="text-xs text-text-muted">Student Report Card</p>
+
+          <div className="grid grid-cols-3 gap-6 mt-4 text-xs text-text-muted text-center">
+            <div>
+              <div className="h-5 border-b border-border mb-1" />
+              Class Teacher&apos;s Signature
+            </div>
+            <div>
+              <div className="h-5 border-b border-border mb-1" />
+              Parent/Guardian&apos;s Signature
+            </div>
+            <div>
+              <div className="h-5 border-b border-border mb-1" />
+              Head Teacher&apos;s Signature
+            </div>
           </div>
-        </div>
-        <div className="text-right">
-          <p className="text-sm font-bold text-primary-900">{exam.name}</p>
-          <p className="text-xs text-text-muted">{exam.termName}</p>
-        </div>
-      </div>
+          <p className="text-[10px] text-text-faint mt-2">Issued on {issuedOn}</p>
 
-      <div className="grid grid-cols-2 gap-x-6 gap-y-1.5 text-sm mb-5">
-        <p>
-          <span className="text-text-muted">Name: </span>
-          <span className="font-semibold text-primary-900">{student.studentName}</span>
-        </p>
-        <p>
-          <span className="text-text-muted">System ID: </span>
-          <span className="font-semibold text-primary-900">{student.systemId ?? '—'}</span>
-        </p>
-        <p>
-          <span className="text-text-muted">Class: </span>
-          <span className="font-semibold text-primary-900">
-            {klass.name}
-            {(stream?.name ?? student.streamName) ? ` ${stream?.name ?? student.streamName}` : ''}
-          </span>
-        </p>
-        <p>
-          <span className="text-text-muted">Position: </span>
-          <span className="font-semibold text-primary-900">{student.rank ? `${student.rank} of ${totalInClass}` : '—'}</span>
-        </p>
-      </div>
-
-      {isALevel ? (
-        <div className="space-y-4">
-          <ReportSubjectTable title="Principal Subjects" subjects={principalSubjects} />
-          <ReportSubjectTable title="Subsidiary Subjects" subjects={subsidiarySubjects} />
-          <div className="grid grid-cols-2 gap-3">
-            <SummaryBox
-              label="Principal average"
-              average={student.principalAverage}
-              grade={student.principalGrade}
-              comment={student.principalComment}
-            />
-            <SummaryBox
-              label="Subsidiary average"
-              average={student.subsidiaryAverage}
-              grade={student.subsidiaryGrade}
-              comment={student.subsidiaryComment}
-            />
-          </div>
+          <GradingLegend bands={isALevel ? [...principalBands, ...subsidiaryBands] : oLevelBands} />
         </div>
-      ) : (
-        <div className="space-y-4">
-          <ReportSubjectTable title="Subjects" subjects={student.subjects} />
-          <SummaryBox label="Overall average" average={student.average} grade={student.overallGrade} comment={student.overallComment} />
-        </div>
-      )}
-
-      <div className="grid grid-cols-2 gap-8 mt-12 pt-1 text-xs text-text-muted">
-        <div className="border-t border-border pt-1.5">Class Teacher&apos;s Signature</div>
-        <div className="border-t border-border pt-1.5">Head Teacher&apos;s Signature</div>
       </div>
     </div>
   );
@@ -249,6 +381,8 @@ function ReportCardsContent() {
   const wholeSchool = search.get('all') === '1';
 
   const [sheets, setSheets] = useState<Sheet[]>([]);
+  const [schoolInfo, setSchoolInfo] = useState<SchoolInfo | null>(null);
+  const [gradingSchemes, setGradingSchemes] = useState<SchoolGradingSchemeSelection[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [downloading, setDownloading] = useState(false);
@@ -272,7 +406,7 @@ function ReportCardsContent() {
       async function loadForClass(classId: string, streamId: string | null): Promise<Sheet[]> {
         const qs = new URLSearchParams({ classId });
         if (streamId) qs.set('streamId', streamId);
-        const report = await fetchOne<ExamReportCard>(`/api/v1/exams/${examId}/report-card?${qs.toString()}`);
+        const report = await fetchOne<ExamReportCard>(`/api/v1/exams/${examId}/report-card?${qs.toString()}`, toast.error);
         if (!report) return [];
         const students = studentIdParam ? report.students.filter((s) => s.studentUserId === studentIdParam) : report.students;
         return students.map((student) => ({
@@ -284,13 +418,20 @@ function ReportCardsContent() {
         }));
       }
 
+      const [school, schemes] = await Promise.all([
+        fetchOne<SchoolInfo>('/api/v1/schools/me', toast.error),
+        fetchList<SchoolGradingSchemeSelection>('/api/v1/academic/school-grading-schemes', toast.error),
+      ]);
+      setSchoolInfo(school);
+      setGradingSchemes(schemes);
+
       if (wholeSchool) {
         if (!yearIdParam) {
           setError('Missing academic year — go back and try again from Report Card Studio.');
           setLoading(false);
           return;
         }
-        const classList = await fetchList<SchoolClass>(`/api/v1/academic/classes?academicYearId=${yearIdParam}`);
+        const classList = await fetchList<SchoolClass>(`/api/v1/academic/classes?academicYearId=${yearIdParam}`, toast.error);
         const perClass = await Promise.all(classList.map((c) => loadForClass(c.id, null)));
         setSheets(perClass.flat());
       } else if (classIdParam) {
@@ -301,6 +442,19 @@ function ReportCardsContent() {
       setLoading(false);
     })();
   }, [examId, wholeSchool, yearIdParam, classIdParam, streamIdParam, studentIdParam]);
+
+  const oLevelBands = useMemo(
+    () => gradingSchemes.find((g) => g.appliesTo === 'O_LEVEL' && g.roleScope === 'any')?.scheme.bands ?? [],
+    [gradingSchemes],
+  );
+  const principalBands = useMemo(
+    () => gradingSchemes.find((g) => g.appliesTo === 'A_LEVEL' && g.roleScope === 'principal')?.scheme.bands ?? [],
+    [gradingSchemes],
+  );
+  const subsidiaryBands = useMemo(
+    () => gradingSchemes.find((g) => g.appliesTo === 'A_LEVEL' && g.roleScope === 'subsidiary')?.scheme.bands ?? [],
+    [gradingSchemes],
+  );
 
   const backHref = useMemo(() => {
     if (!classIdParam) return '/school-admin/report-card-studio';
@@ -315,7 +469,10 @@ function ReportCardsContent() {
       const res = await fetch(`/api/v1/exams/${examId}/report-cards/pdf?${search.toString()}`, {
         credentials: 'include',
       });
-      if (!res.ok) throw new Error('failed');
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.error ?? body.message ?? `The PDF request failed (${res.status}).`);
+      }
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
@@ -325,8 +482,8 @@ function ReportCardsContent() {
       a.click();
       a.remove();
       URL.revokeObjectURL(url);
-    } catch {
-      toast.error('Could not generate the PDF. Please try again.');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Couldn't reach the server — check your connection and try again.");
     } finally {
       setDownloading(false);
     }
@@ -368,8 +525,10 @@ function ReportCardsContent() {
           <StudentReportCardSheet
             key={sheet.student.studentUserId}
             sheet={sheet}
-            schoolName={user?.school}
-            logoUrl={user?.logoUrl}
+            schoolInfo={schoolInfo ?? (user ? { name: user.school, district: null, address: null, logoUrl: user.logoUrl ?? null } : null)}
+            oLevelBands={oLevelBands}
+            principalBands={principalBands}
+            subsidiaryBands={subsidiaryBands}
           />
         ))}
     </div>

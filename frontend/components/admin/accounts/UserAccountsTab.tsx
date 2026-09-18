@@ -59,8 +59,8 @@ export function UserAccountsTab({ type }: { type: Exclude<AccountTab, 'parents'>
   // a `key` on the parent, so it resets naturally.
   const load = useCallback(async () => {
     const [accts, schoolList] = await Promise.all([
-      fetchList<AccountRecord>(`/api/v1/admin/accounts/${type}`),
-      type === 'staff' ? fetchList<School>('/api/v1/schools') : Promise.resolve([]),
+      fetchList<AccountRecord>(`/api/v1/admin/accounts/${type}`, toast.error),
+      type === 'staff' ? fetchList<School>('/api/v1/schools', toast.error) : Promise.resolve([]),
     ]);
     setRows(accts);
     setSchools(schoolList);

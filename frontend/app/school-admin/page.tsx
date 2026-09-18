@@ -11,6 +11,7 @@ import { GenderDonutChart } from '@/components/ui/GenderDonutChart';
 import { PopulationBarChart } from '@/components/ui/PopulationBarChart';
 import { ActivityFeed } from '@/components/ui/ActivityFeed';
 import { Layers, UserCog, GraduationCap, TrendingUp } from 'lucide-react';
+import { useToast } from '@/components/ui/ToastProvider';
 import { fetchList, fetchOne } from '@/lib/api/envelope';
 
 interface Stats {
@@ -58,6 +59,7 @@ const CARDS = [
 ];
 
 export default function SchoolAdminDashboard() {
+  const toast = useToast();
   const [stats, setStats] = useState<Stats>({ classes: 0, staff: 0, students: 0, attendance: 0, assessments: 0 });
   const [loading, setLoading] = useState(true);
   const [trend, setTrend] = useState<TrendPoint[]>([]);
@@ -70,9 +72,9 @@ export default function SchoolAdminDashboard() {
       // no backend yet (roadmap work) and fetchList's `[]`-on-failure fallback
       // is exactly the "show nothing rather than crash" behaviour wanted here.
       const [classes, staff, students, attendance, assessments] = await Promise.all([
-        fetchList('/api/v1/academic/classes'),
-        fetchList('/api/v1/staff'),
-        fetchList('/api/v1/students'),
+        fetchList('/api/v1/academic/classes', toast.error),
+        fetchList('/api/v1/staff', toast.error),
+        fetchList('/api/v1/students', toast.error),
         fetchList('/api/v1/school-admin/attendance'),
         fetchList('/api/v1/school-admin/assessments'),
       ]);
@@ -90,14 +92,14 @@ export default function SchoolAdminDashboard() {
 
   useEffect(() => {
     async function loadTrend() {
-      setTrend(await fetchList<TrendPoint>('/api/v1/school-admin/performance?trend=1'));
+      setTrend(await fetchList<TrendPoint>('/api/v1/school-admin/performance?trend=1', toast.error));
     }
     loadTrend();
   }, []);
 
   useEffect(() => {
     async function loadAnalytics() {
-      setAnalytics(await fetchOne<Analytics>('/api/v1/school-admin/analytics'));
+      setAnalytics(await fetchOne<Analytics>('/api/v1/school-admin/analytics', toast.error));
       setAnalyticsLoading(false);
     }
     loadAnalytics();

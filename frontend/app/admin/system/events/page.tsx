@@ -38,7 +38,7 @@ export default function GlobalEventsPage() {
 
   const load = useCallback(async () => {
     const { from, to } = defaultRange();
-    const rows = await fetchList<SchoolEvent>(`/api/v1/events?from=${from}&to=${to}`);
+    const rows = await fetchList<SchoolEvent>(`/api/v1/events?from=${from}&to=${to}`, toast.error);
     setEvents(rows);
     setLoading(false);
   }, []);

@@ -37,12 +37,14 @@ export function CombinationPicker({
   value: CombinationChoice;
   onChange: (next: CombinationChoice) => void;
 }) {
+  const toast = useToast();
   const [offered, setOffered] = useState<SchoolCombination[]>([]);
 
   useEffect(() => {
     if (!academicYearId) return;
     void fetchList<SchoolCombination>(
       `/api/v1/academic/school-combinations?academicYearId=${academicYearId}`,
+      toast.error,
     ).then((list) => setOffered(list.filter((c) => c.isOffered)));
   }, [academicYearId]);
 
@@ -103,12 +105,14 @@ export function OLevelOptionalsChecklist({
   value: string[];
   onChange: (ids: string[]) => void;
 }) {
+  const toast = useToast();
   const [offerings, setOfferings] = useState<SubjectOffering[]>([]);
 
   useEffect(() => {
     if (!academicYearId) return;
     void fetchList<SubjectOffering>(
       `/api/v1/academic/subject-offerings?academicYearId=${academicYearId}&phase=O_LEVEL`,
+      toast.error,
     ).then((list) => setOfferings(list.filter((o) => o.isOffered)));
   }, [academicYearId]);
 
@@ -206,8 +210,12 @@ export function OLevelSubjects({
     const [offeringsRes, subjectsRes] = await Promise.all([
       fetchList<SubjectOffering>(
         `/api/v1/academic/subject-offerings?academicYearId=${enrollment.academicYearId}&phase=O_LEVEL`,
+        toast.error,
       ),
-      fetchList<StudentSubject>(`/api/v1/students/${studentUserId}/subjects?academicYearId=${enrollment.academicYearId}`),
+      fetchList<StudentSubject>(
+        `/api/v1/students/${studentUserId}/subjects?academicYearId=${enrollment.academicYearId}`,
+        toast.error,
+      ),
     ]);
     setOfferings(offeringsRes.filter((o) => o.isOffered));
     setRegistered(subjectsRes);

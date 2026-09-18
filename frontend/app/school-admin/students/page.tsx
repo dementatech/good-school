@@ -64,7 +64,7 @@ export default function SchoolAdminStudentsPage() {
   const [resetting, setResetting] = useState<Student | null>(null);
 
   const load = useCallback(async () => {
-    setStudents(await fetchList<Student>('/api/v1/students'));
+    setStudents(await fetchList<Student>('/api/v1/students', toast.error));
     setLoading(false);
   }, []);
 

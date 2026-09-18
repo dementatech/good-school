@@ -73,7 +73,7 @@ export default function SchoolAdminStaffPage() {
   const [resetting, setResetting] = useState<Staff | null>(null);
 
   const load = useCallback(async () => {
-    setStaff(await fetchList<Staff>('/api/v1/staff'));
+    setStaff(await fetchList<Staff>('/api/v1/staff', toast.error));
     setLoading(false);
   }, []);
 

@@ -28,7 +28,7 @@ export function ParentsTab() {
   // setState only after the first await — keeps react-hooks/set-state-in-effect
   // quiet (see the repo's notes on this pattern).
   const load = useCallback(async () => {
-    const data = await fetchList<GuardianAccountRecord>('/api/v1/admin/accounts/parents');
+    const data = await fetchList<GuardianAccountRecord>('/api/v1/admin/accounts/parents', toast.error);
     setRows(data);
     setLoading(false);
   }, []);

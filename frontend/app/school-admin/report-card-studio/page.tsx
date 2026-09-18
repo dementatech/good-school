@@ -9,6 +9,7 @@ import { DashboardGrid } from '@/components/ui/DashboardGrid';
 import { Badge } from '@/components/ui/Badge';
 import { Loader } from '@/components/ui/loader';
 import { DropdownMenu, type DropdownMenuItem } from '@/components/ui/DropdownMenu';
+import { useToast } from '@/components/ui/ToastProvider';
 import { fetchList, fetchOne } from '@/lib/api/envelope';
 import { useElementSize } from '@/lib/useElementSize';
 import { AlertTriangle, FileText, TrendingUp, Trophy } from 'lucide-react';
@@ -669,6 +670,7 @@ function SubjectRows({ rows }: { rows: ReportCardStudentSubject[] }) {
 
 export default function ReportCardStudioPage() {
   const router = useRouter();
+  const toast = useToast();
   const [years, setYears] = useState<AcademicYear[]>([]);
   const [yearId, setYearId] = useState('');
   const [examId, setExamId] = useState('');
@@ -682,7 +684,7 @@ export default function ReportCardStudioPage() {
 
   useEffect(() => {
     void (async () => {
-      const list = await fetchList<AcademicYear>('/api/v1/academic/years');
+      const list = await fetchList<AcademicYear>('/api/v1/academic/years', toast.error);
       setYears(list);
       const current = list.find((y) => y.isCurrent) ?? list[0];
       setYearId(current?.id ?? '');
@@ -693,8 +695,8 @@ export default function ReportCardStudioPage() {
     if (!yearId) return;
     void (async () => {
       const [examList, classList] = await Promise.all([
-        fetchList<SchoolExam>(`/api/v1/exams?academicYearId=${yearId}`),
-        fetchList<SchoolClass>(`/api/v1/academic/classes?academicYearId=${yearId}`),
+        fetchList<SchoolExam>(`/api/v1/exams?academicYearId=${yearId}`, toast.error),
+        fetchList<SchoolClass>(`/api/v1/academic/classes?academicYearId=${yearId}`, toast.error),
       ]);
       setExamId((prev) => prev || examList[0]?.id || '');
       setClasses(classList);
@@ -711,7 +713,7 @@ export default function ReportCardStudioPage() {
         setStreams([]);
         return;
       }
-      setStreams(await fetchList<Stream>(`/api/v1/academic/streams?classId=${classId}`));
+      setStreams(await fetchList<Stream>(`/api/v1/academic/streams?classId=${classId}`, toast.error));
     })();
   }, [classId, selectedClass?.hasStreams]);
 
@@ -720,7 +722,7 @@ export default function ReportCardStudioPage() {
     setLoading(true);
     const qs = new URLSearchParams({ classId });
     if (streamId) qs.set('streamId', streamId);
-    const data = await fetchOne<ExamReportCard>(`/api/v1/exams/${examId}/report-card?${qs.toString()}`);
+    const data = await fetchOne<ExamReportCard>(`/api/v1/exams/${examId}/report-card?${qs.toString()}`, toast.error);
     setReport(data);
     setStudentKey(data?.students[0]?.studentUserId ?? '');
     setLoading(false);

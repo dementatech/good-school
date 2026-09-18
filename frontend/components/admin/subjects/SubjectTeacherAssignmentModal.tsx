@@ -53,6 +53,7 @@ export function SubjectTeacherAssignmentModal({
     setAssignments(
       await fetchList<SubjectTeacherAssignment>(
         `/api/v1/subject-teacher-assignments?academicYearId=${academicYearId}&subjectId=${subjectId}`,
+        toast.error,
       ),
     );
   };
@@ -60,13 +61,13 @@ export function SubjectTeacherAssignmentModal({
   useEffect(() => {
     void (async () => {
       await load();
-      setClasses(await fetchList<SchoolClass>(`/api/v1/academic/classes?academicYearId=${academicYearId}`));
-      setCandidates(await fetchList<StaffCandidate>(`/api/v1/staff/candidates?subjectId=${subjectId}`));
-      setAllActiveStaff((await fetchList<Staff>('/api/v1/staff')).filter((s) => s.activeAssignment));
+      setClasses(await fetchList<SchoolClass>(`/api/v1/academic/classes?academicYearId=${academicYearId}`, toast.error));
+      setCandidates(await fetchList<StaffCandidate>(`/api/v1/staff/candidates?subjectId=${subjectId}`, toast.error));
+      setAllActiveStaff((await fetchList<Staff>('/api/v1/staff', toast.error)).filter((s) => s.activeAssignment));
       // Subject rows are single-phase (a school's O-Level and A-Level version
       // of "Mathematics" are different subject ids) — this is how we tell
       // whether a staff member's specialization is for THIS phase at all.
-      setPhaseSubjects(await fetchList<CatalogSubject>(`/api/v1/academic/subjects?phase=${subjectPhase}`));
+      setPhaseSubjects(await fetchList<CatalogSubject>(`/api/v1/academic/subjects?phase=${subjectPhase}`, toast.error));
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [subjectId, academicYearId, subjectPhase]);
@@ -82,7 +83,7 @@ export function SubjectTeacherAssignmentModal({
   useEffect(() => {
     if (!classId || !selectedClass?.hasStreams) return;
     void (async () => {
-      setStreams(await fetchList<Stream>(`/api/v1/academic/streams?classId=${classId}`));
+      setStreams(await fetchList<Stream>(`/api/v1/academic/streams?classId=${classId}`, toast.error));
       setStreamId('');
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
