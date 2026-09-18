@@ -1,3 +1,5 @@
+'use client';
+
 import { StatCard } from '@/components/ui/StatCard';
 import { DashboardGrid } from '@/components/ui/DashboardGrid';
 import { DashboardShell } from '@/components/ui/DashboardShell';
