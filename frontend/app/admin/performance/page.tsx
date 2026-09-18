@@ -1,14 +1,14 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { Bar, BarChart, CartesianGrid, LabelList, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
+import { scaleLinear } from 'd3';
 import { Card } from '@/components/ui/Card';
 import { DataTable, type DataTableColumn } from '@/components/ui/DataTable';
 import { useToast } from '@/components/ui/ToastProvider';
 import { useIsPhone } from '@/lib/useMediaQuery';
+import { useElementSize } from '@/lib/useElementSize';
 
-// Keep in sync with --color-accent-dark in app/globals.css — Recharts fills
-// need a resolved color, not a CSS custom property reference.
+// Keep in sync with --color-accent-dark in app/globals.css.
 const ACCENT_DARK = '#C4952A';
 
 interface SchoolBenchmarkEntry {
@@ -73,6 +73,60 @@ function isCurrentTerm(t: Term): boolean {
 function termLabel(t: Term): string {
   const year = new Date(t.startsOn).getUTCFullYear();
   return `${year} Term ${t.number}${isCurrentTerm(t) ? ' (current)' : ''}`;
+}
+
+const BENCH_ROW_HEIGHT = 44;
+
+/** One horizontal bar per school, ranked by average — phones get a narrower
+ * label column and no value label, matching the space they actually have. */
+function SchoolBenchmarkChart({ data, isPhone }: { data: SchoolBenchmarkEntry[]; isPhone: boolean }) {
+  const { ref, width } = useElementSize<HTMLDivElement>();
+  const labelWidth = isPhone ? 76 : 120;
+  const rightMargin = isPhone ? 8 : 40;
+  const plotWidth = Math.max(0, width - labelWidth - rightMargin);
+  const chartHeight = Math.max(120, data.length * BENCH_ROW_HEIGHT);
+  const x = scaleLinear().domain([0, 100]).range([0, plotWidth]);
+
+  return (
+    <div ref={ref} style={{ width: '100%', height: chartHeight }}>
+      {width > 0 && (
+        <svg width={width} height={chartHeight} role="img" aria-label="Average score by school, ranked">
+          {data.map((d, i) => {
+            const barWidth = Math.max(0, x(d.averagePercentage));
+            const y = i * BENCH_ROW_HEIGHT + BENCH_ROW_HEIGHT / 2;
+            const barHeight = isPhone ? 14 : 18;
+            return (
+              <g key={d.schoolId} transform={`translate(${labelWidth}, ${y - barHeight / 2})`}>
+                <title>{`${d.schoolName}: ${d.averagePercentage}% average`}</title>
+                <text
+                  x={-8}
+                  y={barHeight / 2}
+                  textAnchor="end"
+                  dominantBaseline="middle"
+                  className="fill-[var(--color-text-secondary)]"
+                  fontSize={isPhone ? 10 : 12}
+                >
+                  {d.schoolName}
+                </text>
+                <rect x={0} y={0} width={barWidth} height={barHeight} fill={ACCENT_DARK} rx={4} />
+                {!isPhone && (
+                  <text
+                    x={barWidth + 8}
+                    y={barHeight / 2}
+                    dominantBaseline="middle"
+                    className="fill-[var(--color-text-secondary)]"
+                    fontSize={12}
+                  >
+                    {d.averagePercentage}%
+                  </text>
+                )}
+              </g>
+            );
+          })}
+        </svg>
+      )}
+    </div>
+  );
 }
 
 // Rank/Student/Assessment/Behaviour/Attendance/Overall — a roster shape fit
@@ -270,7 +324,6 @@ export default function AdminPerformancePage() {
     return () => controller.abort();
   }, [schoolId]);
 
-  const chartHeight = Math.max(120, benchmark.length * 44);
   const drillDownClasses = schoolsDirectory.find((s) => s.id === schoolId)?.classes ?? [];
   const selectedDrillDownClass = drillDownClasses.find((c) => c.id === classId);
 
@@ -322,36 +375,7 @@ export default function AdminPerformancePage() {
         ) : benchmark.length === 0 ? (
           <p className="text-sm text-text-muted">No marked assessments yet.</p>
         ) : view === 'chart' ? (
-          <div style={{ width: '100%', height: chartHeight }}>
-            <ResponsiveContainer>
-              {/*
-                Axis width and right margin are numeric props, so they cannot be
-                done with a breakpoint. At 120px the category axis was taking
-                most of a 360px screen and leaving the bars almost no room, so
-                phones get a narrower axis, a smaller label and no room reserved
-                for the value label (which is hidden there anyway).
-              */}
-              <BarChart data={benchmark} layout="vertical" margin={{ left: 8, right: isPhone ? 8 : 32 }}>
-                <CartesianGrid horizontal={false} stroke="var(--color-bg-muted)" />
-                <XAxis type="number" domain={[0, 100]} tick={{ fill: 'var(--color-text-muted)', fontSize: isPhone ? 10 : 12 }} />
-                <YAxis
-                  type="category"
-                  dataKey="schoolName"
-                  width={isPhone ? 76 : 120}
-                  tick={{ fill: 'var(--color-text-secondary)', fontSize: isPhone ? 10 : 12 }}
-                />
-                <Tooltip
-                  formatter={(value) => [`${value}%`, 'Average']}
-                  contentStyle={{ borderRadius: 8, borderColor: 'var(--color-primary-100)', fontSize: 12 }}
-                />
-                <Bar dataKey="averagePercentage" fill={ACCENT_DARK} radius={[0, 4, 4, 0]} barSize={isPhone ? 14 : 18}>
-                  {!isPhone && (
-                    <LabelList dataKey="averagePercentage" position="right" formatter={(v) => `${v}%`} style={{ fill: 'var(--color-text-secondary)', fontSize: 12 }} />
-                  )}
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
+          <SchoolBenchmarkChart data={benchmark} isPhone={isPhone} />
         ) : (
           <DataTable
             rows={benchmark}

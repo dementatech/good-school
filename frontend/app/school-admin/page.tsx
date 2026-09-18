@@ -1,13 +1,16 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import Link from 'next/link';
 import { Card } from '@/components/ui/Card';
+import { StatCard } from '@/components/ui/StatCard';
+import { DashboardGrid } from '@/components/ui/DashboardGrid';
+import { DashboardShell } from '@/components/ui/DashboardShell';
+import { WelcomeBanner } from '@/components/ui/WelcomeBanner';
 import { Sparkline } from '@/components/ui/Sparkline';
 import { GenderDonutChart } from '@/components/ui/GenderDonutChart';
 import { PopulationBarChart } from '@/components/ui/PopulationBarChart';
 import { ActivityFeed } from '@/components/ui/ActivityFeed';
-import { Layers, UserCog, GraduationCap, ClipboardCheck, ClipboardList, TrendingUp } from 'lucide-react';
+import { Layers, UserCog, GraduationCap, TrendingUp } from 'lucide-react';
 import { fetchList, fetchOne } from '@/lib/api/envelope';
 
 interface Stats {
@@ -45,12 +48,13 @@ interface Analytics {
   activity: ActivityItem[];
 }
 
+// Strictly 4 cards total with Performance below — attendance/assessments
+// have no backend yet (see the fetch comment below) so they're not "important"
+// numbers to lead with yet.
 const CARDS = [
   { key: 'classes' as const, label: 'Classes & Streams', href: '/school-admin/classes', icon: Layers },
   { key: 'staff' as const, label: 'Staff', href: '/school-admin/staff', icon: UserCog },
   { key: 'students' as const, label: 'Students', href: '/school-admin/students', icon: GraduationCap },
-  { key: 'attendance' as const, label: 'Attendance Sessions', href: '/school-admin/attendance', icon: ClipboardCheck },
-  { key: 'assessments' as const, label: 'Assessments', href: '/school-admin/assessments', icon: ClipboardList },
 ];
 
 export default function SchoolAdminDashboard() {
@@ -100,45 +104,33 @@ export default function SchoolAdminDashboard() {
   }, []);
 
   return (
-    <div className="w-full">
-      <h1 className="text-2xl font-bold text-primary-900 mb-1">Dashboard</h1>
-      <p className="text-sm text-text-muted mb-6">Your school&apos;s classes, staff, students and activity.</p>
+    <DashboardShell>
+      <WelcomeBanner subtitle="Your school's classes, staff, students and activity." />
 
-      <div className="grid grid-cols-2 lg:grid-cols-3 gap-2.5 sm:gap-4 mb-4">
-        {CARDS.map((c) => {
-          const Icon = c.icon;
-          return (
-            <Link key={c.key} href={c.href}>
-              <Card hover className="p-3 sm:p-5">
-                <div className="p-2 sm:p-2.5 rounded-xl bg-bg-muted w-fit mb-2 sm:mb-3">
-                  <Icon className="w-5 h-5 text-primary-700" />
-                </div>
-                <p className="text-2xl sm:text-3xl font-bold text-primary-900 tabular-nums">
-                  {loading ? '—' : stats[c.key]}
-                </p>
-                <p className="text-sm text-text-muted mt-1">{c.label}</p>
-              </Card>
-            </Link>
-          );
-        })}
+      <DashboardGrid className="mb-4">
+        {CARDS.map((c, i) => (
+          <StatCard
+            key={c.key}
+            icon={c.icon}
+            label={c.label}
+            href={c.href}
+            value={stats[c.key]}
+            loading={loading}
+            accent={i === 0 ? 'hero' : 'neutral'}
+          />
+        ))}
 
-        <Link href="/school-admin/performance">
-          <Card hover className="p-3 sm:p-5">
-            <div className="p-2 sm:p-2.5 rounded-xl bg-accent-lighter w-fit mb-2 sm:mb-3">
-              <TrendingUp className="w-5 h-5 text-accent-dark" />
-            </div>
-            <p className="text-2xl sm:text-3xl font-bold text-primary-900 tabular-nums">
-              {trend.length > 0 ? `${trend[trend.length - 1].value}%` : '—'}
-            </p>
-            <div className="flex flex-col xs:flex-row xs:items-center xs:justify-between gap-1 mt-1">
-              <p className="text-sm text-text-muted">Performance</p>
-              <div className="shrink-0"><Sparkline points={trend.map((t) => t.value)} /></div>
-            </div>
-          </Card>
-        </Link>
-      </div>
+        <StatCard
+          icon={TrendingUp}
+          label="Performance"
+          href="/school-admin/performance"
+          value={trend.length > 0 ? `${trend[trend.length - 1].value}%` : '—'}
+          accent="gold"
+          trailing={<Sparkline points={trend.map((t) => t.value)} />}
+        />
+      </DashboardGrid>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 sm:gap-4 lg:gap-5">
         <Card className="p-4 sm:p-5">
           <h2 className="text-sm font-semibold text-primary-900 mb-3">Students by gender</h2>
           {analyticsLoading ? (
@@ -166,6 +158,6 @@ export default function SchoolAdminDashboard() {
           )}
         </Card>
       </div>
-    </div>
+    </DashboardShell>
   );
 }

@@ -13,7 +13,8 @@
     "migrate:up": "node-pg-migrate up --no-single-transaction",
     "migrate:down": "node-pg-migrate down --no-single-transaction",
     "create-super-admin": "tsx scripts/create-super-admin.ts",
-    "reset-password": "tsx scripts/reset-password.ts"
+    "reset-password": "tsx scripts/reset-password.ts",
+    "seed-test-school": "tsx scripts/seed-test-school.ts"
   },
   "dependencies": {
     "@fastify/cookie": "^11.0.2",
@@ -29,6 +30,7 @@
     "jsonwebtoken": "^9.0.2",
     "node-pg-migrate": "^7.9.1",
     "pg": "^8.13.1",
+    "puppeteer": "^25.11.0",
     "react": "^19.3.0",
     "tsx": "^4.19.2",
     "web-push": "^3.6.7"

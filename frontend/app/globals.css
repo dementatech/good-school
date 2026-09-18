@@ -42,6 +42,9 @@
   --color-bg-card:   #FFFFFF;
   --color-bg-muted:  #F5F5F5;
   --color-bg-subtle: #FAFAFA;
+  /* Portal shell backdrop — a cool gray canvas so white Cards (rounded-card +
+     shadow-card) read as floating panels, like the dashboard reference mockups. */
+  --color-bg-canvas: #F1F2F6;
 
   /* ── Borders (neutral) ── */
   --color-border:        #EAEAEA;
@@ -72,6 +75,14 @@
      for a screen almost twice the width of the device it runs on. `xs` gives
      multi-column layouts somewhere to turn back into a single column. */
   --breakpoint-xs: 30rem; /* 480px */
+
+  /* ── Radius (dashboard "soft card" look — additive, doesn't touch
+       rounded-lg/xl/2xl used elsewhere by buttons/inputs/modals/etc.) ── */
+  --radius-card: 1.25rem; /* 20px — Card default, all stat/nav tiles, chart cards */
+
+  /* ── Shadow (soft neutral-tinted, not Tailwind's default pure-black shadow) ── */
+  --shadow-card:       0 1px 2px rgba(16,24,40,0.04), 0 1px 3px rgba(16,24,40,0.06);
+  --shadow-card-hover: 0 8px 24px rgba(16,24,40,0.10), 0 2px 6px rgba(16,24,40,0.06);
 }
 
 /*
@@ -100,5 +111,32 @@ body {
   -ms-overflow-style: none;
   &::-webkit-scrollbar {
     display: none;
+  }
+}
+
+/* A4 print/PDF output (window.print()) — portal chrome hides itself via
+   print:hidden at the call site; this just sets the page geometry so a long
+   report paginates onto A4 sheets instead of using the browser's default. */
+@media print {
+  @page {
+    size: A4;
+    margin: 14mm 12mm;
+  }
+  body {
+    background: #FFFFFF;
+  }
+  /* Every chart on this app is pure color-encoded (donut/bar/heatmap fills,
+     grade chips) — without this, browsers drop backgrounds and SVG fills in
+     print by default (the user's own "background graphics" print-dialog
+     toggle) and the charts turn into blank shapes. */
+  * {
+    print-color-adjust: exact !important;
+    -webkit-print-color-adjust: exact !important;
+  }
+  /* Batch-generated report cards (frontend/app/school-admin/exams/[id]/report-cards):
+     one student per sheet, each its own page — a plain flow of divs would
+     otherwise let two short report cards share a page. */
+  .report-sheet + .report-sheet {
+    break-before: page;
   }
 }

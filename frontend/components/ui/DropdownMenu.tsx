@@ -27,6 +27,7 @@ export function DropdownMenu({
   label = 'Actions',
   triggerClassName,
   icon: Icon = MoreHorizontal,
+  trigger,
 }: {
   items: DropdownMenuItem[];
   label?: string;
@@ -38,6 +39,9 @@ export function DropdownMenu({
   triggerClassName?: string;
   /** Swaps the trigger glyph — cards read as "⋮" (vertical), table rows as "⋯" (horizontal). */
   icon?: React.ElementType;
+  /** Replaces the default icon-only button with arbitrary content (e.g. an
+   *  avatar + name) — the caller owns its styling entirely. */
+  trigger?: React.ReactNode;
 }) {
   const [open, setOpen] = useState(false);
   const [coords, setCoords] = useState<{ top: number; right: number } | null>(null);
@@ -52,7 +56,17 @@ export function DropdownMenu({
       const estHeight = items.length * 40 + 12;
       const below = b.bottom + 4;
       const top = below + estHeight > window.innerHeight ? Math.max(8, b.top - estHeight - 4) : below;
-      setCoords({ top, right: Math.max(8, window.innerWidth - b.right) });
+      // Anchored via `right`, which pins the menu's right edge to the
+      // trigger's right edge and lets it grow leftward — fine when the
+      // trigger has room to its left, but on a narrow screen a trigger near
+      // the left edge computes a `right` large enough to push the menu's
+      // *left* edge past 0, clipping it off-screen. Clamp so the left edge
+      // never goes below an 8px margin (menuRef isn't mounted yet on the
+      // very first placement, hence the w-52 fallback below).
+      const menuWidth = menuRef.current?.offsetWidth || 208;
+      const rawRight = window.innerWidth - b.right;
+      const maxRight = Math.max(8, window.innerWidth - menuWidth - 8);
+      setCoords({ top, right: Math.min(Math.max(8, rawRight), maxRight) });
     }
     place();
     window.addEventListener('scroll', place, true);
@@ -85,7 +99,7 @@ export function DropdownMenu({
       <button
         ref={btnRef}
         type="button"
-        aria-label={label}
+        aria-label={trigger ? undefined : label}
         aria-haspopup="menu"
         aria-expanded={open}
         onClick={(e) => {
@@ -93,13 +107,15 @@ export function DropdownMenu({
           setOpen((v) => !v);
         }}
         className={
-          triggerClassName ??
-          `inline-flex h-8 w-8 items-center justify-center rounded-lg text-[#666666] transition-colors hover:bg-[#F5F5F5] hover:text-[#171717] ${
-            open ? 'bg-[#F5F5F5] text-[#171717]' : ''
-          }`
+          trigger
+            ? 'inline-flex items-center'
+            : (triggerClassName ??
+              `inline-flex h-8 w-8 items-center justify-center rounded-lg text-[#666666] transition-colors hover:bg-[#F5F5F5] hover:text-[#171717] ${
+                open ? 'bg-[#F5F5F5] text-[#171717]' : ''
+              }`)
         }
       >
-        <Icon className="h-4 w-4" aria-hidden />
+        {trigger ?? <Icon className="h-4 w-4" aria-hidden />}
       </button>
 
       {open &&

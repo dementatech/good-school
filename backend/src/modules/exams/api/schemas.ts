@@ -77,6 +77,18 @@ export const markSheetSlotBodySchema = {
   additionalProperties: false,
 } as const;
 
+// ─── Report card (compiled, whole-exam view) ───────────────────────────────
+
+export const reportCardQuerySchema = {
+  type: "object",
+  required: ["classId"],
+  properties: {
+    classId: { type: "string", minLength: 1 },
+    streamId: { type: "string" },
+  },
+  additionalProperties: false,
+} as const;
+
 export const schoolExamUpdateBodySchema = {
   type: "object",
   required: ["startsOn", "endsOn", "marksDueOn"],

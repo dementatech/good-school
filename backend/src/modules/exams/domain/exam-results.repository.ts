@@ -122,6 +122,100 @@ export interface ExamCompletionSlot extends AssignedExamSlot {
   teacherName: string | null;
 }
 
+// ─── Report card (roadmap Step 5 — compiled, whole-exam view) ─────────────
+
+/** Every A-Level subject is "subsidiary" (subject.category = 'subsidiary' —
+ * General Paper plus whichever subsidiary the student's combination adds) or
+ * "principal" (everything else — the combination's own members). O-Level has
+ * no such split; every O-Level subject reports as "principal" and the report
+ * card ignores the distinction for that phase. */
+export type ReportSubjectRole = "principal" | "subsidiary";
+
+export interface ReportCardSubject {
+  subjectId: string;
+  subjectCode: string;
+  subjectName: string;
+  /** e.g. "Bio", "Chem" — the catalog's short form, for compact renders like
+   * the heatmap's column headers where the full name or the code (a
+   * database identifier, not an abbreviation — e.g. "S005") don't fit. */
+  subjectShortName: string;
+  role: ReportSubjectRole;
+  teacherName: string | null;
+  rosterCount: number;
+  enteredCount: number;
+  submitted: boolean;
+  /** Class average score for this subject, among students with a mark. Null
+   * if nobody in this class/stream has been marked yet. */
+  average: number | null;
+}
+
+export interface ReportCardStudentSubject {
+  subjectId: string;
+  subjectName: string;
+  role: ReportSubjectRole;
+  hasVariant: boolean;
+  /** Present only when hasVariant — the individual papers behind rawScore's
+   * weighted merge, e.g. Theory/Practical. */
+  variantScores?: { name: string; rawScore: number | null; isAbsent: boolean }[];
+  rawScore: number | null;
+  isAbsent: boolean;
+  computedGrade: string | null;
+}
+
+export interface ReportCardStudent {
+  studentUserId: string;
+  studentName: string;
+  systemId: string | null;
+  streamId: string | null;
+  streamName: string | null;
+  /** O-Level only: mean of every subject score, one blended grade — there's
+   * no principal/subsidiary split at this phase. Null for A-Level (use the
+   * principal/subsidiary fields instead) or if nothing's been entered yet. */
+  average: number | null;
+  overallGrade: string | null;
+  /** The grade band's own remark (grade_band.comment), reused as the
+   * report's teacher-remark equivalent rather than a fabricated comment. */
+  overallComment: string | null;
+  /** A-Level only: mean of principal-subject scores — what actually ranks
+   * students (subsidiaries don't count toward the ranking). Null for
+   * O-Level. */
+  principalAverage: number | null;
+  principalGrade: string | null;
+  principalComment: string | null;
+  /** A-Level only: mean of subsidiary-subject scores (General Paper + the
+   * combination's chosen subsidiary), graded on the school's separate
+   * subsidiary scheme. Reported alongside, not blended into, the principal
+   * average. Null for O-Level. */
+  subsidiaryAverage: number | null;
+  subsidiaryGrade: string | null;
+  subsidiaryComment: string | null;
+  /** 1-based position, best first — by `average` for O-Level, by
+   * `principalAverage` for A-Level. Null (unranked) with no average yet. */
+  rank: number | null;
+  subjects: ReportCardStudentSubject[];
+}
+
+export interface ExamReportCard {
+  exam: { id: string; name: string; termName: string; publishedAt: string | null };
+  class: { id: string; name: string; phase: "O_LEVEL" | "A_LEVEL" };
+  stream: { id: string; name: string } | null;
+  subjects: ReportCardSubject[];
+  /** Principal-subject grade counts (O-Level: every subject, since there's
+   * no principal/subsidiary split at that phase). */
+  gradeDistribution: { grade: string; count: number }[];
+  /** A-Level only — subsidiary-subject grade counts, on the separate
+   * subsidiary scheme (its own grade vocabulary, e.g. Pass/Fail). Empty for
+   * O-Level. */
+  subsidiaryGradeDistribution: { grade: string; count: number }[];
+  /** Only populated when viewing the whole class (no stream filter) and the
+   * class actually has streams. */
+  streamAverages: { streamId: string; streamName: string; average: number }[];
+  students: ReportCardStudent[];
+  /** By principalAverage for A-Level, average for O-Level — see ReportCardStudent. */
+  topPerformers: ReportCardStudent[];
+  needsAttention: ReportCardStudent[];
+}
+
 // ─── Errors ─────────────────────────────────────────────────────────────────
 
 export class UnknownExamError extends Error {
@@ -177,6 +271,13 @@ export class IncompleteMarkSheetError extends Error {
   constructor(public readonly missing: number) {
     super(`${missing} student${missing === 1 ? "" : "s"} still unmarked — enter a score or mark absent for everyone before submitting.`);
     this.name = "IncompleteMarkSheetError";
+  }
+}
+
+export class UnknownClassError extends Error {
+  constructor() {
+    super("That class doesn't exist for this school.");
+    this.name = "UnknownClassError";
   }
 }
 
@@ -992,5 +1093,371 @@ export async function examCompletion(
       publishedAt: exam.publishedAt,
     },
     slots,
+  };
+}
+
+// Compiles one class's (or one stream's) results for an exam into a report
+// card: per-subject summary (reusing examCompletion's numbers, scoped down),
+// per-student totals/rank/overall grade, and the aggregates the studio's
+// charts need. Everything here is read fresh from exam_result — nothing is
+// stored, so it always reflects the latest marks.
+export async function getExamReportCard(
+  schoolId: string,
+  examId: string,
+  classId: string,
+  streamId: string | null,
+): Promise<ExamReportCard> {
+  const exam = await loadExam(schoolId, examId);
+
+  const { rows: classRows } = await pool.query<{
+    id: string;
+    class_name: string;
+    stage_phase: "O_LEVEL" | "A_LEVEL";
+    stream_id: string | null;
+    stream_name: string | null;
+  }>(
+    `select c.id, cs.name as class_name, cs.phase as stage_phase, st.id as stream_id, st.name as stream_name
+       from classes c
+       join curriculum_stage cs on cs.id = c.curriculum_stage_id
+       left join streams st on st.id = $3
+      where c.id = $1 and c.school_id = $2`,
+    [classId, schoolId, streamId],
+  );
+  if (!classRows[0]) throw new UnknownClassError();
+  const klass = classRows[0];
+
+  const { rows: rosterRows } = await pool.query<{
+    student_user_id: string;
+    first_name: string;
+    middle_name: string | null;
+    last_name: string;
+    system_id: string | null;
+    stream_id: string | null;
+    stream_name: string | null;
+  }>(
+    `select en.student_user_id, s.first_name, s.middle_name, s.last_name, u.system_id,
+            st.id as stream_id, st.name as stream_name
+       from student_enrollment en
+       join students s on s.user_id = en.student_user_id
+       join users u on u.id = en.student_user_id
+       left join streams st on st.id = en.stream_id
+      where en.school_id = $1 and en.academic_year_id = $2 and en.class_id = $3
+        and en.status = 'active'
+        and ($4::uuid is null or en.stream_id = $4::uuid)
+      order by s.last_name, s.first_name`,
+    [schoolId, exam.academicYearId, classId, streamId],
+  );
+
+  const isALevel = klass.stage_phase === "A_LEVEL";
+  const examOut = { id: exam.id, name: exam.name, termName: exam.termName, publishedAt: exam.publishedAt };
+  const classOut = { id: klass.id, name: klass.class_name, phase: klass.stage_phase };
+  const streamOut = klass.stream_id ? { id: klass.stream_id, name: klass.stream_name ?? "" } : null;
+
+  if (rosterRows.length === 0) {
+    return {
+      exam: examOut,
+      class: classOut,
+      stream: streamOut,
+      subjects: [],
+      gradeDistribution: [],
+      subsidiaryGradeDistribution: [],
+      streamAverages: [],
+      students: [],
+      topPerformers: [],
+      needsAttention: [],
+    };
+  }
+
+  const studentIds = rosterRows.map((r) => r.student_user_id);
+
+  const { rows: resultRows } = await pool.query<{
+    student_user_id: string;
+    subject_id: string;
+    subject_code: string;
+    subject_name: string;
+    subject_category: string;
+    raw_score: string | null;
+    is_absent: boolean;
+    computed_grade: string | null;
+    subject_variant_id: string | null;
+    variant_name: string | null;
+    contribution_percent: string | null;
+  }>(
+    `select er.student_user_id, er.subject_id, sub.code as subject_code, sub.name as subject_name,
+            sub.category as subject_category,
+            er.raw_score, er.is_absent, er.computed_grade,
+            er.subject_variant_id, sv.name as variant_name, sv.contribution_percent
+       from exam_result er
+       join subject sub on sub.id = er.subject_id
+       left join subject_variant sv on sv.id = er.subject_variant_id
+      where er.school_exam_id = $1 and er.student_user_id = any($2::uuid[])`,
+    [examId, studentIds],
+  );
+
+  // A-Level: "subsidiary" is General Paper plus whichever subsidiary the
+  // student's combination adds (subject.category = 'subsidiary' identifies
+  // both, school-agnostically). Everything else is a combination's own
+  // (principal) member. O-Level has no such split — everything reports as
+  // "principal" and the phase-specific fields below are simply left null.
+  function roleOf(category: string): ReportSubjectRole {
+    return category === "subsidiary" ? "subsidiary" : "principal";
+  }
+
+  interface MergedSubjectScore {
+    subjectId: string;
+    subjectName: string;
+    role: ReportSubjectRole;
+    hasVariant: boolean;
+    variantScores: { name: string; rawScore: number | null; isAbsent: boolean }[];
+    rawScore: number | null;
+    isAbsent: boolean;
+    computedGrade: string | null;
+  }
+  const byStudentSubject = new Map<string, typeof resultRows>();
+  for (const r of resultRows) {
+    const key = `${r.student_user_id}:${r.subject_id}`;
+    const list = byStudentSubject.get(key);
+    if (list) list.push(r);
+    else byStudentSubject.set(key, [r]);
+  }
+  const mergedByStudent = new Map<string, MergedSubjectScore[]>();
+  for (const [key, group] of byStudentSubject) {
+    const studentUserId = key.slice(0, key.indexOf(":"));
+    const first = group[0];
+    const hasVariant = group.some((g) => g.subject_variant_id);
+    let rawScore: number | null;
+    let isAbsent: boolean;
+    let variantScores: MergedSubjectScore["variantScores"] = [];
+    if (hasVariant) {
+      variantScores = group.map((g) => ({
+        name: g.variant_name ?? "",
+        rawScore: g.raw_score !== null ? Number(g.raw_score) : null,
+        isAbsent: g.is_absent,
+      }));
+      const merged = mergeVariantScore(
+        group.map((g) => ({
+          variantId: g.subject_variant_id!,
+          rawScore: g.raw_score !== null ? Number(g.raw_score) : null,
+          isAbsent: g.is_absent,
+        })),
+        group.map((g) => ({
+          id: g.subject_variant_id!,
+          name: g.variant_name ?? "",
+          code: "",
+          contributionPercent: g.contribution_percent !== null ? Number(g.contribution_percent) : 0,
+        })),
+      );
+      rawScore = merged.rawScore;
+      isAbsent = merged.isAbsent;
+    } else {
+      rawScore = first.raw_score !== null ? Number(first.raw_score) : null;
+      isAbsent = first.is_absent;
+    }
+    const computedGrade = group.find((g) => g.computed_grade !== null)?.computed_grade ?? null;
+    const list = mergedByStudent.get(studentUserId) ?? [];
+    list.push({
+      subjectId: first.subject_id,
+      subjectName: first.subject_name,
+      role: roleOf(first.subject_category),
+      hasVariant,
+      variantScores,
+      rawScore,
+      isAbsent,
+      computedGrade,
+    });
+    mergedByStudent.set(studentUserId, list);
+  }
+
+  function averageOf(subjects: MergedSubjectScore[]): number | null {
+    const scored = subjects.filter((s) => !s.isAbsent && s.rawScore !== null);
+    if (scored.length === 0) return null;
+    return Math.round((scored.reduce((sum, s) => sum + s.rawScore!, 0) / scored.length) * 100) / 100;
+  }
+
+  // O-Level: one scheme ("any" role scope) for the whole blended average.
+  // A-Level: two separate schemes, matching how each subject's own grade was
+  // already computed — principal-subject scheme for the principal average,
+  // subsidiary scheme for the subsidiary average. Never blended together.
+  async function loadBands(roleScope: string): Promise<{ label: string; min: number; max: number; comment: string | null }[]> {
+    const { rows: schemeRows } = await pool.query<{ grading_scheme_id: string }>(
+      `select grading_scheme_id from school_grading_scheme where school_id=$1 and applies_to=$2 and role_scope=$3`,
+      [schoolId, klass.stage_phase, roleScope],
+    );
+    const schemeId = schemeRows[0]?.grading_scheme_id;
+    if (!schemeId) return [];
+    const { rows } = await pool.query<{ label: string; min_pct: string; max_pct: string; comment: string | null }>(
+      `select label, min_pct, max_pct, comment from grade_band where grading_scheme_id = $1`,
+      [schemeId],
+    );
+    return rows.map((r) => ({ label: r.label, min: Number(r.min_pct), max: Number(r.max_pct), comment: r.comment }));
+  }
+  function bandFor(bands: { label: string; min: number; max: number; comment: string | null }[], avg: number | null) {
+    if (avg === null) return { grade: null as string | null, comment: null as string | null };
+    const band = bands.find((b) => avg >= b.min && avg <= b.max);
+    return { grade: band?.label ?? null, comment: band?.comment ?? null };
+  }
+  const primaryBands = await loadBands(isALevel ? "principal" : "any");
+  const subsidiaryBands = isALevel ? await loadBands("subsidiary") : [];
+
+  const students: ReportCardStudent[] = rosterRows.map((r) => {
+    const subjects = mergedByStudent.get(r.student_user_id) ?? [];
+    const base = {
+      studentUserId: r.student_user_id,
+      studentName: [r.first_name, r.middle_name, r.last_name].filter(Boolean).join(" "),
+      systemId: r.system_id,
+      streamId: r.stream_id,
+      streamName: r.stream_name,
+      rank: null as number | null,
+      subjects: subjects
+        .map((s) => ({
+          subjectId: s.subjectId,
+          subjectName: s.subjectName,
+          role: s.role,
+          hasVariant: s.hasVariant,
+          variantScores: s.hasVariant ? s.variantScores : undefined,
+          rawScore: s.rawScore,
+          isAbsent: s.isAbsent,
+          computedGrade: s.computedGrade,
+        }))
+        .sort((a, b) => a.subjectName.localeCompare(b.subjectName)),
+    };
+    if (!isALevel) {
+      const avg = averageOf(subjects);
+      const { grade, comment } = bandFor(primaryBands, avg);
+      return {
+        ...base,
+        average: avg,
+        overallGrade: grade,
+        overallComment: comment,
+        principalAverage: null,
+        principalGrade: null,
+        principalComment: null,
+        subsidiaryAverage: null,
+        subsidiaryGrade: null,
+        subsidiaryComment: null,
+      };
+    }
+    const principalAvg = averageOf(subjects.filter((s) => s.role === "principal"));
+    const subsidiaryAvg = averageOf(subjects.filter((s) => s.role === "subsidiary"));
+    const principalBand = bandFor(primaryBands, principalAvg);
+    const subsidiaryBand = bandFor(subsidiaryBands, subsidiaryAvg);
+    return {
+      ...base,
+      average: null,
+      overallGrade: null,
+      overallComment: null,
+      principalAverage: principalAvg,
+      principalGrade: principalBand.grade,
+      principalComment: principalBand.comment,
+      subsidiaryAverage: subsidiaryAvg,
+      subsidiaryGrade: subsidiaryBand.grade,
+      subsidiaryComment: subsidiaryBand.comment,
+    };
+  });
+
+  // Ranking, top performers and "needs attention" all key off average for
+  // O-Level, principalAverage for A-Level — subsidiaries never count toward
+  // a student's standing.
+  const rankValue = (s: ReportCardStudent): number | null => (isALevel ? s.principalAverage : s.average);
+  const ranked = [...students].sort((a, b) => (rankValue(b) ?? -1) - (rankValue(a) ?? -1));
+  let position = 0;
+  for (const s of ranked) {
+    if (rankValue(s) === null) continue;
+    position += 1;
+    s.rank = position;
+  }
+
+  // Subject summary: reuse examCompletion's per-slot roster/entered/submitted
+  // (it's already correct — same teaching-assignment logic), scoped to this
+  // class, plus a class average computed from the merged scores above.
+  const completion = await examCompletion(schoolId, examId);
+  const subjectSlots = completion.slots.filter(
+    (s) => s.classId === classId && (s.streamId === null || s.streamId === streamId),
+  );
+  const { rows: subjectCategoryRows } = await pool.query<{ id: string; category: string; short_name: string }>(
+    `select id, category, short_name from subject where id = any($1::uuid[])`,
+    [subjectSlots.map((s) => s.subjectId)],
+  );
+  const categoryBySubjectId = new Map(subjectCategoryRows.map((r) => [r.id, r.category]));
+  const shortNameBySubjectId = new Map(subjectCategoryRows.map((r) => [r.id, r.short_name]));
+  function subjectAverage(subjectId: string): number | null {
+    const scores: number[] = [];
+    for (const list of mergedByStudent.values()) {
+      const m = list.find((x) => x.subjectId === subjectId);
+      if (m && !m.isAbsent && m.rawScore !== null) scores.push(m.rawScore);
+    }
+    if (scores.length === 0) return null;
+    return Math.round((scores.reduce((a, b) => a + b, 0) / scores.length) * 100) / 100;
+  }
+  const subjects: ReportCardSubject[] = subjectSlots
+    .map((s) => ({
+      subjectId: s.subjectId,
+      subjectCode: s.subjectCode,
+      subjectName: s.subjectName,
+      subjectShortName: shortNameBySubjectId.get(s.subjectId) ?? s.subjectCode,
+      role: roleOf(categoryBySubjectId.get(s.subjectId) ?? ""),
+      teacherName: s.teacherName,
+      rosterCount: s.rosterCount,
+      enteredCount: s.enteredCount,
+      submitted: s.submitted,
+      average: subjectAverage(s.subjectId),
+    }))
+    .sort((a, b) => a.subjectName.localeCompare(b.subjectName));
+
+  // Split by role: A-Level's principal scheme (A-E) and subsidiary scheme
+  // (Pass/Fail) use unrelated grade vocabularies — counting them together
+  // would put "Pass" in the same bar chart as "C", which means nothing. For
+  // O-Level, every subject is "principal" so this is just the one chart.
+  function countGrades(role: ReportSubjectRole): { grade: string; count: number }[] {
+    const counts = new Map<string, number>();
+    for (const list of mergedByStudent.values()) {
+      for (const m of list) {
+        if (!m.computedGrade || m.role !== role) continue;
+        counts.set(m.computedGrade, (counts.get(m.computedGrade) ?? 0) + 1);
+      }
+    }
+    return [...counts.entries()].map(([grade, count]) => ({ grade, count })).sort((a, b) => a.grade.localeCompare(b.grade));
+  }
+  const gradeDistribution = countGrades("principal");
+  const subsidiaryGradeDistribution = isALevel ? countGrades("subsidiary") : [];
+
+  const streamAvgMap = new Map<string, { streamId: string; streamName: string; sum: number; n: number }>();
+  if (!streamId) {
+    for (const s of students) {
+      const value = rankValue(s);
+      if (value === null || !s.streamId) continue;
+      const entry = streamAvgMap.get(s.streamId) ?? {
+        streamId: s.streamId,
+        streamName: s.streamName ?? "",
+        sum: 0,
+        n: 0,
+      };
+      entry.sum += value;
+      entry.n += 1;
+      streamAvgMap.set(s.streamId, entry);
+    }
+  }
+  const streamAverages = [...streamAvgMap.values()]
+    .map((e) => ({ streamId: e.streamId, streamName: e.streamName, average: Math.round((e.sum / e.n) * 100) / 100 }))
+    .sort((a, b) => b.average - a.average);
+
+  const scoredStudents = students.filter((s) => rankValue(s) !== null);
+  const topPerformers = [...scoredStudents].sort((a, b) => rankValue(b)! - rankValue(a)!).slice(0, 5);
+  const needsAttention = scoredStudents
+    .filter((s) => rankValue(s)! < 40)
+    .sort((a, b) => rankValue(a)! - rankValue(b)!)
+    .slice(0, 5);
+
+  return {
+    exam: examOut,
+    class: classOut,
+    stream: streamOut,
+    subjects,
+    gradeDistribution,
+    subsidiaryGradeDistribution,
+    streamAverages,
+    students,
+    topPerformers,
+    needsAttention,
   };
 }

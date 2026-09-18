@@ -238,6 +238,31 @@ export async function schoolsRoutes(fastify: FastifyInstance) {
     },
   );
 
+  // Write: a school_admin sets their own school's logo — same upload as the
+  // super_admin tenant-management route below, just scoped to the caller's
+  // own school_id instead of taking an arbitrary :id.
+  fastify.post("/me/logo", { preHandler: requireAuth(["school_admin"]) }, async (request, reply) => {
+    const schoolId = request.authUser!.school_id;
+    if (!schoolId) return reply.status(404).send(fail("no_school"));
+    const uploaded = await request.file();
+    if (!uploaded) return reply.status(400).send(fail("No file uploaded"));
+    const data = await uploaded.toBuffer();
+    try {
+      const school = await setSchoolLogo(schoolId, { mimeType: uploaded.mimetype, data });
+      return school ? ok(school) : reply.status(404).send(fail("not_found"));
+    } catch (err) {
+      if (err instanceof UnsupportedFileTypeError) return reply.status(400).send(fail(err.message));
+      throw err;
+    }
+  });
+
+  fastify.delete("/me/logo", { preHandler: requireAuth(["school_admin"]) }, async (request, reply) => {
+    const schoolId = request.authUser!.school_id;
+    if (!schoolId) return reply.status(404).send(fail("no_school"));
+    const school = await setSchoolLogo(schoolId, null);
+    return school ? ok(school) : reply.status(404).send(fail("not_found"));
+  });
+
   // Write: a super_admin sets any school's brand colour from the tenant view.
   fastify.patch<{ Params: { id: string }; Body: { primaryColor: string } }>(
     "/:id/theme",

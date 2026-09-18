@@ -1,14 +1,14 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
+import { max, scaleBand, scaleLinear } from 'd3';
 import { Card } from '@/components/ui/Card';
 import { useToast } from '@/components/ui/ToastProvider';
+import { useElementSize } from '@/lib/useElementSize';
 
-// Keep in sync with --color-accent-dark in app/globals.css — Recharts fills
-// need a resolved color, not a CSS custom property reference. Same constant
-// as app/admin/performance/page.tsx.
+// Keep in sync with --color-accent-dark in app/globals.css.
 const ACCENT_DARK = '#C4952A';
+const TREND_HEIGHT = 220;
 
 type Period = 'day' | 'week' | 'month';
 
@@ -63,6 +63,68 @@ interface LessonAnalyticsPanelProps {
 /** "2026-08-05" → "5 Aug" — compact enough for a month's worth of x-axis ticks. */
 function formatTick(iso: string): string {
   return new Date(`${iso}T00:00:00Z`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+}
+
+// A single accent-dark mark falls just under 3:1 contrast against a white
+// card (validated), so the Table view alongside this is the required relief
+// rather than a label on every bar — which at up to 31 points (month) would
+// violate "never a number on every point" anyway.
+function TrendBarChart({ data, dense }: { data: { date: string; filed: number }[]; dense: boolean }) {
+  const { ref, width } = useElementSize<HTMLDivElement>();
+  const axisHeight = dense ? 40 : 20;
+  const plotWidth = Math.max(0, width - 36);
+  const plotHeight = TREND_HEIGHT - axisHeight - 8;
+  const x = scaleBand()
+    .domain(data.map((d) => d.date))
+    .range([0, plotWidth])
+    .paddingInner(0.3)
+    .paddingOuter(0.1);
+  const y = scaleLinear()
+    .domain([0, Math.max(1, max(data, (d) => d.filed) ?? 1)])
+    .range([plotHeight, 0]);
+  const labelEvery = dense ? Math.max(1, Math.ceil(data.length / 8)) : 1;
+
+  return (
+    <div ref={ref} style={{ width: '100%', height: TREND_HEIGHT }}>
+      {width > 0 && (
+        <svg width={width} height={TREND_HEIGHT} role="img" aria-label="Lessons filed per day">
+          <g transform="translate(36, 4)">
+            {y.ticks(4).map((t) => (
+              <g key={t}>
+                <line x1={0} x2={plotWidth} y1={y(t)} y2={y(t)} stroke="var(--color-bg-muted)" strokeWidth={1} />
+                <text x={-8} y={y(t)} textAnchor="end" dominantBaseline="middle" className="fill-[var(--color-text-muted)]" fontSize={12}>
+                  {t}
+                </text>
+              </g>
+            ))}
+            {data.map((d, i) => {
+              const bx = x(d.date) ?? 0;
+              const barHeight = plotHeight - y(d.filed);
+              const labelX = bx + x.bandwidth() / 2;
+              return (
+                <g key={d.date}>
+                  <title>{`${formatTick(d.date)}: ${d.filed} filed`}</title>
+                  <rect x={bx} y={y(d.filed)} width={x.bandwidth()} height={Math.max(0, barHeight)} fill={ACCENT_DARK} rx={3} />
+                  {i % labelEvery === 0 && (
+                    <text
+                      x={labelX}
+                      y={plotHeight + (dense ? 14 : 16)}
+                      textAnchor={dense ? 'end' : 'middle'}
+                      transform={dense ? `rotate(-40, ${labelX}, ${plotHeight + 14})` : undefined}
+                      className="fill-[var(--color-text-muted)]"
+                      fontSize={11}
+                    >
+                      {formatTick(d.date)}
+                    </text>
+                  )}
+                </g>
+              );
+            })}
+          </g>
+        </svg>
+      )}
+    </div>
+  );
 }
 
 export function LessonAnalyticsPanel({ endpoint, breakdownLabel }: LessonAnalyticsPanelProps) {
@@ -170,39 +232,7 @@ export function LessonAnalyticsPanel({ endpoint, breakdownLabel }: LessonAnalyti
                   </div>
 
                   {trendView === 'chart' ? (
-                    // A single accent-dark mark falls just under 3:1 contrast
-                    // against a white card (validated), so the Table view above
-                    // is the required relief rather than a label on every bar —
-                    // which at up to 31 points (month) would violate "never a
-                    // number on every point" anyway.
-                    <div style={{ width: '100%', height: 220 }}>
-                      <ResponsiveContainer>
-                        <BarChart data={summary.trend} margin={{ left: 0, right: 8, top: 8 }}>
-                          <CartesianGrid vertical={false} stroke="var(--color-bg-muted)" />
-                          <XAxis
-                            dataKey="date"
-                            tickFormatter={formatTick}
-                            interval={denseTrend ? Math.ceil(summary.trend.length / 8) - 1 : 0}
-                            angle={denseTrend ? -40 : 0}
-                            textAnchor={denseTrend ? 'end' : 'middle'}
-                            height={denseTrend ? 44 : 24}
-                            tick={{ fill: 'var(--color-text-muted)', fontSize: 11 }}
-                          />
-                          <YAxis
-                            type="number"
-                            allowDecimals={false}
-                            width={28}
-                            tick={{ fill: 'var(--color-text-muted)', fontSize: 12 }}
-                          />
-                          <Tooltip
-                            labelFormatter={(label) => formatTick(String(label))}
-                            formatter={(value) => [value, 'Filed']}
-                            contentStyle={{ borderRadius: 8, borderColor: 'var(--color-primary-100)', fontSize: 12 }}
-                          />
-                          <Bar dataKey="filed" fill={ACCENT_DARK} radius={[4, 4, 0, 0]} barSize={denseTrend ? 8 : 24} />
-                        </BarChart>
-                      </ResponsiveContainer>
-                    </div>
+                    <TrendBarChart data={summary.trend} dense={denseTrend} />
                   ) : (
                     <div className="overflow-x-auto max-h-56">
                       <table className="w-full text-sm">

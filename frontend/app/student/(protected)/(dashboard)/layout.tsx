@@ -4,6 +4,8 @@ import React from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/components/auth/AuthContext';
 import { NotificationBell } from '@/components/ui/NotificationBell';
+import { AccountMenu } from '@/components/ui/AccountMenu';
+import { TopbarSearch } from '@/components/ui/TopbarSearch';
 import { MobileNavDrawer } from '@/components/ui/MobileNavDrawer';
 import { PortalSidebar } from '@/components/ui/PortalSidebar';
 import { FeatureGate } from '@/components/FeatureGate';
@@ -26,18 +28,21 @@ export default function StudentDashboardLayout({ children }: { children: React.R
   const router = useRouter();
 
   return (
-    <div className="min-h-screen bg-bg flex">
+    <div className="min-h-screen bg-bg-canvas flex">
       <PortalSidebar
         brandLogoUrl={user?.logoUrl}
         brandLabel={user?.school || 'Good School'}
         subtitle={user?.name}
         nav={NAV}
-        onSignOut={() => { logout(); router.push('/auth'); }}
       />
 
       <div className="flex-1 min-w-0 flex flex-col">
-        <div className="hidden md:flex items-center justify-end gap-2 px-8 py-2 border-b border-border bg-bg-card">
-          <NotificationBell />
+        <div className="hidden md:flex items-center justify-between gap-4 px-8 py-2 border-b border-border bg-bg-card">
+          <TopbarSearch items={NAV} />
+          <div className="flex items-center gap-2 shrink-0">
+            <NotificationBell />
+            <AccountMenu onSignOut={() => { logout(); router.push('/auth'); }} />
+          </div>
         </div>
 
         <div className="md:hidden flex items-center justify-between px-4 py-3 border-b border-border bg-bg-card">
