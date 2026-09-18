@@ -34,7 +34,7 @@ export function SchoolCurriculaModal({
   useEffect(() => {
     let cancelled = false;
     void (async () => {
-      const list = await fetchList<Curriculum>('/api/v1/academic/curricula');
+      const list = await fetchList<Curriculum>('/api/v1/academic/curricula', toast.error);
       if (!cancelled) setAll(list);
     })();
     return () => {
@@ -43,7 +43,7 @@ export function SchoolCurriculaModal({
   }, []);
 
   async function refresh() {
-    const list = await fetchList<SchoolCurriculumRef>(`/api/v1/schools/${school.id}/curricula`);
+    const list = await fetchList<SchoolCurriculumRef>(`/api/v1/schools/${school.id}/curricula`, toast.error);
     setAttached(list);
     await onSaved();
   }

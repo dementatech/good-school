@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Loader } from '@/components/ui/loader';
+import { useToast } from '@/components/ui/ToastProvider';
 import { fetchList } from '@/lib/api/envelope';
 import { Award, Calendar } from 'lucide-react';
 import type { PublishedExamSummary } from '@/components/exams/publishedResults';
@@ -12,12 +13,13 @@ import type { PublishedExamSummary } from '@/components/exams/publishedResults';
 const fmt = (d: string) => new Date(d).toLocaleDateString();
 
 export default function MyResultsPage() {
+  const toast = useToast();
   const [exams, setExams] = useState<PublishedExamSummary[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     void (async () => {
-      setExams(await fetchList<PublishedExamSummary>('/api/v1/exams/me'));
+      setExams(await fetchList<PublishedExamSummary>('/api/v1/exams/me', toast.error));
       setLoading(false);
     })();
   }, []);

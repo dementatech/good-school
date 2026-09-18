@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { Card } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import { Loader } from '@/components/ui/loader';
+import { useToast } from '@/components/ui/ToastProvider';
 import { fetchList } from '@/lib/api/envelope';
 import { slotLabel, type AssignedExam, type ExamSlot } from '@/components/exams/types';
 
@@ -29,11 +30,12 @@ function SlotStatus({ slot }: { slot: ExamSlot }) {
 
 export default function StaffExamMarksPage() {
   const router = useRouter();
+  const toast = useToast();
   const [exams, setExams] = useState<AssignedExam[]>([]);
   const [loading, setLoading] = useState(true);
 
   const load = useCallback(async () => {
-    setExams(await fetchList<AssignedExam>('/api/v1/exams/assigned'));
+    setExams(await fetchList<AssignedExam>('/api/v1/exams/assigned', toast.error));
     setLoading(false);
   }, []);
 

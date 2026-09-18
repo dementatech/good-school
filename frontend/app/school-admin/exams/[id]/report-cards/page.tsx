@@ -406,7 +406,7 @@ function ReportCardsContent() {
       async function loadForClass(classId: string, streamId: string | null): Promise<Sheet[]> {
         const qs = new URLSearchParams({ classId });
         if (streamId) qs.set('streamId', streamId);
-        const report = await fetchOne<ExamReportCard>(`/api/v1/exams/${examId}/report-card?${qs.toString()}`);
+        const report = await fetchOne<ExamReportCard>(`/api/v1/exams/${examId}/report-card?${qs.toString()}`, toast.error);
         if (!report) return [];
         const students = studentIdParam ? report.students.filter((s) => s.studentUserId === studentIdParam) : report.students;
         return students.map((student) => ({
@@ -419,8 +419,8 @@ function ReportCardsContent() {
       }
 
       const [school, schemes] = await Promise.all([
-        fetchOne<SchoolInfo>('/api/v1/schools/me'),
-        fetchList<SchoolGradingSchemeSelection>('/api/v1/academic/school-grading-schemes'),
+        fetchOne<SchoolInfo>('/api/v1/schools/me', toast.error),
+        fetchList<SchoolGradingSchemeSelection>('/api/v1/academic/school-grading-schemes', toast.error),
       ]);
       setSchoolInfo(school);
       setGradingSchemes(schemes);
@@ -431,7 +431,7 @@ function ReportCardsContent() {
           setLoading(false);
           return;
         }
-        const classList = await fetchList<SchoolClass>(`/api/v1/academic/classes?academicYearId=${yearIdParam}`);
+        const classList = await fetchList<SchoolClass>(`/api/v1/academic/classes?academicYearId=${yearIdParam}`, toast.error);
         const perClass = await Promise.all(classList.map((c) => loadForClass(c.id, null)));
         setSheets(perClass.flat());
       } else if (classIdParam) {

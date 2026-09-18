@@ -62,7 +62,7 @@ export function SchoolCombinationFormModal({
 
   useEffect(() => {
     if (isEdit) return;
-    void fetchList<CatalogCombination>(`/api/v1/academic/combinations?curriculumId=${curriculumId}`).then(
+    void fetchList<CatalogCombination>(`/api/v1/academic/combinations?curriculumId=${curriculumId}`, toast.error).then(
       setCatalog,
     );
   }, [curriculumId, isEdit]);
@@ -70,6 +70,7 @@ export function SchoolCombinationFormModal({
   useEffect(() => {
     void fetchList<SubjectOffering>(
       `/api/v1/academic/subject-offerings?academicYearId=${academicYearId}&phase=A_LEVEL`,
+      toast.error,
     ).then((rows) => setOfferedSubjects(rows.filter((r) => r.isOffered)));
   }, [academicYearId]);
 

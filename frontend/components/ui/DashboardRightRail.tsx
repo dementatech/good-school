@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useAuth } from '@/components/auth/AuthContext';
 import { isFeatureReady } from '@/lib/features';
+import { useToast } from '@/components/ui/ToastProvider';
 import { fetchList } from '@/lib/api/envelope';
 import { ProfileCard } from './ProfileCard';
 import { MiniCalendar, type CalendarEvent } from './MiniCalendar';
@@ -25,6 +26,7 @@ function formatReminderDate(iso: string): string {
 
 export function DashboardRightRail({ className = '' }: { className?: string }) {
   const { user } = useAuth();
+  const toast = useToast();
   // A school-scoped role reads its own school's calendar (plus global
   // events, merged in server-side); super_admin has no school_id but still
   // has a calendar — the global one it manages at /admin/system/events.
@@ -40,6 +42,7 @@ export function DashboardRightRail({ className = '' }: { className?: string }) {
       const to = toIsoDate(new Date(year, month + 1, 0));
       const rows = await fetchList<{ id: string; title: string; eventDate: string; eventType: CalendarEvent['type'] }>(
         `/api/v1/events?from=${from}&to=${to}`,
+        toast.error,
       );
       setMonthEvents(rows.map((r) => ({ id: r.id, title: r.title, date: r.eventDate, type: r.eventType })));
     },
@@ -54,6 +57,7 @@ export function DashboardRightRail({ className = '' }: { className?: string }) {
       const to = toIsoDate(new Date(today.getTime() + UPCOMING_WINDOW_DAYS * 24 * 60 * 60 * 1000));
       const rows = await fetchList<{ id: string; title: string; eventDate: string }>(
         `/api/v1/events?from=${from}&to=${to}`,
+        toast.error,
       );
       setReminders(
         rows.slice(0, UPCOMING_LIMIT).map((r) => ({ id: r.id, label: r.title, date: formatReminderDate(r.eventDate) })),

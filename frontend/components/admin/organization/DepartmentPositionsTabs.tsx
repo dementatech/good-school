@@ -144,8 +144,8 @@ function AssignHolderModal({ position, onSaved, onClose }: { position: Position;
 
   useEffect(() => {
     void (async () => {
-      setStaff((await fetchList<Staff>('/api/v1/staff')).filter((s) => s.activeAssignment));
-      const list = await fetchList<AcademicYear>('/api/v1/academic/years');
+      setStaff((await fetchList<Staff>('/api/v1/staff', toast.error)).filter((s) => s.activeAssignment));
+      const list = await fetchList<AcademicYear>('/api/v1/academic/years', toast.error);
       setYears(list);
       const current = list.find((y) => y.isCurrent) ?? list[0];
       if (current) setAcademicYearId(current.id);

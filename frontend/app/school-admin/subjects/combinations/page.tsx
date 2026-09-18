@@ -5,6 +5,7 @@ import { Badge } from '@/components/ui/Badge';
 import { DataTable, type DataTableColumn } from '@/components/ui/DataTable';
 import { Modal } from '@/components/ui/Modal';
 import { Loader } from '@/components/ui/loader';
+import { useToast } from '@/components/ui/ToastProvider';
 import { fetchList } from '@/lib/api/envelope';
 import { Pencil } from 'lucide-react';
 import { ALevelCombination } from '@/components/admin/students/StudentSubjectsPanel';
@@ -20,12 +21,13 @@ interface Row {
 }
 
 export default function ManageCombinationsPage() {
+  const toast = useToast();
   const [rows, setRows] = useState<Row[]>([]);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState<Row | null>(null);
 
   const load = useCallback(async () => {
-    const students = await fetchList<Student>('/api/v1/students');
+    const students = await fetchList<Student>('/api/v1/students', toast.error);
     const aLevel = students.filter(
       (s) => s.isActive && s.activeEnrollment?.stagePhase === 'A_LEVEL',
     );

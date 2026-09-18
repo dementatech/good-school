@@ -46,6 +46,7 @@ export function ChangeGradeSystemModal({
       setLoading(true);
       const list = await fetchList<GradingScheme>(
         `/api/v1/academic/grading-schemes?curriculumId=${curriculumId}&appliesTo=${appliesTo}&roleScope=${roleScope}`,
+        toast.error,
       );
       setSchemes(list.filter((s) => s.isActive));
       setLoading(false);
