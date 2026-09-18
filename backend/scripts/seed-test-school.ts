@@ -16,60 +16,45 @@ import { nextSystemId } from "../src/shared/system-id.js";
 // are only topped up to the target counts (existing test students are kept
 // and reused, not duplicated).
 
-const SCHOOL_ID = "c9292216-8bca-4969-93c3-2099d4634728";
-const CURRICULUM_ID = "44351568-07e4-421b-8e7a-0072da94518a";
-const ACADEMIC_YEAR_ID = "31672260-9755-4dc5-a5f9-321713e72c4e";
-const SCHOOL_EXAM_ID = "c04c8c24-1c54-4c5f-ab0e-578a302fe2c1";
-const ADMIN_USER_ID = "6f242d57-dffd-4027-ae4e-fd2629fd0b72";
-const TEACHER_IDS = [
-  "a000a5c1-803a-4039-a254-b789c935c828",
-  "95f89867-b597-4a56-94be-13ebf267c563",
-  "79f44c03-409f-4cec-9b57-981605e6b792",
-  "bf9cdbf3-20b4-420d-a71c-fbb61858e19a",
-  "e309d358-13c1-47e9-9564-2f4dd23f1ffa",
-  "d9a35c57-6f85-4151-b974-d58584b6e6b7",
+// School, admin, teachers, academic year/terms, O-Level catalog and
+// grading-scheme IDs are no longer hardcoded — a fresh database (a new VPS,
+// a CI throwaway) has none of that. bootstrap() below finds-or-creates all
+// of it (matched by natural keys: school name, user email, subject code,
+// curriculum_stage code) and returns the same IDs this script used to read
+// off module-level constants. Safe to re-run: every insert is a
+// find-or-create, never a duplicate.
+
+// O-Level subject catalog to find-or-create for the curriculum. `compulsory`
+// is script-local bookkeeping (every student gets all compulsory subjects
+// plus one pick of the non-compulsory ones) — it isn't a column in `subject`.
+const O_LEVEL_SUBJECT_DEFS: {
+  code: string;
+  shortName: string;
+  name: string;
+  category: string;
+  compulsory: boolean;
+}[] = [
+  { code: "O001", shortName: "Eng", name: "English Language", category: "core", compulsory: true },
+  { code: "O002", shortName: "Math", name: "Mathematics", category: "core", compulsory: true },
+  { code: "O003", shortName: "CRE", name: "Christian Religious Education", category: "elective", compulsory: false },
+  { code: "O004", shortName: "Agric", name: "Agriculture", category: "elective", compulsory: false },
+  { code: "O005", shortName: "Bio", name: "Biology", category: "science", compulsory: true },
+  { code: "O006", shortName: "Chem", name: "Chemistry", category: "science", compulsory: true },
+  { code: "O007", shortName: "Phy", name: "Physics", category: "science", compulsory: true },
+  { code: "O008", shortName: "Hist", name: "History", category: "arts", compulsory: true },
+  { code: "O009", shortName: "Geo", name: "Geography", category: "arts", compulsory: true },
+  { code: "O010", shortName: "Luganda", name: "Luganda", category: "languages", compulsory: true },
 ];
 
-const STAGE = {
-  S1: "1239ef21-2139-4f16-b0d5-f19d593d2ab7",
-  S2: "c85351f7-7210-4eef-991c-ca07448391e5",
-  S3: "f686ca3c-42e9-496a-b8e9-a0ce485bb2a6",
-  S4: "44a7fede-c25c-4256-8e54-afe63c695a12",
-  S5: "fb532380-a786-4b9c-8eca-6984a34d19b2",
-  S6: "3eb8d64b-3421-4145-a417-8c48a137aa55",
-} as const;
-
-const O_LEVEL_CLASS_ID: Record<"S1" | "S2" | "S3" | "S4", string> = {
-  S1: "f088d1ba-7b78-412b-ba96-58822790e97b",
-  S2: "c4d969c5-1d84-4cfe-97ea-4ad4661677cd",
-  S3: "b11587fc-d481-4b3d-b195-df475edacda0",
-  S4: "3c5dccb8-e957-4be3-a313-d92afebeeca1",
-};
-const O_LEVEL_STREAM_ID: Record<string, string> = {
-  "S1:East": "1d5fc943-8017-4cb6-beaa-6c5df55def17",
-  "S1:West": "85070323-7d3d-4a95-b300-9bd7aa92a034",
-  "S2:East": "5b3186e2-6eed-4713-bf90-58b36239da03",
-  "S2:West": "d1fe0c25-d7c2-4dca-a682-302000412931",
-  "S3:East": "437343cf-be0e-407c-bb82-f46d0f578983",
-  "S3:West": "4f85075a-34d9-4062-838c-764cf6632d8a",
-  "S4:East": "2475230b-ef26-4b8f-9550-96a06b4663cc",
-  "S4:West": "f66c98b0-191f-44c5-96ba-0f8e55b91cdc",
-};
-
-// O-Level subject catalog (existing) — code -> {id, compulsory}
-const O_LEVEL_SUBJECTS: { id: string; code: string; compulsory: boolean }[] = [
-  { id: "0b33b3f1-42fb-45f3-a1e9-9bd336038b5d", code: "Eng", compulsory: true },
-  { id: "11431b65-8862-4d5d-82b7-da5b9e0eadfd", code: "Math", compulsory: true },
-  { id: "90a71b23-ee08-4b60-a2bd-b0c817f52bbe", code: "CRE", compulsory: false },
-  { id: "c1d2208e-4886-49f5-8572-56f561c4cd22", code: "Agric", compulsory: false },
-  { id: "bda1cdf9-e71b-489a-a3d1-bd4d1f97f87a", code: "Bio", compulsory: true },
-  { id: "a69a2886-2c94-418c-9419-47c7e129f30b", code: "Chem", compulsory: true },
-  { id: "dbf92198-9da2-4506-b2c5-b3140608759d", code: "Phy", compulsory: true },
-  { id: "db860766-60c4-4fa3-bb9b-b0d583cb5bd0", code: "Hist", compulsory: true },
-  { id: "3e646893-874f-420e-8f58-0879fe7a8073", code: "Geo", compulsory: true },
-  { id: "0684407c-dd86-431c-b832-461597a612d8", code: "Luganda", compulsory: true },
+const TEACHER_DEFS: { email: string; first: string; last: string; gender: "male" | "female" }[] = [
+  { email: "grace.nakato@kampalatest.sc.ug", first: "Grace", last: "Nakato", gender: "female" },
+  { email: "brian.okello@kampalatest.sc.ug", first: "Brian", last: "Okello", gender: "male" },
+  { email: "sarah.namutebi@kampalatest.sc.ug", first: "Sarah", last: "Namutebi", gender: "female" },
+  { email: "david.ssemakula@kampalatest.sc.ug", first: "David", last: "Ssemakula", gender: "male" },
+  { email: "immaculate.achieng@kampalatest.sc.ug", first: "Immaculate", last: "Achieng", gender: "female" },
+  { email: "patrick.mugisha@kampalatest.sc.ug", first: "Patrick", last: "Mugisha", gender: "male" },
 ];
-const GENERAL_PAPER_ID = "e56a0fa8-19d6-4a30-98d4-d810b8d3b2bd";
+const ADMIN_EMAIL = "schooladmin.test@goodschool.dev";
 
 // A-Level subjects examined as separate papers, by short name — Theory +
 // Practical, as UACE actually structures the sciences and subsidiary ICT.
@@ -88,12 +73,6 @@ const VARIANT_DEFS: Record<string, { code: string; name: string; pct: number }[]
     { code: "PRAC", name: "Practical", pct: 40 },
   ],
 };
-
-const GRADING_SCHEME = {
-  O_LEVEL_ANY: "a17ae403-1967-4f8b-b8ab-732e1f987c70",
-  A_LEVEL_PRINCIPAL: "d6863bf2-9aed-4a60-8875-4225535191f4",
-  A_LEVEL_SUBSIDIARY: "e70e14c2-9ae0-4d69-acf8-7d77462ec616",
-} as const;
 
 const TEST_PASSWORD = "TestPass!2026";
 
@@ -195,12 +174,319 @@ async function gradeFor(client: PoolClient, schemeId: string, score: number): Pr
   return band?.label ?? bands[0].label;
 }
 
+// ─── bootstrap helpers ──────────────────────────────────────────────────────
+
+// A class (school_id, curriculum_stage_id) plus its named streams — shared by
+// the O-Level (S1-S4) bootstrap below and the existing A-Level (S5/S6) step.
+async function ensureClassWithStreams(
+  client: PoolClient,
+  schoolId: string,
+  academicYearId: string,
+  stageId: string,
+  adminUserId: string,
+  streamNames: string[],
+): Promise<{ classId: string; streamId: Record<string, string> }> {
+  const existing = await client.query<{ id: string }>(
+    `select id from classes where school_id = $1 and curriculum_stage_id = $2`,
+    [schoolId, stageId],
+  );
+  let classId: string;
+  if (existing.rows[0]) {
+    classId = existing.rows[0].id;
+  } else {
+    const { rows } = await client.query<{ id: string }>(
+      `insert into classes (school_id, academic_year_id, curriculum_stage_id, has_streams, is_active, created_by)
+       values ($1,$2,$3,true,true,$4) returning id`,
+      [schoolId, academicYearId, stageId, adminUserId],
+    );
+    classId = rows[0].id;
+  }
+  const streamId: Record<string, string> = {};
+  for (const name of streamNames) {
+    const existingStream = await client.query<{ id: string }>(
+      `select id from streams where school_id = $1 and class_id = $2 and name = $3`,
+      [schoolId, classId, name],
+    );
+    if (existingStream.rows[0]) {
+      streamId[name] = existingStream.rows[0].id;
+    } else {
+      const { rows } = await client.query<{ id: string }>(
+        `insert into streams (school_id, class_id, name, is_active, created_by)
+         values ($1,$2,$3,true,$4) returning id`,
+        [schoolId, classId, name, adminUserId],
+      );
+      streamId[name] = rows[0].id;
+    }
+  }
+  return { classId, streamId };
+}
+
+async function ensureTeacherUser(
+  client: PoolClient,
+  schoolId: string,
+  passwordHash: string,
+  def: { email: string; first: string; last: string; gender: "male" | "female" },
+): Promise<string> {
+  const existing = await client.query<{ id: string }>(
+    `select id from users where school_id = $1 and email = $2`,
+    [schoolId, def.email],
+  );
+  if (existing.rows[0]) return existing.rows[0].id;
+  const systemId = await nextSystemId(client, "T");
+  const { rows } = await client.query<{ id: string }>(
+    `insert into users (school_id, system_id, email, password_hash, role) values ($1,$2,$3,$4,'teacher') returning id`,
+    [schoolId, systemId, def.email, passwordHash],
+  );
+  const userId = rows[0].id;
+  await client.query(
+    `insert into staff (user_id, first_name, last_name, gender, employment_type, is_active)
+     values ($1,$2,$3,$4,'government',true)
+     on conflict (user_id) do nothing`,
+    [userId, def.first, def.last, def.gender],
+  );
+  return userId;
+}
+
+interface BootstrapResult {
+  schoolId: string;
+  curriculumId: string;
+  academicYearId: string;
+  schoolExamId: string;
+  adminUserId: string;
+  teacherIds: string[];
+  stage: Record<"S1" | "S2" | "S3" | "S4" | "S5" | "S6", string>;
+  oLevelClassId: Record<"S1" | "S2" | "S3" | "S4", string>;
+  oLevelStreamId: Record<string, string>;
+  oLevelSubjects: { id: string; code: string; compulsory: boolean }[];
+  generalPaperId: string;
+  gradingScheme: { O_LEVEL_ANY: string; A_LEVEL_PRINCIPAL: string; A_LEVEL_SUBSIDIARY: string };
+  passwordHash: string;
+}
+
+async function bootstrap(client: PoolClient): Promise<BootstrapResult> {
+  const passwordHash = await hashPassword(TEST_PASSWORD);
+
+  const { rows: curRows } = await client.query<{ id: string }>(`select id from curriculum where code = 'UNEB'`);
+  if (!curRows[0]) {
+    throw new Error("UNEB curriculum not found — run migrations first (npm run migrate:up).");
+  }
+  const curriculumId = curRows[0].id;
+
+  const { rows: stageRows } = await client.query<{ id: string; code: string }>(
+    `select id, code from curriculum_stage where curriculum_id = $1`,
+    [curriculumId],
+  );
+  const stage = Object.fromEntries(stageRows.map((r) => [r.code, r.id])) as BootstrapResult["stage"];
+
+  const existingSchool = await client.query<{ id: string }>(
+    `select id from schools where name = $1`,
+    ["Kampala Test Secondary School"],
+  );
+  let schoolId: string;
+  if (existingSchool.rows[0]) {
+    schoolId = existingSchool.rows[0].id;
+  } else {
+    const { rows } = await client.query<{ id: string }>(
+      `insert into schools (name, onboarding_status, verified_at, district, ownership_type, school_type, gender_composition, phone, email)
+       values ($1,'active',now(),'Kampala','private','mixed','mixed','+256700000000',$2)
+       returning id`,
+      ["Kampala Test Secondary School", ADMIN_EMAIL],
+    );
+    schoolId = rows[0].id;
+  }
+
+  await client.query(
+    `insert into school_curriculum (school_id, curriculum_id, is_primary) values ($1,$2,true)
+     on conflict (school_id, curriculum_id) do nothing`,
+    [schoolId, curriculumId],
+  );
+
+  const existingAdmin = await client.query<{ id: string }>(
+    `select id from users where school_id = $1 and email = $2`,
+    [schoolId, ADMIN_EMAIL],
+  );
+  let adminUserId: string;
+  if (existingAdmin.rows[0]) {
+    adminUserId = existingAdmin.rows[0].id;
+  } else {
+    const systemId = await nextSystemId(client, "A");
+    const { rows } = await client.query<{ id: string }>(
+      `insert into users (school_id, system_id, email, password_hash, role) values ($1,$2,$3,$4,'school_admin') returning id`,
+      [schoolId, systemId, ADMIN_EMAIL, passwordHash],
+    );
+    adminUserId = rows[0].id;
+  }
+
+  const teacherIds: string[] = [];
+  for (const t of TEACHER_DEFS) {
+    teacherIds.push(await ensureTeacherUser(client, schoolId, passwordHash, t));
+  }
+
+  const existingYear = await client.query<{ id: string }>(
+    `select id from academic_years where school_id = $1 and year_name = $2`,
+    [schoolId, "2026"],
+  );
+  let academicYearId: string;
+  if (existingYear.rows[0]) {
+    academicYearId = existingYear.rows[0].id;
+  } else {
+    const { rows } = await client.query<{ id: string }>(
+      `insert into academic_years (school_id, year_name, start_date, end_date, is_current, created_by)
+       values ($1,'2026','2026-02-01','2026-12-11',true,$2) returning id`,
+      [schoolId, adminUserId],
+    );
+    academicYearId = rows[0].id;
+  }
+
+  // "Current" term is derived from the calendar (today's date falling inside
+  // [start_date, end_date]), not a flag — see terms.repository.ts's
+  // getCurrentTerm. Term 3's window below is picked to contain "now" for a
+  // freshly-seeded school.
+  const termDefs = [
+    { name: "Term 1", start: "2026-02-01", end: "2026-05-08", current: false },
+    { name: "Term 2", start: "2026-05-25", end: "2026-08-14", current: false },
+    { name: "Term 3", start: "2026-09-07", end: "2026-12-11", current: true },
+  ];
+  let currentTermId = "";
+  for (const t of termDefs) {
+    const existing = await client.query<{ id: string }>(
+      `select id from terms where academic_year_id = $1 and name = $2`,
+      [academicYearId, t.name],
+    );
+    let termId: string;
+    if (existing.rows[0]) {
+      termId = existing.rows[0].id;
+    } else {
+      const { rows } = await client.query<{ id: string }>(
+        `insert into terms (school_id, academic_year_id, name, start_date, end_date, created_by)
+         values ($1,$2,$3,$4,$5,$6) returning id`,
+        [schoolId, academicYearId, t.name, t.start, t.end, adminUserId],
+      );
+      termId = rows[0].id;
+    }
+    if (t.current) currentTermId = termId;
+  }
+
+  const { rows: sessionRows } = await client.query<{ id: string }>(
+    `insert into exam_session (exam_name, exam_code, description, is_active)
+     values ('End of Term Exam','EOT','Standard end-of-term summative assessment', true)
+     on conflict (exam_code) do update set updated_at = now()
+     returning id`,
+  );
+  const examSessionId = sessionRows[0].id;
+
+  const { rows: examRows } = await client.query<{ id: string }>(
+    `insert into school_exam (school_id, exam_session_id, academic_year_id, term_id, name, starts_on, ends_on, marks_due_on, status, created_by)
+     values ($1,$2,$3,$4,'End of Term 3 Exams','2026-11-16','2026-11-27','2026-12-04','active',$5)
+     on conflict (school_id, academic_year_id, term_id, name) do update set updated_at = now()
+     returning id`,
+    [schoolId, examSessionId, academicYearId, currentTermId, adminUserId],
+  );
+  const schoolExamId = examRows[0].id;
+
+  const oLevelSubjectDbId: Record<string, string> = {};
+  for (const s of O_LEVEL_SUBJECT_DEFS) {
+    const { rows } = await client.query<{ id: string }>(
+      `insert into subject (curriculum_id, phase, code, short_name, name, category, status)
+       values ($1,'O_LEVEL',$2,$3,$4,$5,'approved')
+       on conflict (curriculum_id, phase, code) do update set updated_at = now()
+       returning id`,
+      [curriculumId, s.code, s.shortName, s.name, s.category],
+    );
+    oLevelSubjectDbId[s.shortName] = rows[0].id;
+  }
+  for (const subjectId of Object.values(oLevelSubjectDbId)) {
+    for (const stageCode of ["S1", "S2", "S3", "S4"] as const) {
+      await client.query(
+        `insert into subject_stage (subject_id, curriculum_stage_id) values ($1,$2) on conflict do nothing`,
+        [subjectId, stage[stageCode]],
+      );
+    }
+  }
+  const oLevelSubjects = O_LEVEL_SUBJECT_DEFS.map((s) => ({
+    id: oLevelSubjectDbId[s.shortName],
+    code: s.shortName,
+    compulsory: s.compulsory,
+  }));
+
+  const { rows: gpRows } = await client.query<{ id: string }>(
+    `select id from subject where curriculum_id = $1 and is_general_paper = true`,
+    [curriculumId],
+  );
+  if (!gpRows[0]) {
+    throw new Error("General Paper subject not found for UNEB curriculum — migrations may be out of date.");
+  }
+  const generalPaperId = gpRows[0].id;
+
+  async function schemeId(name: string): Promise<string> {
+    const { rows } = await client.query<{ id: string }>(
+      `select id from grading_scheme where curriculum_id = $1 and name = $2`,
+      [curriculumId, name],
+    );
+    if (!rows[0]) throw new Error(`Grading scheme "${name}" not found — migrations may be out of date.`);
+    return rows[0].id;
+  }
+  const gradingScheme = {
+    O_LEVEL_ANY: await schemeId("NLSC O-Level"),
+    A_LEVEL_PRINCIPAL: await schemeId("NLSC A-Level (Principal)"),
+    A_LEVEL_SUBSIDIARY: await schemeId("NLSC A-Level (Subsidiary)"),
+  };
+
+  const oLevelClassId: BootstrapResult["oLevelClassId"] = { S1: "", S2: "", S3: "", S4: "" };
+  const oLevelStreamId: Record<string, string> = {};
+  for (const stageCode of ["S1", "S2", "S3", "S4"] as const) {
+    const { classId, streamId } = await ensureClassWithStreams(
+      client,
+      schoolId,
+      academicYearId,
+      stage[stageCode],
+      adminUserId,
+      ["East", "West"],
+    );
+    oLevelClassId[stageCode] = classId;
+    for (const [name, id] of Object.entries(streamId)) oLevelStreamId[`${stageCode}:${name}`] = id;
+  }
+
+  return {
+    schoolId,
+    curriculumId,
+    academicYearId,
+    schoolExamId,
+    adminUserId,
+    teacherIds,
+    stage,
+    oLevelClassId,
+    oLevelStreamId,
+    oLevelSubjects,
+    generalPaperId,
+    gradingScheme,
+    passwordHash,
+  };
+}
+
 // ─── main ───────────────────────────────────────────────────────────────────
 
 async function main() {
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
+
+    console.log("Bootstrapping Kampala Test Secondary School (school, admin, teachers, academic year/terms, O-Level catalog)...");
+    const {
+      schoolId: SCHOOL_ID,
+      curriculumId: CURRICULUM_ID,
+      academicYearId: ACADEMIC_YEAR_ID,
+      schoolExamId: SCHOOL_EXAM_ID,
+      adminUserId: ADMIN_USER_ID,
+      teacherIds: TEACHER_IDS,
+      stage: STAGE,
+      oLevelClassId: O_LEVEL_CLASS_ID,
+      oLevelStreamId: O_LEVEL_STREAM_ID,
+      oLevelSubjects: O_LEVEL_SUBJECTS,
+      generalPaperId: GENERAL_PAPER_ID,
+      gradingScheme: GRADING_SCHEME,
+      passwordHash,
+    } = await bootstrap(client);
 
     console.log("1/11 A-Level subject catalog...");
     const aLevelSubjectDefs = [
@@ -332,38 +618,16 @@ async function main() {
     const aLevelClassId: Record<"S5" | "S6", string> = { S5: "", S6: "" };
     const aLevelStreamId: Record<string, string> = {};
     for (const stage of ["S5", "S6"] as const) {
-      const existing = await client.query<{ id: string }>(
-        `select id from classes where school_id = $1 and curriculum_stage_id = $2`,
-        [SCHOOL_ID, STAGE[stage]],
+      const { classId, streamId } = await ensureClassWithStreams(
+        client,
+        SCHOOL_ID,
+        ACADEMIC_YEAR_ID,
+        STAGE[stage],
+        ADMIN_USER_ID,
+        ["East", "West"],
       );
-      let classId: string;
-      if (existing.rows[0]) {
-        classId = existing.rows[0].id;
-      } else {
-        const { rows } = await client.query<{ id: string }>(
-          `insert into classes (school_id, academic_year_id, curriculum_stage_id, has_streams, is_active, created_by)
-           values ($1,$2,$3,true,true,$4) returning id`,
-          [SCHOOL_ID, ACADEMIC_YEAR_ID, STAGE[stage], ADMIN_USER_ID],
-        );
-        classId = rows[0].id;
-      }
       aLevelClassId[stage] = classId;
-      for (const streamName of ["East", "West"]) {
-        const existingStream = await client.query<{ id: string }>(
-          `select id from streams where school_id = $1 and class_id = $2 and name = $3`,
-          [SCHOOL_ID, classId, streamName],
-        );
-        if (existingStream.rows[0]) {
-          aLevelStreamId[`${stage}:${streamName}`] = existingStream.rows[0].id;
-        } else {
-          const { rows } = await client.query<{ id: string }>(
-            `insert into streams (school_id, class_id, name, is_active, created_by)
-             values ($1,$2,$3,true,$4) returning id`,
-            [SCHOOL_ID, classId, streamName, ADMIN_USER_ID],
-          );
-          aLevelStreamId[`${stage}:${streamName}`] = rows[0].id;
-        }
-      }
+      for (const [name, id] of Object.entries(streamId)) aLevelStreamId[`${stage}:${name}`] = id;
     }
 
     console.log("5/11 Topping up O-Level students to 100...");
@@ -377,7 +641,6 @@ async function main() {
       { stage: "S4", stream: "East", target: 13 },
       { stage: "S4", stream: "West", target: 12 },
     ];
-    const passwordHash = await hashPassword(TEST_PASSWORD);
     let newOLevel = 0;
     let newALevel = 0;
 
