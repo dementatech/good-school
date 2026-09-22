@@ -39,10 +39,10 @@ export default function RootLayout({
           <AuthProvider>
             {children}
             <PushNotificationPrompt />
-            <InstallPrompt />
           </AuthProvider>
         </ToastProvider>
         <RegisterServiceWorker />
+        <InstallPrompt />
       </body>
     </html>
   );
