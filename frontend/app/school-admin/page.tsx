@@ -91,15 +91,19 @@ export default function SchoolAdminDashboard() {
   }, []);
 
   useEffect(() => {
+    // Same "no backend yet" roadmap gap as attendance/assessments above —
+    // /school-admin/performance and /analytics don't exist on the backend,
+    // so these stay silent-on-failure rather than toasting a 404 on every
+    // school-admin login.
     async function loadTrend() {
-      setTrend(await fetchList<TrendPoint>('/api/v1/school-admin/performance?trend=1', toast.error));
+      setTrend(await fetchList<TrendPoint>('/api/v1/school-admin/performance?trend=1'));
     }
     loadTrend();
   }, []);
 
   useEffect(() => {
     async function loadAnalytics() {
-      setAnalytics(await fetchOne<Analytics>('/api/v1/school-admin/analytics', toast.error));
+      setAnalytics(await fetchOne<Analytics>('/api/v1/school-admin/analytics'));
       setAnalyticsLoading(false);
     }
     loadAnalytics();
