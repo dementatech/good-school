@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { Share } from "lucide-react";
+import { useAuth } from "@/components/auth/AuthContext";
 
 const DISMISS_KEY = "gs-install-prompt-dismissed";
 const DISMISS_DAYS = 14;
@@ -52,10 +53,14 @@ function isIOSInAppBrowser() {
 }
 
 export function InstallPrompt() {
+  const { isAuthenticated } = useAuth();
   const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null);
   const [iosMode, setIosMode] = useState<"share" | "in-app" | null>(null);
 
   useEffect(() => {
+    // Same gate as PushNotificationPrompt — signed out visitors (e.g. on the
+    // login page) shouldn't see an install nag before they even have an account.
+    if (!isAuthenticated) return;
     if (isStandalone() || isDismissed()) return;
 
     if (isIOSDevice()) {
@@ -79,7 +84,7 @@ export function InstallPrompt() {
       window.removeEventListener("beforeinstallprompt", onBeforeInstallPrompt);
       window.removeEventListener("appinstalled", onInstalled);
     };
-  }, []);
+  }, [isAuthenticated]);
 
   function dismiss() {
     setDismissed();
