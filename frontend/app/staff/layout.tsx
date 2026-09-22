@@ -11,7 +11,7 @@ import { AccountMenu } from '@/components/ui/AccountMenu';
 import { TopbarSearch } from '@/components/ui/TopbarSearch';
 import { MobileNavDrawer } from '@/components/ui/MobileNavDrawer';
 import { PortalSidebar } from '@/components/ui/PortalSidebar';
-import { LayoutDashboard, FileText, UserCircle, ClipboardList } from 'lucide-react';
+import { LayoutDashboard, FileText, UserCircle, ClipboardList, MessageSquare } from 'lucide-react';
 import type { Role } from '@/lib/auth/session';
 
 const STAFF_ROLES: Role[] = ['staff'];
@@ -26,6 +26,7 @@ const NAV = [
     activePrefixes: ['/staff/forms', '/staff/lessons', '/staff/attendance', '/staff/practical', '/staff/behaviour'],
   },
   { href: '/staff/exam-marks', label: 'Exam Marks', icon: ClipboardList },
+  { href: '/staff/communications', label: 'Communication', icon: MessageSquare },
 ];
 
 // Own-account settings — reached via the topbar's AccountMenu on desktop;

@@ -28,6 +28,7 @@ import {
   Combine,
   Award,
   FileBarChart2,
+  MessageSquare,
 } from 'lucide-react';
 import type { Role } from '@/lib/auth/session';
 
@@ -47,6 +48,7 @@ const NAV = [
     ],
   },
   { href: '/school-admin/staff', label: 'Staff', icon: UserCog },
+  { href: '/school-admin/communications', label: 'Communication', icon: MessageSquare },
   { href: '/school-admin/organisation-studio', label: 'Organisation Studio', icon: Network },
   { href: '/school-admin/students', label: 'Students', icon: GraduationCap },
   {

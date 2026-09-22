@@ -3,6 +3,7 @@ import Fastify from "fastify";
 import cookie from "@fastify/cookie";
 import multipart from "@fastify/multipart";
 import fastifyStatic from "@fastify/static";
+import websocket from "@fastify/websocket";
 import { registerAuthModule } from "./modules/auth/index.js";
 import { registerSchoolsModule } from "./modules/schools/index.js";
 import { registerStudentsModule } from "./modules/students/index.js";
@@ -15,6 +16,7 @@ import { registerParentsModule } from "./modules/parents/index.js";
 import { registerNotificationsModule } from "./modules/notifications/index.js";
 import { registerEventsModule } from "./modules/events/index.js";
 import { registerExportModule } from "./modules/export/index.js";
+import { registerCommunicationsModule } from "./modules/communications/index.js";
 import { ensureUploadsRoot, uploadsRoot } from "./shared/uploads.js";
 
 const fastify = Fastify({
@@ -34,6 +36,8 @@ await fastify.register(multipart, {
   limits: { fileSize: 5 * 1024 * 1024, files: 1 },
 });
 
+await fastify.register(websocket);
+
 await ensureUploadsRoot();
 await fastify.register(fastifyStatic, {
   root: uploadsRoot(),
@@ -52,6 +56,7 @@ await registerParentsModule(fastify);
 await registerNotificationsModule(fastify);
 await registerEventsModule(fastify);
 await registerExportModule(fastify);
+await registerCommunicationsModule(fastify);
 
 const port = Number(process.env.PORT ?? 4000);
 

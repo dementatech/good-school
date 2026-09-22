@@ -84,6 +84,15 @@ STEP 6 — FRONTEND ON VERCEL
      JWT_SECRET=<same value as on the droplet — must match exactly,
                  since the frontend verifies the same JWT the backend
                  signs>
+     NEXT_PUBLIC_BACKEND_URL=https://sos.dementa.space
+                 Same host as BACKEND_URL, but NEXT_PUBLIC_ so it ships to
+                 the browser — needed by the communications module's
+                 realtime (WebSocket) feature, which connects to the
+                 backend directly instead of through the rewrite proxy
+                 (see frontend/lib/realtime/useConversationSocket.ts).
+                 Without it, live message delivery silently falls back to
+                 trying localhost:4000 and just never connects; everything
+                 else in the app is unaffected.
 3. Deploy.
 
 
