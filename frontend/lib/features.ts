@@ -33,6 +33,7 @@ export type FeatureKey =
   | "student_portal"
   | "parent_portal"
   | "notifications"
+  | "communications"
   | "account_settings"
   | "staff_account"
   | "portal_home";
@@ -92,6 +93,9 @@ export const FEATURES: Record<FeatureKey, FeatureMeta> = {
   student_portal: { label: "Student Portal", ready: false },
   parent_portal: { label: "Parent Portal", ready: false },
   notifications: { label: "Notifications", ready: true },
+  // School-admin <-> teacher messaging, plus admin -> all-teachers and
+  // teacher -> his own class broadcasts. Backed by /api/v1/communications.
+  communications: { label: "Communication", ready: true },
   account_settings: { label: "My Account", ready: false },
   // A staff member's own profile + self-service academic document upload
   // (docs/design/teacher-staff-module.md) — distinct from `account_settings`,
@@ -137,6 +141,7 @@ const ROUTE_FEATURES: { prefix: string; key: FeatureKey }[] = [
   { prefix: "/staff/practical", key: "practical" },
   { prefix: "/staff/behaviour", key: "behaviour" },
   { prefix: "/staff/forms", key: "forms" },
+  { prefix: "/staff/communications", key: "communications" },
 
   { prefix: "/school-admin/classes", key: "academic_structure" },
   { prefix: "/school-admin/subjects", key: "academic_structure" },
@@ -154,6 +159,7 @@ const ROUTE_FEATURES: { prefix: string; key: FeatureKey }[] = [
   { prefix: "/school-admin/assessments", key: "assessments" },
   { prefix: "/school-admin/library", key: "library" },
   { prefix: "/school-admin/performance", key: "performance" },
+  { prefix: "/school-admin/communications", key: "communications" },
 
   { prefix: "/parent/notifications", key: "notifications" },
   { prefix: "/parent/results", key: "exams" },
