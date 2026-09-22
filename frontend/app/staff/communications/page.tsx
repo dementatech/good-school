@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/Button';
 import { useToast } from '@/components/ui/ToastProvider';
 import { fetchList, submitJson } from '@/lib/api/envelope';
 import { useAuth } from '@/components/auth/AuthContext';
+import { useConversationSocket } from '@/lib/realtime/useConversationSocket';
 import { Send, Megaphone, MessageSquare } from 'lucide-react';
 
 interface ConversationSummary {
@@ -76,6 +77,13 @@ function MessagesTab() {
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useConversationSocket((event) => {
+    if (event.conversationId === selectedId) {
+      setMessages((prev) => [...prev, event.message]);
+    }
+    loadConversations();
+  });
 
   async function send() {
     if (!selectedId || !draft.trim()) return;

@@ -3,6 +3,7 @@ import Fastify from "fastify";
 import cookie from "@fastify/cookie";
 import multipart from "@fastify/multipart";
 import fastifyStatic from "@fastify/static";
+import websocket from "@fastify/websocket";
 import { registerAuthModule } from "./modules/auth/index.js";
 import { registerSchoolsModule } from "./modules/schools/index.js";
 import { registerStudentsModule } from "./modules/students/index.js";
@@ -34,6 +35,8 @@ await fastify.register(cookie, {
 await fastify.register(multipart, {
   limits: { fileSize: 5 * 1024 * 1024, files: 1 },
 });
+
+await fastify.register(websocket);
 
 await ensureUploadsRoot();
 await fastify.register(fastifyStatic, {

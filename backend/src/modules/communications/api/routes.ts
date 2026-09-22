@@ -20,6 +20,7 @@ import {
   prepareClassBroadcast,
   prepareTeacherBroadcast,
 } from "../domain/broadcasts.repository.js";
+import { consumeTicket, issueTicket, pushToUser, subscribe, unsubscribe } from "../domain/realtime.js";
 import {
   broadcastClassBodySchema,
   broadcastTeachersBodySchema,
@@ -185,6 +186,11 @@ export async function communicationsRoutes(fastify: FastifyInstance) {
       const participants = await getParticipants(request.params.id);
       const recipientUserId = participant.side === "admin" ? participants.teacher_user_id : participants.admin_user_id;
       const portal = participant.side === "admin" ? "/staff/communications" : "/school-admin/communications";
+
+      // Instant delivery if they're online right now; notifyUsers below
+      // covers the bell/push for when they're not.
+      pushToUser(recipientUserId, { type: "message", conversationId: request.params.id, message });
+
       void notifyUsers([recipientUserId], {
         type: "direct_message",
         title: "New message",
@@ -204,6 +210,28 @@ export async function communicationsRoutes(fastify: FastifyInstance) {
       if (!participant) return;
       await markRead(request.params.id, request.authUser!.user_id, participant.side);
       return ok(null);
+    },
+  );
+
+  // ── Realtime (WebSocket) ─────────────────────────────────────────────────
+  // See domain/realtime.ts for why this is ticket-authenticated rather than
+  // cookie-authenticated.
+
+  fastify.post("/realtime/ticket", { preHandler: EITHER }, async (request) => {
+    return ok({ ticket: issueTicket(request.authUser!) });
+  });
+
+  fastify.get<{ Querystring: { ticket?: string } }>(
+    "/realtime",
+    { websocket: true },
+    (socket, request) => {
+      const authUser = request.query.ticket ? consumeTicket(request.query.ticket) : null;
+      if (!authUser) {
+        socket.close(4401, "invalid_ticket");
+        return;
+      }
+      subscribe(authUser.user_id, socket);
+      socket.on("close", () => unsubscribe(authUser.user_id, socket));
     },
   );
 }
