@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Bell, CheckCheck } from 'lucide-react';
 import { isFeatureReady } from '@/lib/features';
+import { useRealtimeSocket } from '@/lib/realtime/useRealtimeSocket';
 
 interface Notification {
   id: number;
@@ -28,9 +29,10 @@ function timeAgo(iso: string): string {
 /**
  * Notification bell with unread count.
  *
- * Polls rather than holding a realtime subscription: this is a low-frequency
- * feed (lessons filed, results released) and a 60-second poll costs one cheap
- * query, where a socket per signed-in user would cost a connection each.
+ * Gets new notifications instantly over the shared realtime socket (see
+ * lib/realtime/useRealtimeSocket) and keeps a 60-second poll as a cheap
+ * fallback/reconciliation in case a push is ever missed (a reconnect
+ * window, a dropped frame).
  */
 export function NotificationBell() {
   const router = useRouter();
@@ -67,6 +69,13 @@ export function NotificationBell() {
     const timer = setInterval(() => void load(), 60_000);
     return () => clearInterval(timer);
   }, [load]);
+
+  useRealtimeSocket((event) => {
+    if (event.type !== 'notification') return;
+    const n = event.notification;
+    setItems((current) => (current.some((i) => i.id === n.id) ? current : [n, ...current]));
+    if (!n.isRead) setUnread((u) => u + 1);
+  }, isFeatureReady('notifications'));
 
   // Close when clicking outside the panel.
   useEffect(() => {

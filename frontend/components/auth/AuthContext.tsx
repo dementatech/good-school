@@ -3,6 +3,8 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 
 import { endSession, loadIdentity } from '@/lib/auth/identity';
+import { useRealtimeSocket } from '@/lib/realtime/useRealtimeSocket';
+import { playMessageSound, playNotificationSound } from '@/lib/realtime/sound';
 
 export interface User {
   id: string;
@@ -16,6 +18,8 @@ export interface User {
   logoUrl?: string | null;
   schoolId?: string | null;
   className?: string | null;
+  /** Only ever set for a teacher right now — see backend's `/me` route. */
+  photoUrl?: string | null;
 }
 
 interface AuthContextType {
@@ -108,6 +112,23 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setMustChangePassword(false);
     void endSession();
   };
+
+  // One socket, mounted exactly once for the whole app (AuthProvider wraps
+  // everything) — deliberately not left to NotificationBell or the
+  // per-page hooks below, since a portal renders more than one of those at
+  // once (desktop + mobile bell) and each holds its own connection; playing
+  // a sound from every one of them would double it up.
+  //
+  // Also where a super_admin disabling this account or suspending its
+  // school actually kicks an open tab out immediately, instead of leaving
+  // it signed in until the next click happens to hit a 401 — see
+  // backend/src/modules/admin/api/routes.ts and
+  // backend/src/modules/schools/api/routes.ts for where that gets pushed.
+  useRealtimeSocket((event) => {
+    if (event.type === 'force_signout') logout();
+    else if (event.type === 'message') playMessageSound();
+    else if (event.type === 'notification') playNotificationSound();
+  }, isAuthenticated);
 
   return (
     <AuthContext.Provider value={{ user, isAuthenticated, loading, mustChangePassword, login, logout, refresh }}>

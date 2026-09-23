@@ -1,12 +1,13 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Loader } from '@/components/ui/loader';
 import { useToast } from '@/components/ui/ToastProvider';
 import { fetchList } from '@/lib/api/envelope';
+import { useRealtimeSocket } from '@/lib/realtime/useRealtimeSocket';
 import { Award, Calendar } from 'lucide-react';
 import type { PublishedExamSummary } from '@/components/exams/publishedResults';
 
@@ -17,12 +18,23 @@ export default function MyResultsPage() {
   const [exams, setExams] = useState<PublishedExamSummary[]>([]);
   const [loading, setLoading] = useState(true);
 
+  const load = useCallback(async () => {
+    setExams(await fetchList<PublishedExamSummary>('/api/v1/exams/me', toast.error));
+    setLoading(false);
+  }, []);
+
   useEffect(() => {
     void (async () => {
-      setExams(await fetchList<PublishedExamSummary>('/api/v1/exams/me', toast.error));
-      setLoading(false);
+      await load();
     })();
-  }, []);
+  }, [load]);
+
+  // Publish happens on the school-admin's side while this page might already
+  // be open — re-pull the list the moment it lands instead of waiting for a
+  // manual refresh.
+  useRealtimeSocket((event) => {
+    if (event.type === 'notification' && event.notification.type === 'exam_results_published') void load();
+  });
 
   return (
     <div className="w-full">

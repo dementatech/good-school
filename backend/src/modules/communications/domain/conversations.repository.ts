@@ -107,6 +107,34 @@ function mapSummary(row: ConversationRow): ConversationSummary {
   };
 }
 
+export async function countUnreadForAdmin(schoolId: string, adminUserId: string): Promise<number> {
+  const { rows } = await pool.query<{ total: string }>(
+    `select coalesce(sum(unread), 0)::text as total from (
+       select (select count(*) from conversation_message m
+                where m.conversation_id = c.id and m.sender_user_id <> $2
+                  and (c.admin_last_read_at is null or m.created_at > c.admin_last_read_at)) as unread
+         from conversation c
+        where c.school_id = $1 and c.admin_user_id = $2
+     ) t`,
+    [schoolId, adminUserId],
+  );
+  return Number(rows[0].total);
+}
+
+export async function countUnreadForTeacher(teacherUserId: string): Promise<number> {
+  const { rows } = await pool.query<{ total: string }>(
+    `select coalesce(sum(unread), 0)::text as total from (
+       select (select count(*) from conversation_message m
+                where m.conversation_id = c.id and m.sender_user_id <> $1
+                  and (c.teacher_last_read_at is null or m.created_at > c.teacher_last_read_at)) as unread
+         from conversation c
+        where c.teacher_user_id = $1
+     ) t`,
+    [teacherUserId],
+  );
+  return Number(rows[0].total);
+}
+
 export async function listConversationsForAdmin(
   schoolId: string,
   adminUserId: string,

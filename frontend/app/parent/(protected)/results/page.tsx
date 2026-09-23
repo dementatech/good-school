@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/Button';
 import { Loader } from '@/components/ui/loader';
 import { useToast } from '@/components/ui/ToastProvider';
 import { fetchList } from '@/lib/api/envelope';
+import { useRealtimeSocket } from '@/lib/realtime/useRealtimeSocket';
 import { useParentChildren } from '@/components/parent/ParentChildrenContext';
 import { Award, Calendar } from 'lucide-react';
 import type { PublishedExamSummary } from '@/components/exams/publishedResults';
@@ -33,6 +34,14 @@ export default function ParentResultsPage() {
     })();
     return () => controller.abort();
   }, [selectedId, load]);
+
+  // Publish can land while this page is already open — re-pull the moment
+  // it does instead of waiting for a manual refresh.
+  useRealtimeSocket((event) => {
+    if (event.type === 'notification' && event.notification.type === 'exam_results_published' && selectedId) {
+      void load(selectedId);
+    }
+  });
 
   const busy = loading || childrenLoading;
 

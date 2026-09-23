@@ -11,6 +11,11 @@ import type { JwtPayload } from "../../../shared/types/index.js";
 // cookie-authenticated REST call (same-origin, proxied as normal), then open
 // the socket with that ticket in the query string. Never the JWT itself —
 // URLs end up in access logs.
+//
+// Shared by every module that needs to push something to a signed-in user in
+// real time (direct messages, notifications, ...) — one socket per tab
+// carries every event type, distinguished by the `type` field each pushed
+// payload includes.
 
 const TICKET_TTL_MS = 30_000;
 

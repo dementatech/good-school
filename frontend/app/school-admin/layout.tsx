@@ -11,6 +11,7 @@ import { AccountMenu } from '@/components/ui/AccountMenu';
 import { TopbarSearch } from '@/components/ui/TopbarSearch';
 import { MobileNavDrawer } from '@/components/ui/MobileNavDrawer';
 import { PortalSidebar } from '@/components/ui/PortalSidebar';
+import { useUnreadMessageCount } from '@/lib/communications/useUnreadMessageCount';
 import {
   LayoutDashboard,
   Layers,
@@ -34,7 +35,7 @@ import type { Role } from '@/lib/auth/session';
 
 const SCHOOL_ADMIN_ROLES: Role[] = ['school_admin'];
 
-const NAV = [
+const NAV_BASE = [
   { href: '/school-admin', label: 'Dashboard', icon: LayoutDashboard, exact: true },
   { href: '/school-admin/academic-years', label: 'Academic Years', icon: CalendarDays },
   { href: '/school-admin/classes', label: 'Classes & Streams', icon: Layers },
@@ -70,6 +71,14 @@ const NAV = [
 function SchoolAdminShell({ children }: { children: React.ReactNode }) {
   const { user, logout } = useAuth();
   const router = useRouter();
+  const unreadMessages = useUnreadMessageCount();
+  const NAV = React.useMemo(
+    () =>
+      NAV_BASE.map((item) =>
+        item.href === '/school-admin/communications' ? { ...item, badge: unreadMessages } : item,
+      ),
+    [unreadMessages],
+  );
 
   return (
     <div className="min-h-screen print:min-h-0 bg-bg-canvas print:bg-white flex">

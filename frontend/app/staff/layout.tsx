@@ -11,12 +11,15 @@ import { AccountMenu } from '@/components/ui/AccountMenu';
 import { TopbarSearch } from '@/components/ui/TopbarSearch';
 import { MobileNavDrawer } from '@/components/ui/MobileNavDrawer';
 import { PortalSidebar } from '@/components/ui/PortalSidebar';
+import { useUnreadMessageCount } from '@/lib/communications/useUnreadMessageCount';
 import { LayoutDashboard, FileText, UserCircle, ClipboardList, MessageSquare } from 'lucide-react';
 import type { Role } from '@/lib/auth/session';
 
-const STAFF_ROLES: Role[] = ['staff'];
+// 'teacher' is the role real accounts actually get (see portals.ts); 'staff'
+// is kept in case it's ever assigned, but nothing currently creates one.
+const STAFF_ROLES: Role[] = ['staff', 'teacher'];
 
-const NAV = [
+const NAV_BASE = [
   { href: '/staff', label: 'Dashboard', icon: LayoutDashboard, exact: true },
   {
     href: '/staff/forms',
@@ -38,6 +41,11 @@ const ACCOUNT_NAV = [
 function StaffShell({ children }: { children: React.ReactNode }) {
   const { user, logout } = useAuth();
   const router = useRouter();
+  const unreadMessages = useUnreadMessageCount();
+  const NAV = React.useMemo(
+    () => NAV_BASE.map((item) => (item.href === '/staff/communications' ? { ...item, badge: unreadMessages } : item)),
+    [unreadMessages],
+  );
 
   return (
     <div className="min-h-screen bg-bg-canvas flex">

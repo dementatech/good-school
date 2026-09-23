@@ -21,6 +21,7 @@ import {
   getRecentActivity,
   getSystemStats,
 } from "../domain/system-dashboard.repository.js";
+import { pushToUser } from "../../realtime/index.js";
 import {
   accountTypeParamsSchema,
   resetPasswordsBodySchema,
@@ -109,6 +110,9 @@ export async function adminRoutes(fastify: FastifyInstance) {
           request.authUser!.user_id,
         );
         if (!result.ok) return reply.status(statusFor(result.error)).send(fail(result.error));
+        if (!isActive) {
+          pushToUser(request.params.userId, { type: "force_signout", reason: "account_disabled" });
+        }
       }
 
       const account = await getAccount(request.params.userId);

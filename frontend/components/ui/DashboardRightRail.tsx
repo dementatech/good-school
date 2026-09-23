@@ -5,6 +5,7 @@ import { useAuth } from '@/components/auth/AuthContext';
 import { isFeatureReady } from '@/lib/features';
 import { useToast } from '@/components/ui/ToastProvider';
 import { fetchList } from '@/lib/api/envelope';
+import { useRealtimeSocket } from '@/lib/realtime/useRealtimeSocket';
 import { ProfileCard } from './ProfileCard';
 import { MiniCalendar, type CalendarEvent } from './MiniCalendar';
 import { RemindersList, type ReminderItem } from './RemindersList';
@@ -49,21 +50,31 @@ export function DashboardRightRail({ className = '' }: { className?: string }) {
     [eventsReady],
   );
 
-  useEffect(() => {
+  const loadReminders = useCallback(async () => {
     if (!eventsReady) return;
-    void (async () => {
-      const today = new Date();
-      const from = toIsoDate(today);
-      const to = toIsoDate(new Date(today.getTime() + UPCOMING_WINDOW_DAYS * 24 * 60 * 60 * 1000));
-      const rows = await fetchList<{ id: string; title: string; eventDate: string }>(
-        `/api/v1/events?from=${from}&to=${to}`,
-        toast.error,
-      );
-      setReminders(
-        rows.slice(0, UPCOMING_LIMIT).map((r) => ({ id: r.id, label: r.title, date: formatReminderDate(r.eventDate) })),
-      );
-    })();
+    const today = new Date();
+    const from = toIsoDate(today);
+    const to = toIsoDate(new Date(today.getTime() + UPCOMING_WINDOW_DAYS * 24 * 60 * 60 * 1000));
+    const rows = await fetchList<{ id: string; title: string; eventDate: string }>(
+      `/api/v1/events?from=${from}&to=${to}`,
+      toast.error,
+    );
+    setReminders(
+      rows.slice(0, UPCOMING_LIMIT).map((r) => ({ id: r.id, label: r.title, date: formatReminderDate(r.eventDate) })),
+    );
   }, [eventsReady]);
+
+  useEffect(() => {
+    void (async () => {
+      await loadReminders();
+    })();
+  }, [loadReminders]);
+
+  // A school-admin adding an event lands here instantly for every other
+  // signed-in user of the school, instead of waiting for a reload.
+  useRealtimeSocket((event) => {
+    if (event.type === 'calendar_event') void loadReminders();
+  }, eventsReady);
 
   return (
     <div className={`w-full xl:w-[300px] xl:shrink-0 space-y-4 sm:space-y-5 ${className}`}>

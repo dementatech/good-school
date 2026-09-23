@@ -11,6 +11,8 @@ import {
   type EventInput,
 } from "../domain/events.repository.js";
 import { createEventBodySchema, listEventsQuerySchema, updateEventBodySchema } from "./schemas.js";
+import { listUserIdsForSchool } from "../../schools/index.js";
+import { pushToUser } from "../../realtime/index.js";
 
 // Any signed-in member of a school (plus super_admin, for the global
 // calendar) can read; only a school_admin (their own school) or super_admin
@@ -52,6 +54,18 @@ export async function eventsRoutes(fastify: FastifyInstance) {
       const scope = ownerScope(request, reply);
       if (!scope) return;
       const created = await createEvent(scope.schoolId, request.authUser!.user_id, request.body);
+      // school_admin only — a super_admin's global event would mean fanning
+      // out to every school, which isn't worth the blast radius for a
+      // "don't make me reload the calendar" nicety. Best-effort like every
+      // other push: an offline user just sees it on their next visit.
+      if (scope.schoolId) {
+        for (const userId of await listUserIdsForSchool(scope.schoolId)) {
+          pushToUser(userId, {
+            type: "calendar_event",
+            event: { id: created.id, title: created.title, eventDate: created.eventDate },
+          });
+        }
+      }
       return reply.status(201).send(ok(created));
     },
   );

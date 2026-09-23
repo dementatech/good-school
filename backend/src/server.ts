@@ -17,6 +17,7 @@ import { registerNotificationsModule } from "./modules/notifications/index.js";
 import { registerEventsModule } from "./modules/events/index.js";
 import { registerExportModule } from "./modules/export/index.js";
 import { registerCommunicationsModule } from "./modules/communications/index.js";
+import { registerRealtimeModule } from "./modules/realtime/index.js";
 import { ensureUploadsRoot, uploadsRoot } from "./shared/uploads.js";
 
 const fastify = Fastify({
@@ -56,6 +57,7 @@ await registerParentsModule(fastify);
 await registerNotificationsModule(fastify);
 await registerEventsModule(fastify);
 await registerExportModule(fastify);
+await registerRealtimeModule(fastify);
 await registerCommunicationsModule(fastify);
 
 const port = Number(process.env.PORT ?? 4000);

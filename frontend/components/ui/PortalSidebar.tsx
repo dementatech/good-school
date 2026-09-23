@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { createPortal } from 'react-dom';
 import { ChevronDown, ChevronLeft, ChevronRight, LifeBuoy } from 'lucide-react';
-import type { NavItem } from './MobileNavDrawer';
+import { NavBadge, type NavItem } from './MobileNavDrawer';
 
 const STORAGE_KEY = 'school_os_sidebar_collapsed';
 
@@ -62,16 +62,27 @@ function NavLink({
       <Link
         href={item.href!}
         aria-label={collapsed ? item.label : undefined}
-        className={`flex items-center gap-3 rounded-lg text-sm transition-colors ${
-          collapsed ? 'justify-center px-0 py-2.5' : 'px-3 py-2.5'
+        className={`flex items-center rounded-lg text-sm transition-colors ${
+          collapsed ? 'justify-center px-0 py-2.5' : 'justify-between gap-3 px-3 py-2.5'
         } ${
           active ? 'bg-white/15 text-white font-medium' : 'text-primary-100 hover:bg-white/10 hover:text-white'
         }`}
       >
-        <Icon className="w-4.5 h-4.5 shrink-0" aria-hidden />
-        {!collapsed && <span className="truncate">{item.label}</span>}
+        <span className={`flex items-center gap-3 min-w-0 ${collapsed ? 'relative' : ''}`}>
+          <Icon className="w-4.5 h-4.5 shrink-0" aria-hidden />
+          {collapsed && !!item.badge && (
+            <span
+              className="absolute -top-1 -right-1.5 w-2 h-2 rounded-full bg-[#C26565]"
+              aria-hidden
+            />
+          )}
+          {!collapsed && <span className="truncate">{item.label}</span>}
+        </span>
+        {!collapsed && !!item.badge && <NavBadge count={item.badge} />}
       </Link>
-      {collapsed && hoverAnchor && <IconTooltip anchor={hoverAnchor} label={item.label} />}
+      {collapsed && hoverAnchor && (
+        <IconTooltip anchor={hoverAnchor} label={item.badge ? `${item.label} (${item.badge})` : item.label} />
+      )}
     </div>
   );
 }

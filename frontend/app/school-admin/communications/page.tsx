@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/Button';
 import { useToast } from '@/components/ui/ToastProvider';
 import { fetchList, submitJson } from '@/lib/api/envelope';
 import { useAuth } from '@/components/auth/AuthContext';
-import { useConversationSocket } from '@/lib/realtime/useConversationSocket';
+import { useRealtimeSocket } from '@/lib/realtime/useRealtimeSocket';
 import { Send, Megaphone, MessageSquare } from 'lucide-react';
 
 interface Teacher {
@@ -78,7 +78,8 @@ function MessagesTab() {
     [loadConversations],
   );
 
-  useConversationSocket((event) => {
+  useRealtimeSocket((event) => {
+    if (event.type !== 'message') return;
     if (event.conversationId === selectedId) {
       setMessages((prev) => [...prev, event.message]);
     }
