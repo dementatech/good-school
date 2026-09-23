@@ -7,6 +7,7 @@ import { useToast } from '@/components/ui/ToastProvider';
 import { Loader } from '@/components/ui/loader';
 import { STATUS_LABEL, STATUS_VARIANT, type School } from '@/components/admin/schools/types';
 import { SchoolBrandingCard } from '@/components/school-admin/SchoolBrandingCard';
+import { SECTION_LABEL, useSchoolSections } from '@/lib/levels';
 
 function Row({ label, value }: { label: string; value: React.ReactNode }) {
   return (
@@ -29,6 +30,8 @@ function Group({ title, children }: { title: string; children: React.ReactNode }
 export default function SchoolAdminSchoolPage() {
   const toast = useToast();
   const [school, setSchool] = useState<School | null>(null);
+  // The EMIS number shown is the section being worked in — each section is its own EMIS entity.
+  const { sections, active: activeSection } = useSchoolSections();
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -92,7 +95,10 @@ export default function SchoolAdminSchoolPage() {
             </Group>
 
             <Group title="Regulatory">
-              <Row label="EMIS code" value={school.emisCode} />
+              <Row
+                label={sections.length > 1 && activeSection ? `EMIS number (${SECTION_LABEL[activeSection]})` : 'EMIS number'}
+                value={activeSection ? school.emisCodes[activeSection] ?? null : null}
+              />
               <Row label="UNEB centre number" value={school.unebCentreNumber} />
               <Row label="Ownership" value={cap(school.ownershipType)} />
               <Row label="Registration status" value={cap(school.registrationStatus)} />
@@ -117,7 +123,12 @@ export default function SchoolAdminSchoolPage() {
               <Row label="Gender composition" value={cap(school.genderComposition)} />
               <Row
                 label="Levels offered"
-                value={[school.offersOLevel && 'O-Level', school.offersALevel && 'A-Level']
+                value={[
+                  school.offersKindergarten && 'Kindergarten',
+                  school.offersPrimary && 'Primary',
+                  school.offersOLevel && 'O-Level',
+                  school.offersALevel && 'A-Level',
+                ]
                   .filter(Boolean)
                   .join(', ')}
               />

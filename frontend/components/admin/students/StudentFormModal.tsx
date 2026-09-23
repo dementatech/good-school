@@ -384,6 +384,9 @@ type BranchKind = 'ple' | 'uce_combination' | 'o_level_optionals' | 'a_level_com
 
 function branchFor(cls: SchoolClass | null): BranchKind {
   if (!cls) return null;
+  // Kindergarten and Primary pupils take the whole class's subject set — no
+  // per-pupil choice, so no extra wizard step.
+  if (cls.stagePhase === 'KINDERGARTEN' || cls.stagePhase === 'PRIMARY') return null;
   if (cls.stageCode === 'S1') return 'ple';
   if (cls.stageCode === 'S5') return 'uce_combination';
   return cls.stagePhase === 'A_LEVEL' ? 'a_level_combination' : 'o_level_optionals';

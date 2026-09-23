@@ -29,6 +29,8 @@ export interface StageRecord {
   name: string;
   sequenceNumber: number;
   phase: string | null;
+  /** Primary teaching cycle: 'LOWER' (P1–P3) | 'TRANSITION' (P4) | 'UPPER' (P5–P7). */
+  cycle: string | null;
   ageEquivalentYears: number | null;
 }
 
@@ -37,6 +39,7 @@ export interface StageInput {
   name: string;
   sequenceNumber: number;
   phase?: string | null;
+  cycle?: string | null;
   ageEquivalentYears?: number | null;
 }
 
@@ -57,6 +60,7 @@ interface StageRow {
   name: string;
   sequence_number: number;
   phase: string | null;
+  cycle: string | null;
   age_equivalent_years: number | null;
 }
 
@@ -77,11 +81,12 @@ const mapStage = (r: StageRow): StageRecord => ({
   name: r.name,
   sequenceNumber: r.sequence_number,
   phase: r.phase,
+  cycle: r.cycle,
   ageEquivalentYears: r.age_equivalent_years,
 });
 
 const SELECT_CURRICULUM = `select id, code, name, awarding_body, is_active, created_at, updated_at from curriculum`;
-const SELECT_STAGE = `select id, curriculum_id, code, name, sequence_number, phase, age_equivalent_years from curriculum_stage`;
+const SELECT_STAGE = `select id, curriculum_id, code, name, sequence_number, phase, cycle, age_equivalent_years from curriculum_stage`;
 
 // ── Curricula ────────────────────────────────────────────────────────────────
 
@@ -171,15 +176,16 @@ export async function createStage(
   const owner = await pool.query(`select 1 from curriculum where id = $1`, [curriculumId]);
   if (owner.rowCount === 0) return null;
   const { rows } = await pool.query<StageRow>(
-    `insert into curriculum_stage (curriculum_id, code, name, sequence_number, phase, age_equivalent_years)
-     values ($1, $2, $3, $4, $5, $6)
-     returning id, curriculum_id, code, name, sequence_number, phase, age_equivalent_years`,
+    `insert into curriculum_stage (curriculum_id, code, name, sequence_number, phase, cycle, age_equivalent_years)
+     values ($1, $2, $3, $4, $5, $6, $7)
+     returning id, curriculum_id, code, name, sequence_number, phase, cycle, age_equivalent_years`,
     [
       curriculumId,
       input.code,
       input.name,
       input.sequenceNumber,
       input.phase ?? null,
+      input.cycle ?? null,
       input.ageEquivalentYears ?? null,
     ],
   );
@@ -189,10 +195,19 @@ export async function createStage(
 export async function updateStage(id: string, input: StageInput): Promise<StageRecord | null> {
   const { rows } = await pool.query<StageRow>(
     `update curriculum_stage
-     set code = $1, name = $2, sequence_number = $3, phase = $4, age_equivalent_years = $5, updated_at = now()
-     where id = $6
-     returning id, curriculum_id, code, name, sequence_number, phase, age_equivalent_years`,
-    [input.code, input.name, input.sequenceNumber, input.phase ?? null, input.ageEquivalentYears ?? null, id],
+     set code = $1, name = $2, sequence_number = $3, phase = $4, cycle = $5, age_equivalent_years = $6,
+         updated_at = now()
+     where id = $7
+     returning id, curriculum_id, code, name, sequence_number, phase, cycle, age_equivalent_years`,
+    [
+      input.code,
+      input.name,
+      input.sequenceNumber,
+      input.phase ?? null,
+      input.cycle ?? null,
+      input.ageEquivalentYears ?? null,
+      id,
+    ],
   );
   return rows[0] ? mapStage(rows[0]) : null;
 }

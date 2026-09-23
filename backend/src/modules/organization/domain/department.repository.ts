@@ -90,6 +90,21 @@ export async function ensureAcademicDepartment(
   );
   if ((existing.rowCount ?? 0) > 0) return;
 
+  // Same subject name at another level (primary "Mathematics" next to
+  // O-Level "Mathematics") joins the department that already exists — one
+  // Mathematics Department per school, not a unique-name collision.
+  const sameName = await pool.query<{ id: string }>(
+    `select id from department where school_id = $1 and name = $2 and department_type = 'academic'`,
+    [schoolId, `${subjectName} Department`],
+  );
+  if (sameName.rows[0]) {
+    await pool.query(
+      `insert into department_subject (department_id, subject_id) values ($1, $2) on conflict do nothing`,
+      [sameName.rows[0].id, subjectId],
+    );
+    return;
+  }
+
   const client = await pool.connect();
   try {
     await client.query("BEGIN");

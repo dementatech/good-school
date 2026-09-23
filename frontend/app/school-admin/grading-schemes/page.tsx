@@ -16,12 +16,14 @@ import {
   type GradingAppliesTo,
   type SchoolGradingSchemeSelection,
 } from '@/components/admin/grading/types';
+import { offersLevel, useSchoolLevels } from '@/lib/levels';
 
 // One card per phase/track a school can independently pick a grade system
 // for. A-Level splits into Principal and Subsidiary because the two are
 // graded on genuinely different scales (A-E worth points vs. a 2-band
 // Fail/Pass) — see grading-schemes.repository.ts.
 const CARDS: { appliesTo: GradingAppliesTo; roleScope: GradeRoleScope; title: string }[] = [
+  { appliesTo: 'PRIMARY', roleScope: 'any', title: 'Primary (PLE)' },
   { appliesTo: 'O_LEVEL', roleScope: 'any', title: 'O-Level' },
   { appliesTo: 'A_LEVEL', roleScope: 'principal', title: 'A-Level — Principal subjects' },
   { appliesTo: 'A_LEVEL', roleScope: 'subsidiary', title: 'A-Level — Subsidiary subjects' },
@@ -34,6 +36,9 @@ export default function SchoolAdminGradingSchemesPage() {
   const [selections, setSelections] = useState<SchoolGradingSchemeSelection[]>([]);
   const [changeModal, setChangeModal] = useState<(typeof CARDS)[number] | null>(null);
   const [editModal, setEditModal] = useState<(typeof CARDS)[number] | null>(null);
+  const levels = useSchoolLevels();
+  // Kindergarten has no grading — only the levels with subjects get a card.
+  const cards = CARDS.filter((c) => levels && offersLevel(levels, c.appliesTo));
 
   const load = useCallback(async () => {
     setSelections(await fetchList<SchoolGradingSchemeSelection>('/api/v1/academic/school-grading-schemes', toast.error));
@@ -63,16 +68,20 @@ export default function SchoolAdminGradingSchemesPage() {
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-primary-900 mb-1">Grading Schemes</h1>
-        <p className="text-sm text-text-muted">
-          How raw scores turn into grades. Pick a scheme a super-admin has published for your
-          curriculum, then adjust its ranges and comments to your liking — for O-Level and A-Level
-          Principal subjects. A-Level Subsidiary grading is fixed (a uniform UACE rule) and can only
-          be switched between published options.
-        </p>
+        {levels && (
+          // Built from the levels this school runs — nothing about any other.
+          <p className="text-sm text-text-muted">
+            How raw scores turn into grades{levels.offersPrimary ? ' (and, for Primary, PLE aggregates)' : ''}.
+            Pick a published scheme, then adjust its ranges and comments to your liking.
+            {levels.offersALevel &&
+              ' A-Level Subsidiary grading is fixed (a uniform UACE rule) and can only be switched between published options.'}
+            {levels.offersKindergarten && ' Nursery classes aren’t graded — they use developmental ratings instead.'}
+          </p>
+        )}
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-        {CARDS.map((card) => {
+        {cards.map((card) => {
           const sel = selectionFor(card.appliesTo, card.roleScope);
           const menuItems: DropdownMenuItem[] = [
             {
@@ -125,6 +134,24 @@ export default function SchoolAdminGradingSchemesPage() {
                       ))}
                     {sel.scheme.bands.length === 0 && <span className="text-xs text-text-faint">No bands yet</span>}
                   </div>
+                  {sel.scheme.divisions && sel.scheme.aggregateSubjectCount && (
+                    <div className="mt-3 text-xs text-text-muted">
+                      <p className="mb-1">
+                        Aggregate of the best {sel.scheme.aggregateSubjectCount} examinable subjects (lower is
+                        better):
+                      </p>
+                      <ul className="space-y-0.5">
+                        {sel.scheme.divisions.map((d) => (
+                          <li key={d.label} className="flex justify-between gap-2">
+                            <span>{d.label}</span>
+                            <span className="tabular-nums">
+                              {d.minAggregate}–{d.maxAggregate}
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
                 </div>
               )}
             </Card>

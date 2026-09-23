@@ -24,6 +24,7 @@ export type FeatureKey =
   | "forms"
   | "academic_structure"
   | "exams"
+  | "early_years"
   | "schools"
   | "students"
   | "student_import"
@@ -69,6 +70,9 @@ export const FEATURES: Record<FeatureKey, FeatureMeta> = {
   // Super-admin exam_session catalog (/admin/system/exams) + the school_admin's
   // own exam activation (/school-admin/exams). Backed by /api/v1/exams.
   exams: { label: "Exams", ready: true },
+  // Kindergarten learning areas + developmental assessment (docs/design/
+  // kindergarten-extension.md). Backed by /api/v1/early-years.
+  early_years: { label: "Kindergarten Progress", ready: true },
   schools: { label: "Schools", ready: true },
   // School-scoped student enrollment (Phase 3A). Distinct from `accounts`
   // (staff/parent/super-admin login management) — that's still unwired.
@@ -142,6 +146,7 @@ const ROUTE_FEATURES: { prefix: string; key: FeatureKey }[] = [
   { prefix: "/staff/behaviour", key: "behaviour" },
   { prefix: "/staff/forms", key: "forms" },
   { prefix: "/staff/communications", key: "communications" },
+  { prefix: "/staff/kindergarten", key: "early_years" },
 
   { prefix: "/school-admin/classes", key: "academic_structure" },
   { prefix: "/school-admin/subjects", key: "academic_structure" },
@@ -160,6 +165,7 @@ const ROUTE_FEATURES: { prefix: string; key: FeatureKey }[] = [
   { prefix: "/school-admin/library", key: "library" },
   { prefix: "/school-admin/performance", key: "performance" },
   { prefix: "/school-admin/communications", key: "communications" },
+  { prefix: "/school-admin/kindergarten", key: "early_years" },
 
   { prefix: "/parent/notifications", key: "notifications" },
   { prefix: "/parent/results", key: "exams" },

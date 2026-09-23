@@ -1,3 +1,5 @@
+import type { SchoolLevel } from '@/lib/levels';
+
 // Mirrors backend/src/modules/students/domain/{students,enrollments,guardians}.repository.ts
 
 export type Gender = 'male' | 'female';
@@ -23,7 +25,7 @@ export interface EnrollmentRecord {
   classId: string;
   stageCode: string;
   stageName: string;
-  stagePhase: 'O_LEVEL' | 'A_LEVEL';
+  stagePhase: SchoolLevel;
   streamId: string | null;
   streamName: string | null;
   entryDate: string;
@@ -86,7 +88,7 @@ export interface SchoolClass {
   curriculumStageId: string;
   stageCode: string;
   stageName: string;
-  stagePhase: 'O_LEVEL' | 'A_LEVEL';
+  stagePhase: SchoolLevel;
   hasStreams: boolean;
   isActive: boolean;
 }

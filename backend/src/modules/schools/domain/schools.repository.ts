@@ -1,3 +1,5 @@
+import type { PoolClient } from "pg";
+import { LEVEL_LABEL, sectionsOf, type SchoolLevel, type SchoolSection } from "../../../shared/levels.js";
 import { pool } from "../../../shared/db/index.js";
 import {
   deleteStoredFile,
@@ -34,7 +36,9 @@ export interface SchoolRecord {
   name: string;
   legalName: string | null;
   slug: string | null;
-  emisCode: string | null;
+  /** EMIS number per section — EMIS registers each section (Nursery,
+   * Primary, Secondary) as its own institution. Only sections that have one. */
+  emisCodes: Partial<Record<SchoolSection, string>>;
   unebCentreNumber: string | null;
   ownershipType: OwnershipType | null;
   registrationStatus: RegistrationStatus | null;
@@ -50,6 +54,8 @@ export interface SchoolRecord {
   website: string | null;
   schoolType: SchoolType | null;
   genderComposition: GenderComposition | null;
+  offersKindergarten: boolean;
+  offersPrimary: boolean;
   offersOLevel: boolean;
   offersALevel: boolean;
   /** Served URL for the school's logo, or null for the initials-tile fallback. */
@@ -71,7 +77,8 @@ export interface SchoolInput {
   name: string;
   legalName?: string | null;
   slug?: string | null;
-  emisCode?: string | null;
+  /** Per section; null/"" clears it. Sections the school doesn't run are ignored. */
+  emisCodes?: Partial<Record<SchoolSection, string | null>>;
   unebCentreNumber?: string | null;
   ownershipType?: OwnershipType | null;
   registrationStatus?: RegistrationStatus | null;
@@ -87,10 +94,81 @@ export interface SchoolInput {
   website?: string | null;
   schoolType?: SchoolType | null;
   genderComposition?: GenderComposition | null;
+  offersKindergarten?: boolean;
+  offersPrimary?: boolean;
   offersOLevel?: boolean;
   offersALevel?: boolean;
   dataImportSource?: DataImportSource | null;
 }
+
+export class InvalidSchoolLevelsError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "InvalidSchoolLevelsError";
+  }
+}
+
+// Each level flag and the curriculum_stage.phase it stands for. A school runs
+// sections: Nursery, Primary, Nursery + Primary, or Secondary (O and/or
+// A-Level) — never Secondary together with Nursery/Primary.
+const LEVEL_FLAGS: [keyof SchoolInput, SchoolLevel][] = [
+  ["offersKindergarten", "KINDERGARTEN"],
+  ["offersPrimary", "PRIMARY"],
+  ["offersOLevel", "O_LEVEL"],
+  ["offersALevel", "A_LEVEL"],
+];
+
+function assertSectionsValid(f: {
+  offersKindergarten?: boolean;
+  offersPrimary?: boolean;
+  offersOLevel?: boolean;
+  offersALevel?: boolean;
+}): void {
+  if ((f.offersKindergarten || f.offersPrimary) && (f.offersOLevel || f.offersALevel)) {
+    throw new InvalidSchoolLevelsError(
+      "Secondary can't share a school with Nursery or Primary — register it as its own school.",
+    );
+  }
+}
+
+// Saves the EMIS numbers sent for the sections the school runs, and drops the
+// row of any section it no longer runs.
+async function writeSectionEmis(
+  client: PoolClient,
+  schoolId: string,
+  emisCodes: SchoolInput["emisCodes"],
+): Promise<void> {
+  const { rows } = await client.query<{
+    offers_kindergarten: boolean;
+    offers_primary: boolean;
+    offers_o_level: boolean;
+    offers_a_level: boolean;
+  }>(`select offers_kindergarten, offers_primary, offers_o_level, offers_a_level from schools where id = $1`, [schoolId]);
+  const f = rows[0];
+  const levels: SchoolLevel[] = [
+    ...(f.offers_kindergarten ? (["KINDERGARTEN"] as const) : []),
+    ...(f.offers_primary ? (["PRIMARY"] as const) : []),
+    ...(f.offers_o_level ? (["O_LEVEL"] as const) : []),
+    ...(f.offers_a_level ? (["A_LEVEL"] as const) : []),
+  ];
+  const sections = sectionsOf(levels);
+  for (const section of sections) {
+    const raw = emisCodes?.[section];
+    if (raw === undefined) continue;
+    await client.query(
+      `insert into school_section (school_id, section, emis_code) values ($1, $2, $3)
+       on conflict (school_id, section) do update set emis_code = excluded.emis_code, updated_at = now()`,
+      [schoolId, section, raw?.trim() || null],
+    );
+  }
+  await client.query(`delete from school_section where school_id = $1 and not (section = any($2::text[]))`, [
+    schoolId,
+    sections,
+  ]);
+}
+
+const isCheckViolation = (err: unknown): boolean =>
+  typeof err === "object" && err !== null && (err as { code?: string }).code === "23514";
 
 export class UniqueViolationError extends Error {
   constructor(public field: string) {
@@ -104,7 +182,7 @@ interface SchoolRow {
   name: string;
   legal_name: string | null;
   slug: string | null;
-  emis_code: string | null;
+  emis_codes: Partial<Record<SchoolSection, string>> | null;
   uneb_centre_number: string | null;
   ownership_type: OwnershipType | null;
   registration_status: RegistrationStatus | null;
@@ -120,6 +198,8 @@ interface SchoolRow {
   website: string | null;
   school_type: SchoolType | null;
   gender_composition: GenderComposition | null;
+  offers_kindergarten: boolean;
+  offers_primary: boolean;
   offers_o_level: boolean;
   offers_a_level: boolean;
   logo_path: string | null;
@@ -141,7 +221,7 @@ function mapRow(r: SchoolRow): SchoolRecord {
     name: r.name,
     legalName: r.legal_name,
     slug: r.slug,
-    emisCode: r.emis_code,
+    emisCodes: r.emis_codes ?? {},
     unebCentreNumber: r.uneb_centre_number,
     ownershipType: r.ownership_type,
     registrationStatus: r.registration_status,
@@ -157,6 +237,8 @@ function mapRow(r: SchoolRow): SchoolRecord {
     website: r.website,
     schoolType: r.school_type,
     genderComposition: r.gender_composition,
+    offersKindergarten: r.offers_kindergarten,
+    offersPrimary: r.offers_primary,
     offersOLevel: r.offers_o_level,
     offersALevel: r.offers_a_level,
     // Logos are always images by construction (setSchoolLogo only accepts
@@ -187,7 +269,10 @@ const SELECT_SCHOOL = `
             from school_curriculum sc join curriculum c on c.id = sc.curriculum_id
             where sc.school_id = s.id),
            '[]'
-         ) as curricula
+         ) as curricula,
+         (select jsonb_object_agg(ss.section, ss.emis_code)
+            from school_section ss
+           where ss.school_id = s.id and ss.emis_code is not null) as emis_codes
   from schools s
 `;
 
@@ -196,7 +281,6 @@ const WRITABLE = [
   ["name", "name"],
   ["legalName", "legal_name"],
   ["slug", "slug"],
-  ["emisCode", "emis_code"],
   ["unebCentreNumber", "uneb_centre_number"],
   ["ownershipType", "ownership_type"],
   ["registrationStatus", "registration_status"],
@@ -212,6 +296,8 @@ const WRITABLE = [
   ["website", "website"],
   ["schoolType", "school_type"],
   ["genderComposition", "gender_composition"],
+  ["offersKindergarten", "offers_kindergarten"],
+  ["offersPrimary", "offers_primary"],
   ["offersOLevel", "offers_o_level"],
   ["offersALevel", "offers_a_level"],
   ["dataImportSource", "data_import_source"],
@@ -247,6 +333,13 @@ export async function getSchool(id: string): Promise<SchoolRecord | null> {
 }
 
 export async function createSchool(input: SchoolInput): Promise<SchoolRecord> {
+  // Levels are always explicit on create — no level is ever assumed.
+  input = { ...input };
+  for (const [key] of LEVEL_FLAGS) (input as unknown as Record<string, unknown>)[key] ??= false;
+  if (!LEVEL_FLAGS.some(([key]) => input[key] === true)) {
+    throw new InvalidSchoolLevelsError("Pick at least one level for this school.");
+  }
+  assertSectionsValid(input);
   const values: Record<string, unknown> = { slug: input.slug || slugify(input.name) };
   for (const [inKey, col] of WRITABLE) {
     if (col === "slug") continue;
@@ -257,14 +350,22 @@ export async function createSchool(input: SchoolInput): Promise<SchoolRecord> {
   const params = Object.values(values);
   const placeholders = cols.map((_, i) => `$${i + 1}`);
 
+  const client = await pool.connect();
   try {
-    const { rows } = await pool.query<{ id: string }>(
+    await client.query("BEGIN");
+    const { rows } = await client.query<{ id: string }>(
       `insert into schools (${cols.join(", ")}) values (${placeholders.join(", ")}) returning id`,
       params,
     );
+    await writeSectionEmis(client, rows[0].id, input.emisCodes);
+    await client.query("COMMIT");
     return (await getSchool(rows[0].id))!;
   } catch (err) {
+    await client.query("ROLLBACK");
+    if (isCheckViolation(err)) throw new InvalidSchoolLevelsError("Pick at least one level for this school.");
     rethrowUnique(err);
+  } finally {
+    client.release();
   }
 }
 
@@ -272,6 +373,37 @@ export async function updateSchool(
   id: string,
   input: Partial<SchoolInput>,
 ): Promise<SchoolRecord | null> {
+  const cur = await pool.query<{
+    offers_kindergarten: boolean;
+    offers_primary: boolean;
+    offers_o_level: boolean;
+    offers_a_level: boolean;
+  }>(`select offers_kindergarten, offers_primary, offers_o_level, offers_a_level from schools where id = $1`, [id]);
+  if (!cur.rows[0]) return null;
+  const c = cur.rows[0];
+  assertSectionsValid({
+    offersKindergarten: input.offersKindergarten ?? c.offers_kindergarten,
+    offersPrimary: input.offersPrimary ?? c.offers_primary,
+    offersOLevel: input.offersOLevel ?? c.offers_o_level,
+    offersALevel: input.offersALevel ?? c.offers_a_level,
+  });
+
+  // Dropping a level the school still has classes at would silently hide
+  // those classes (and their pupils' records) — they have to go first.
+  for (const [key, level] of LEVEL_FLAGS) {
+    if (input[key] !== false) continue;
+    const { rowCount } = await pool.query(
+      `select 1 from classes c join curriculum_stage cs on cs.id = c.curriculum_stage_id
+        where c.school_id = $1 and cs.phase = $2 limit 1`,
+      [id, level],
+    );
+    if (rowCount) {
+      throw new InvalidSchoolLevelsError(
+        `This school still has ${LEVEL_LABEL[level]} classes — remove them before turning ${LEVEL_LABEL[level]} off.`,
+      );
+    }
+  }
+
   const sets: string[] = [];
   const params: unknown[] = [];
   for (const [inKey, col] of WRITABLE) {
@@ -281,18 +413,25 @@ export async function updateSchool(
       sets.push(`${col} = $${params.length}`);
     }
   }
-  if (sets.length === 0) return getSchool(id);
   sets.push(`updated_at = now()`);
   params.push(id);
 
+  const client = await pool.connect();
   try {
-    const { rowCount } = await pool.query(
+    await client.query("BEGIN");
+    const { rowCount } = await client.query(
       `update schools set ${sets.join(", ")} where id = $${params.length}`,
       params,
     );
+    if (rowCount) await writeSectionEmis(client, id, input.emisCodes);
+    await client.query("COMMIT");
     return rowCount ? getSchool(id) : null;
   } catch (err) {
+    await client.query("ROLLBACK");
+    if (isCheckViolation(err)) throw new InvalidSchoolLevelsError("A school must offer at least one level.");
     rethrowUnique(err);
+  } finally {
+    client.release();
   }
 }
 

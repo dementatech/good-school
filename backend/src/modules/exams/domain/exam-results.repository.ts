@@ -1,3 +1,4 @@
+import type { SchoolLevel } from "../../../shared/levels.js";
 import type { Pool, PoolClient } from "pg";
 import { pool } from "../../../shared/db/index.js";
 
@@ -131,6 +132,14 @@ export interface ExamCompletionSlot extends AssignedExamSlot {
  * card ignores the distinction for that phase. */
 export type ReportSubjectRole = "principal" | "subsidiary";
 
+/** A PLE-style division band over an aggregate (lower is better) — mirrors
+ * grading_scheme.divisions. */
+export interface GradeDivision {
+  label: string;
+  minAggregate: number;
+  maxAggregate: number;
+}
+
 export interface ReportCardSubject {
   subjectId: string;
   subjectCode: string;
@@ -160,6 +169,16 @@ export interface ReportCardStudentSubject {
   rawScore: number | null;
   isAbsent: boolean;
   computedGrade: string | null;
+  /** Primary only: counts toward the PLE aggregate (English, Maths, Science,
+   * SST) — false for taught-but-not-examined subjects. */
+  isExaminable: boolean;
+  /** Primary only: the band's points for this score (D1 = 1 … F9 = 9).
+   * Null elsewhere, or with no score yet. */
+  points: number | null;
+  /** Primary only: the live band label for rawScore (D1 … F9), so an
+   * unpublished exam still shows grades. `computedGrade` (frozen at publish)
+   * wins when set. */
+  bandGrade: string | null;
 }
 
 export interface ReportCardStudent {
@@ -189,15 +208,22 @@ export interface ReportCardStudent {
   subsidiaryAverage: number | null;
   subsidiaryGrade: string | null;
   subsidiaryComment: string | null;
-  /** 1-based position, best first — by `average` for O-Level, by
-   * `principalAverage` for A-Level. Null (unranked) with no average yet. */
+  /** Primary only: sum of the points of the best N examinable subjects
+   * (PLE: 4 → aggregate 4–36, lower is better). Null until every one of
+   * those N subjects has a score. */
+  aggregate: number | null;
+  /** Primary only: the scheme's division for `aggregate` ("Division 1"). */
+  division: string | null;
+  /** 1-based position, best first — by `aggregate` (then average) for
+   * Primary, `average` for O-Level, `principalAverage` for A-Level. Null
+   * (unranked) with no score yet. */
   rank: number | null;
   subjects: ReportCardStudentSubject[];
 }
 
 export interface ExamReportCard {
   exam: { id: string; name: string; termName: string; publishedAt: string | null };
-  class: { id: string; name: string; phase: "O_LEVEL" | "A_LEVEL" };
+  class: { id: string; name: string; phase: SchoolLevel };
   stream: { id: string; name: string } | null;
   subjects: ReportCardSubject[];
   /** Principal-subject grade counts (O-Level: every subject, since there's
@@ -207,6 +233,10 @@ export interface ExamReportCard {
    * subsidiary scheme (its own grade vocabulary, e.g. Pass/Fail). Empty for
    * O-Level. */
   subsidiaryGradeDistribution: { grade: string; count: number }[];
+  /** Primary only — the aggregate rule in force (from the school's PLE
+   * scheme) and how many students landed in each division. */
+  aggregation: { subjectCount: number; divisions: GradeDivision[] } | null;
+  divisionDistribution: { division: string; count: number }[];
   /** Only populated when viewing the whole class (no stream filter) and the
    * class actually has streams. */
   streamAverages: { streamId: string; streamName: string; average: number }[];
@@ -1112,7 +1142,7 @@ export async function getExamReportCard(
   const { rows: classRows } = await pool.query<{
     id: string;
     class_name: string;
-    stage_phase: "O_LEVEL" | "A_LEVEL";
+    stage_phase: SchoolLevel;
     stream_id: string | null;
     stream_name: string | null;
   }>(
@@ -1149,6 +1179,7 @@ export async function getExamReportCard(
   );
 
   const isALevel = klass.stage_phase === "A_LEVEL";
+  const isPrimary = klass.stage_phase === "PRIMARY";
   const examOut = { id: exam.id, name: exam.name, termName: exam.termName, publishedAt: exam.publishedAt };
   const classOut = { id: klass.id, name: klass.class_name, phase: klass.stage_phase };
   const streamOut = klass.stream_id ? { id: klass.stream_id, name: klass.stream_name ?? "" } : null;
@@ -1161,6 +1192,8 @@ export async function getExamReportCard(
       subjects: [],
       gradeDistribution: [],
       subsidiaryGradeDistribution: [],
+      aggregation: null,
+      divisionDistribution: [],
       streamAverages: [],
       students: [],
       topPerformers: [],
@@ -1176,6 +1209,7 @@ export async function getExamReportCard(
     subject_code: string;
     subject_name: string;
     subject_category: string;
+    subject_is_examinable: boolean;
     raw_score: string | null;
     is_absent: boolean;
     computed_grade: string | null;
@@ -1184,7 +1218,7 @@ export async function getExamReportCard(
     contribution_percent: string | null;
   }>(
     `select er.student_user_id, er.subject_id, sub.code as subject_code, sub.name as subject_name,
-            sub.category as subject_category,
+            sub.category as subject_category, sub.is_examinable as subject_is_examinable,
             er.raw_score, er.is_absent, er.computed_grade,
             er.subject_variant_id, sv.name as variant_name, sv.contribution_percent
        from exam_result er
@@ -1207,6 +1241,7 @@ export async function getExamReportCard(
     subjectId: string;
     subjectName: string;
     role: ReportSubjectRole;
+    isExaminable: boolean;
     hasVariant: boolean;
     variantScores: { name: string; rawScore: number | null; isAbsent: boolean }[];
     rawScore: number | null;
@@ -1259,6 +1294,7 @@ export async function getExamReportCard(
       subjectId: first.subject_id,
       subjectName: first.subject_name,
       role: roleOf(first.subject_category),
+      isExaminable: first.subject_is_examinable,
       hasVariant,
       variantScores,
       rawScore,
@@ -1278,26 +1314,76 @@ export async function getExamReportCard(
   // A-Level: two separate schemes, matching how each subject's own grade was
   // already computed — principal-subject scheme for the principal average,
   // subsidiary scheme for the subsidiary average. Never blended together.
-  async function loadBands(roleScope: string): Promise<{ label: string; min: number; max: number; comment: string | null }[]> {
-    const { rows: schemeRows } = await pool.query<{ grading_scheme_id: string }>(
-      `select grading_scheme_id from school_grading_scheme where school_id=$1 and applies_to=$2 and role_scope=$3`,
+  type Band = { label: string; min: number; max: number; points: number | null; comment: string | null };
+  let aggregation: ExamReportCard["aggregation"] = null;
+  async function loadBands(roleScope: string): Promise<Band[]> {
+    const { rows: schemeRows } = await pool.query<{
+      grading_scheme_id: string;
+      aggregate_subject_count: number | null;
+      divisions: GradeDivision[] | null;
+    }>(
+      `select sgs.grading_scheme_id, gs.aggregate_subject_count, gs.divisions
+         from school_grading_scheme sgs
+         join grading_scheme gs on gs.id = sgs.grading_scheme_id
+        where sgs.school_id=$1 and sgs.applies_to=$2 and sgs.role_scope=$3`,
       [schoolId, klass.stage_phase, roleScope],
     );
-    const schemeId = schemeRows[0]?.grading_scheme_id;
-    if (!schemeId) return [];
-    const { rows } = await pool.query<{ label: string; min_pct: string; max_pct: string; comment: string | null }>(
-      `select label, min_pct, max_pct, comment from grade_band where grading_scheme_id = $1`,
-      [schemeId],
+    const scheme = schemeRows[0];
+    if (!scheme) return [];
+    if (isPrimary && scheme.aggregate_subject_count && scheme.divisions) {
+      aggregation = { subjectCount: scheme.aggregate_subject_count, divisions: scheme.divisions };
+    }
+    const { rows } = await pool.query<{
+      label: string;
+      min_pct: string;
+      max_pct: string;
+      points: number | null;
+      comment: string | null;
+    }>(
+      `select label, min_pct, max_pct, points, comment from grade_band where grading_scheme_id = $1`,
+      [scheme.grading_scheme_id],
     );
-    return rows.map((r) => ({ label: r.label, min: Number(r.min_pct), max: Number(r.max_pct), comment: r.comment }));
+    return rows.map((r) => ({
+      label: r.label,
+      min: Number(r.min_pct),
+      max: Number(r.max_pct),
+      points: r.points,
+      comment: r.comment,
+    }));
   }
-  function bandFor(bands: { label: string; min: number; max: number; comment: string | null }[], avg: number | null) {
-    if (avg === null) return { grade: null as string | null, comment: null as string | null };
-    const band = bands.find((b) => avg >= b.min && avg <= b.max);
+  function bandOf(bands: Band[], score: number | null): Band | null {
+    if (score === null) return null;
+    return bands.find((b) => score >= b.min && score <= b.max) ?? null;
+  }
+  function bandFor(bands: Band[], avg: number | null) {
+    const band = bandOf(bands, avg);
     return { grade: band?.label ?? null, comment: band?.comment ?? null };
   }
   const primaryBands = await loadBands(isALevel ? "principal" : "any");
   const subsidiaryBands = isALevel ? await loadBands("subsidiary") : [];
+
+  // PLE-style aggregate: the points of the best N examinable subjects,
+  // summed (lower is better). Needs a score in at least N of them — an
+  // absent or unmarked PLE subject leaves the pupil unaggregated, the same
+  // way UNEB leaves a candidate with a missing paper ungraded.
+  function pointsOf(s: MergedSubjectScore): number | null {
+    if (!isPrimary || s.isAbsent) return null;
+    return bandOf(primaryBands, s.rawScore)?.points ?? null;
+  }
+  function aggregateOf(subjects: MergedSubjectScore[]): { aggregate: number | null; division: string | null } {
+    const rule = aggregation;
+    if (!rule) return { aggregate: null, division: null };
+    const points = subjects
+      .filter((s) => s.isExaminable)
+      .map(pointsOf)
+      .filter((p): p is number => p !== null)
+      .sort((a, b) => a - b);
+    if (points.length < rule.subjectCount) return { aggregate: null, division: null };
+    const aggregate = points.slice(0, rule.subjectCount).reduce((a, b) => a + b, 0);
+    const division =
+      rule.divisions.find((d) => aggregate >= d.minAggregate && aggregate <= d.maxAggregate)?.label ?? null;
+    return { aggregate, division };
+  }
 
   const students: ReportCardStudent[] = rosterRows.map((r) => {
     const subjects = mergedByStudent.get(r.student_user_id) ?? [];
@@ -1318,6 +1404,9 @@ export async function getExamReportCard(
           rawScore: s.rawScore,
           isAbsent: s.isAbsent,
           computedGrade: s.computedGrade,
+          isExaminable: s.isExaminable,
+          points: pointsOf(s),
+          bandGrade: isPrimary && !s.isAbsent ? bandOf(primaryBands, s.rawScore)?.label ?? null : null,
         }))
         .sort((a, b) => a.subjectName.localeCompare(b.subjectName)),
     };
@@ -1326,6 +1415,7 @@ export async function getExamReportCard(
       const { grade, comment } = bandFor(primaryBands, avg);
       return {
         ...base,
+        ...aggregateOf(subjects),
         average: avg,
         overallGrade: grade,
         overallComment: comment,
@@ -1343,6 +1433,8 @@ export async function getExamReportCard(
     const subsidiaryBand = bandFor(subsidiaryBands, subsidiaryAvg);
     return {
       ...base,
+      aggregate: null,
+      division: null,
       average: null,
       overallGrade: null,
       overallComment: null,
@@ -1358,11 +1450,23 @@ export async function getExamReportCard(
   // Ranking, top performers and "needs attention" all key off average for
   // O-Level, principalAverage for A-Level — subsidiaries never count toward
   // a student's standing.
+  // Primary ranks by aggregate first (lower is better); anyone without a
+  // full aggregate yet falls back to their average, after every aggregated
+  // pupil.
   const rankValue = (s: ReportCardStudent): number | null => (isALevel ? s.principalAverage : s.average);
-  const ranked = [...students].sort((a, b) => (rankValue(b) ?? -1) - (rankValue(a) ?? -1));
+  const isRanked = (s: ReportCardStudent): boolean => rankValue(s) !== null || s.aggregate !== null;
+  function compareStanding(a: ReportCardStudent, b: ReportCardStudent): number {
+    if (isPrimary && (a.aggregate !== null || b.aggregate !== null)) {
+      if (a.aggregate === null) return 1;
+      if (b.aggregate === null) return -1;
+      if (a.aggregate !== b.aggregate) return a.aggregate - b.aggregate;
+    }
+    return (rankValue(b) ?? -1) - (rankValue(a) ?? -1);
+  }
+  const ranked = [...students].sort(compareStanding);
   let position = 0;
   for (const s of ranked) {
-    if (rankValue(s) === null) continue;
+    if (!isRanked(s)) continue;
     position += 1;
     s.rank = position;
   }
@@ -1421,6 +1525,15 @@ export async function getExamReportCard(
   const gradeDistribution = countGrades("principal");
   const subsidiaryGradeDistribution = isALevel ? countGrades("subsidiary") : [];
 
+  const divisionCounts = new Map<string, number>();
+  for (const s of students) {
+    if (s.division) divisionCounts.set(s.division, (divisionCounts.get(s.division) ?? 0) + 1);
+  }
+  const divisionOrder = (aggregation as ExamReportCard["aggregation"])?.divisions.map((d) => d.label) ?? [];
+  const divisionDistribution = divisionOrder
+    .filter((d) => divisionCounts.has(d))
+    .map((division) => ({ division, count: divisionCounts.get(division)! }));
+
   const streamAvgMap = new Map<string, { streamId: string; streamName: string; sum: number; n: number }>();
   if (!streamId) {
     for (const s of students) {
@@ -1442,7 +1555,7 @@ export async function getExamReportCard(
     .sort((a, b) => b.average - a.average);
 
   const scoredStudents = students.filter((s) => rankValue(s) !== null);
-  const topPerformers = [...scoredStudents].sort((a, b) => rankValue(b)! - rankValue(a)!).slice(0, 5);
+  const topPerformers = [...students].filter(isRanked).sort(compareStanding).slice(0, 5);
   const needsAttention = scoredStudents
     .filter((s) => rankValue(s)! < 40)
     .sort((a, b) => rankValue(a)! - rankValue(b)!)
@@ -1455,6 +1568,8 @@ export async function getExamReportCard(
     subjects,
     gradeDistribution,
     subsidiaryGradeDistribution,
+    aggregation,
+    divisionDistribution,
     streamAverages,
     students,
     topPerformers,

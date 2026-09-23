@@ -24,6 +24,7 @@ export const stageBodySchema = {
     name: { type: "string", minLength: 1 },
     sequenceNumber: { type: "integer", minimum: 1 },
     phase: { type: ["string", "null"] },
+    cycle: { type: ["string", "null"] },
     ageEquivalentYears: { type: ["integer", "null"] },
   },
   additionalProperties: false,
@@ -33,7 +34,7 @@ export const subjectBodySchema = {
   type: "object",
   required: ["phase", "shortName", "name"],
   properties: {
-    phase: { type: "string", enum: ["O_LEVEL", "A_LEVEL"] },
+    phase: { type: "string", enum: ["PRIMARY", "O_LEVEL", "A_LEVEL"] },
     // Short, human-typed abbreviation (e.g. "Phy") — combination names
     // concatenate this. `code` (S001, ...) is system-assigned, never in the body.
     shortName: { type: "string", minLength: 1 },
@@ -222,7 +223,7 @@ export const gradingSchemeBodySchema = {
   required: ["regime", "appliesTo", "name", "bands"],
   properties: {
     regime: { type: "string", minLength: 1 },
-    appliesTo: { type: "string", enum: ["O_LEVEL", "A_LEVEL"] },
+    appliesTo: { type: "string", enum: ["PRIMARY", "O_LEVEL", "A_LEVEL"] },
     // Omit for O-Level (forced to 'any'). Required in practice for a real
     // A-Level scheme — principal and subsidiary subjects use different bands.
     roleScope: { type: "string", enum: ["any", "principal", "subsidiary"] },
@@ -238,7 +239,7 @@ export const schoolGradingSchemeBodySchema = {
   type: "object",
   required: ["appliesTo", "roleScope", "gradingSchemeId"],
   properties: {
-    appliesTo: { type: "string", enum: ["O_LEVEL", "A_LEVEL"] },
+    appliesTo: { type: "string", enum: ["PRIMARY", "O_LEVEL", "A_LEVEL"] },
     roleScope: { type: "string", enum: ["any", "principal", "subsidiary"] },
     gradingSchemeId: { type: "string" },
   },
@@ -251,7 +252,7 @@ export const schoolGradingRangesBodySchema = {
   type: "object",
   required: ["appliesTo", "roleScope", "bands"],
   properties: {
-    appliesTo: { type: "string", enum: ["O_LEVEL", "A_LEVEL"] },
+    appliesTo: { type: "string", enum: ["PRIMARY", "O_LEVEL", "A_LEVEL"] },
     roleScope: { type: "string", enum: ["any", "principal", "subsidiary"] },
     bands: { type: "array", items: gradeBandSchema, minItems: 1 },
   },

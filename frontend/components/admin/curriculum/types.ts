@@ -1,4 +1,7 @@
-export type Phase = 'O_LEVEL' | 'A_LEVEL';
+import type { SubjectPhase } from '@/lib/levels';
+
+/** A subject's level — Kindergarten has no subjects, so it isn't one. */
+export type Phase = SubjectPhase;
 export type SubjectCategory =
   | 'language'
   | 'science'
@@ -17,6 +20,9 @@ export const O_LEVEL_CATEGORIES: SubjectCategory[] = ['core', 'religion', 'vocat
  * (subjects only ever taken as the combination's subsidiary slot). General
  * Paper is one specific 'subsidiary' subject — see `Subject.isGeneralPaper`. */
 export const A_LEVEL_CATEGORIES: SubjectCategory[] = ['science', 'art', 'subsidiary'];
+/** Primary: the four PLE subjects are Core; Literacy and local languages are
+ * Language; RE is Religious; PE / Creative Arts are Special. */
+export const PRIMARY_CATEGORIES: SubjectCategory[] = ['core', 'language', 'religion', 'special'];
 
 export interface Curriculum {
   id: string;
@@ -33,6 +39,8 @@ export interface Stage {
   name: string;
   sequenceNumber: number;
   phase: string | null;
+  /** Primary teaching cycle: LOWER (P1–P3) | TRANSITION (P4) | UPPER (P5–P7). */
+  cycle: string | null;
   ageEquivalentYears: number | null;
 }
 
@@ -87,6 +95,7 @@ export const CATEGORY_LABEL: Record<SubjectCategory, string> = {
 };
 
 export const CATEGORIES_FOR_PHASE: Record<Phase, SubjectCategory[]> = {
+  PRIMARY: PRIMARY_CATEGORIES,
   O_LEVEL: O_LEVEL_CATEGORIES,
   A_LEVEL: A_LEVEL_CATEGORIES,
 };
@@ -102,8 +111,9 @@ export const STATUS_VARIANT: Record<SubjectApprovalStatus, 'default' | 'accent' 
   rejected: 'muted',
 };
 
-export const PHASE_LABEL: Record<Phase, string> = { O_LEVEL: 'O-Level', A_LEVEL: 'A-Level' };
+export const PHASE_LABEL: Record<Phase, string> = { PRIMARY: 'Primary', O_LEVEL: 'O-Level', A_LEVEL: 'A-Level' };
 export const PHASE_RANGE: Record<Phase, string> = {
+  PRIMARY: 'Primary 1–7',
   O_LEVEL: 'Senior 1–4',
   A_LEVEL: 'Senior 5–6',
 };

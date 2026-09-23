@@ -8,6 +8,7 @@ import { Loader } from '@/components/ui/loader';
 import { useToast } from '@/components/ui/ToastProvider';
 import { fetchList, fetchOne } from '@/lib/api/envelope';
 import { ArrowLeft, Download } from 'lucide-react';
+import type { SchoolLevel, SubjectPhase } from '@/lib/levels';
 
 type SubjectRole = 'principal' | 'subsidiary';
 
@@ -20,6 +21,10 @@ interface ReportCardStudentSubject {
   rawScore: number | null;
   isAbsent: boolean;
   computedGrade: string | null;
+  /** Primary: counts toward the PLE aggregate. */
+  isExaminable: boolean;
+  /** Primary: the band's points (D1 = 1 … F9 = 9). */
+  points: number | null;
 }
 interface ReportCardStudent {
   studentUserId: string;
@@ -36,25 +41,35 @@ interface ReportCardStudent {
   subsidiaryAverage: number | null;
   subsidiaryGrade: string | null;
   subsidiaryComment: string | null;
+  aggregate: number | null;
+  division: string | null;
   rank: number | null;
   subjects: ReportCardStudentSubject[];
 }
+interface GradeDivision {
+  label: string;
+  minAggregate: number;
+  maxAggregate: number;
+}
 interface ExamReportCard {
   exam: { id: string; name: string; termName: string; publishedAt: string | null };
-  class: { id: string; name: string; phase: 'O_LEVEL' | 'A_LEVEL' };
+  class: { id: string; name: string; phase: SchoolLevel };
   stream: { id: string; name: string } | null;
+  aggregation: { subjectCount: number; divisions: GradeDivision[] } | null;
   students: ReportCardStudent[];
 }
 interface SchoolClass {
   id: string;
   stageName: string;
-  stagePhase: 'O_LEVEL' | 'A_LEVEL';
+  stagePhase: SchoolLevel;
 }
 interface SchoolInfo {
   name: string;
   district: string | null;
   address: string | null;
   logoUrl: string | null;
+  /** Per section — a report card prints its own section's EMIS number. */
+  emisCodes?: Partial<Record<string, string>>;
 }
 interface GradeBand {
   label: string;
@@ -64,7 +79,7 @@ interface GradeBand {
   comment: string;
 }
 interface SchoolGradingSchemeSelection {
-  appliesTo: 'O_LEVEL' | 'A_LEVEL';
+  appliesTo: SubjectPhase;
   roleScope: 'any' | 'principal' | 'subsidiary';
   scheme: { bands: GradeBand[] };
 }
@@ -78,7 +93,25 @@ const GRADE_CHIP: Record<string, string> = {
   F: 'bg-error-bg text-error',
   Pass: 'bg-success-bg text-success',
   Fail: 'bg-error-bg text-error',
+  // PLE (D1–F9) — keyed by the grade's first letter via gradeChip() below.
 };
+
+function gradeChip(grade: string): string {
+  return GRADE_CHIP[grade] ?? PLE_CHIP[grade[0]] ?? 'bg-bg-muted text-text-muted';
+}
+const PLE_CHIP: Record<string, string> = {
+  D: 'bg-success-bg text-success',
+  C: 'bg-primary-50 text-primary-700',
+  P: 'bg-warning-bg text-warning',
+  F: 'bg-error-bg text-error',
+};
+
+/** The grade to print: the one frozen at publish, else the live band. */
+function gradeOf(s: ReportCardStudentSubject, bands: GradeBand[]): string | null {
+  if (s.computedGrade) return s.computedGrade;
+  if (s.isAbsent || s.rawScore === null) return null;
+  return bands.find((b) => s.rawScore! >= b.minPct && s.rawScore! <= b.maxPct)?.label ?? null;
+}
 
 function round(n: number): number {
   return Math.round(n);
@@ -94,10 +127,22 @@ interface Sheet {
   exam: ExamReportCard['exam'];
   klass: ExamReportCard['class'];
   stream: ExamReportCard['stream'];
+  aggregation: ExamReportCard['aggregation'];
   totalInClass: number;
 }
 
-function ReportSubjectTable({ title, subjects }: { title: string; subjects: ReportCardStudentSubject[] }) {
+function ReportSubjectTable({
+  title,
+  subjects,
+  bands = [],
+  showPoints = false,
+}: {
+  title: string;
+  subjects: ReportCardStudentSubject[];
+  /** Live-grade fallback for an unpublished exam (Primary). */
+  bands?: GradeBand[];
+  showPoints?: boolean;
+}) {
   if (subjects.length === 0) return null;
   return (
     <div>
@@ -109,48 +154,59 @@ function ReportSubjectTable({ title, subjects }: { title: string; subjects: Repo
             <th className="py-1 px-2 border-b border-r border-border">Subject</th>
             <th className="py-1 px-2 border-b border-r border-border text-right">Score</th>
             <th className="py-1 px-2 border-b border-r border-border text-center">Grade</th>
+            {showPoints && <th className="py-1 px-2 border-b border-r border-border text-center">Points</th>}
             <th className="py-1 px-2 border-b border-border">Remarks</th>
           </tr>
         </thead>
         <tbody>
-          {subjects.map((s, i) => (
-            <tr key={s.subjectId} className="border-b border-border last:border-0">
-              <td className="py-1 px-2 border-r border-border text-center text-text-faint tabular-nums">{i + 1}</td>
-              <td className="py-1 px-2 border-r border-border">
-                {s.subjectName}
-                {s.hasVariant && s.variantScores && (
-                  <span className="block text-[10px] text-text-faint">
-                    {s.variantScores
-                      .map((v) => `${v.name} ${v.isAbsent ? 'Abs' : v.rawScore !== null ? round(v.rawScore) : '—'}`)
-                      .join(' · ')}
-                  </span>
+          {subjects.map((s, i) => {
+            const grade = gradeOf(s, bands);
+            return (
+              <tr key={s.subjectId} className="border-b border-border last:border-0">
+                <td className="py-1 px-2 border-r border-border text-center text-text-faint tabular-nums">{i + 1}</td>
+                <td className="py-1 px-2 border-r border-border">
+                  {s.subjectName}
+                  {s.hasVariant && s.variantScores && (
+                    <span className="block text-[10px] text-text-faint">
+                      {s.variantScores
+                        .map((v) => `${v.name} ${v.isAbsent ? 'Abs' : v.rawScore !== null ? round(v.rawScore) : '—'}`)
+                        .join(' · ')}
+                    </span>
+                  )}
+                </td>
+                <td className="py-1 px-2 border-r border-border text-right tabular-nums font-semibold">
+                  {s.isAbsent ? (
+                    <span className="text-text-muted font-normal">Absent</span>
+                  ) : s.rawScore !== null ? (
+                    round(s.rawScore)
+                  ) : (
+                    '—'
+                  )}
+                </td>
+                <td className="py-1 px-2 border-r border-border text-center">
+                  {grade ? (
+                    <span
+                      className={`inline-flex min-w-6 justify-center px-1.5 py-0.5 rounded-md text-[11px] font-extrabold ${gradeChip(
+                        grade,
+                      )}`}
+                    >
+                      {grade}
+                    </span>
+                  ) : (
+                    <span className="text-text-faint">—</span>
+                  )}
+                </td>
+                {showPoints && (
+                  <td className="py-1 px-2 border-r border-border text-center tabular-nums font-semibold">
+                    {s.points ?? '—'}
+                  </td>
                 )}
-              </td>
-              <td className="py-1 px-2 border-r border-border text-right tabular-nums font-semibold">
-                {s.isAbsent ? (
-                  <span className="text-text-muted font-normal">Absent</span>
-                ) : s.rawScore !== null ? (
-                  round(s.rawScore)
-                ) : (
-                  '—'
-                )}
-              </td>
-              <td className="py-1 px-2 border-r border-border text-center">
-                {s.computedGrade ? (
-                  <span
-                    className={`inline-flex min-w-6 justify-center px-1.5 py-0.5 rounded-md text-[11px] font-extrabold ${
-                      GRADE_CHIP[s.computedGrade] ?? 'bg-bg-muted text-text-muted'
-                    }`}
-                  >
-                    {s.computedGrade}
-                  </span>
-                ) : (
-                  <span className="text-text-faint">—</span>
-                )}
-              </td>
-              <td className="py-1 px-2 text-text-faint">&nbsp;</td>
-            </tr>
-          ))}
+                <td className="py-1 px-2 text-text-faint">
+                  {bands.find((b) => b.label === grade)?.comment ?? '\u00a0'}
+                </td>
+              </tr>
+            );
+          })}
         </tbody>
       </table>
     </div>
@@ -204,7 +260,7 @@ function RemarksBox({ lines }: { lines: { label: string; text: string | null }[]
   );
 }
 
-function GradingLegend({ bands }: { bands: GradeBand[] }) {
+function GradingLegend({ bands, divisions }: { bands: GradeBand[]; divisions?: GradeDivision[] }) {
   if (bands.length === 0) return null;
   const sorted = [...bands].sort((a, b) => b.minPct - a.minPct);
   return (
@@ -216,9 +272,16 @@ function GradingLegend({ bands }: { bands: GradeBand[] }) {
               {round(b.minPct)}%–{round(b.maxPct)}%:
             </span>{' '}
             {b.label} Grade — {b.comment}
+            {divisions && b.points !== null ? ` (${b.points} pt${b.points === 1 ? '' : 's'})` : ''}
           </p>
         ))}
       </div>
+      {divisions && divisions.length > 0 && (
+        <p className="mt-1 text-[9px] leading-tight text-text-secondary">
+          <span className="font-semibold text-text-muted">Aggregates: </span>
+          {divisions.map((d) => `${d.label} ${d.minAggregate}–${d.maxAggregate}`).join(' · ')}
+        </p>
+      )}
     </div>
   );
 }
@@ -226,22 +289,30 @@ function GradingLegend({ bands }: { bands: GradeBand[] }) {
 function StudentReportCardSheet({
   sheet,
   schoolInfo,
+  primaryBands,
   oLevelBands,
   principalBands,
   subsidiaryBands,
 }: {
   sheet: Sheet;
   schoolInfo: SchoolInfo | null;
+  primaryBands: GradeBand[];
   oLevelBands: GradeBand[];
   principalBands: GradeBand[];
   subsidiaryBands: GradeBand[];
 }) {
-  const { student, exam, klass, stream, totalInClass } = sheet;
+  const { student, exam, klass, stream, aggregation, totalInClass } = sheet;
   const isALevel = klass.phase === 'A_LEVEL';
+  const isPrimary = klass.phase === 'PRIMARY';
+  const pleSubjects = student.subjects.filter((s) => s.isExaminable);
+  const otherSubjects = student.subjects.filter((s) => !s.isExaminable);
+  const pleScored = pleSubjects.filter((s) => !s.isAbsent && s.rawScore !== null);
+  const pleTotal = pleScored.reduce((sum, s) => sum + s.rawScore!, 0);
   const principalSubjects = student.subjects.filter((s) => s.role === 'principal');
   const subsidiarySubjects = student.subjects.filter((s) => s.role === 'subsidiary');
   const schoolName = schoolInfo?.name ?? 'School';
   const subtitle = [schoolInfo?.address, schoolInfo?.district].filter(Boolean).join(', ');
+  const emis = schoolInfo?.emisCodes?.[isPrimary ? 'PRIMARY' : 'SECONDARY'];
   const issuedOn = exam.publishedAt
     ? new Date(exam.publishedAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })
     : new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
@@ -267,6 +338,7 @@ function StudentReportCardSheet({
               {subtitle && (
                 <p className="text-[10px] font-semibold text-text-muted uppercase tracking-wide">{subtitle}</p>
               )}
+              {emis && <p className="text-[10px] font-semibold text-text-muted tracking-wide">EMIS No. {emis}</p>}
               <p className="text-[11px] font-bold text-primary-700 uppercase tracking-wide mt-1">
                 {exam.name} &middot; {exam.termName}
               </p>
@@ -332,6 +404,25 @@ function StudentReportCardSheet({
                 ]}
               />
             </div>
+          ) : isPrimary ? (
+            <div className="space-y-2.5">
+              <ReportSubjectTable
+                title="Examinable Subjects (PLE)"
+                subjects={pleSubjects}
+                bands={primaryBands}
+                showPoints
+              />
+              <ReportSubjectTable title="Other Subjects" subjects={otherSubjects} bands={primaryBands} />
+              <StatRow
+                items={[
+                  { label: 'Total Marks', value: pleScored.length ? `${round(pleTotal)} / ${pleSubjects.length * 100}` : '—' },
+                  { label: 'Average', value: student.average !== null ? `${round(student.average)}%` : '—' },
+                  { label: 'Aggregate', value: student.aggregate !== null ? String(student.aggregate) : '—' },
+                  { label: 'Division', value: student.division ?? '—' },
+                ]}
+              />
+              <RemarksBox lines={[{ label: 'Overall', text: student.overallComment }]} />
+            </div>
           ) : (
             <div className="space-y-2.5">
               <ReportSubjectTable title="Subjects" subjects={student.subjects} />
@@ -361,7 +452,10 @@ function StudentReportCardSheet({
           </div>
           <p className="text-[10px] text-text-faint mt-2">Issued on {issuedOn}</p>
 
-          <GradingLegend bands={isALevel ? [...principalBands, ...subsidiaryBands] : oLevelBands} />
+          <GradingLegend
+            bands={isALevel ? [...principalBands, ...subsidiaryBands] : isPrimary ? primaryBands : oLevelBands}
+            divisions={isPrimary ? aggregation?.divisions : undefined}
+          />
         </div>
       </div>
     </div>
@@ -414,6 +508,7 @@ function ReportCardsContent() {
           exam: report.exam,
           klass: report.class,
           stream: report.stream,
+          aggregation: report.aggregation,
           totalInClass: report.students.length,
         }));
       }
@@ -432,7 +527,9 @@ function ReportCardsContent() {
           return;
         }
         const classList = await fetchList<SchoolClass>(`/api/v1/academic/classes?academicYearId=${yearIdParam}`, toast.error);
-        const perClass = await Promise.all(classList.map((c) => loadForClass(c.id, null)));
+        // Kindergarten sits no exams — its progress report lives under Kindergarten Progress.
+        const examined = classList.filter((c) => c.stagePhase !== 'KINDERGARTEN');
+        const perClass = await Promise.all(examined.map((c) => loadForClass(c.id, null)));
         setSheets(perClass.flat());
       } else if (classIdParam) {
         setSheets(await loadForClass(classIdParam, streamIdParam));
@@ -443,6 +540,10 @@ function ReportCardsContent() {
     })();
   }, [examId, wholeSchool, yearIdParam, classIdParam, streamIdParam, studentIdParam]);
 
+  const primaryBands = useMemo(
+    () => gradingSchemes.find((g) => g.appliesTo === 'PRIMARY' && g.roleScope === 'any')?.scheme.bands ?? [],
+    [gradingSchemes],
+  );
   const oLevelBands = useMemo(
     () => gradingSchemes.find((g) => g.appliesTo === 'O_LEVEL' && g.roleScope === 'any')?.scheme.bands ?? [],
     [gradingSchemes],
@@ -526,6 +627,7 @@ function ReportCardsContent() {
             key={sheet.student.studentUserId}
             sheet={sheet}
             schoolInfo={schoolInfo ?? (user ? { name: user.school, district: null, address: null, logoUrl: user.logoUrl ?? null } : null)}
+            primaryBands={primaryBands}
             oLevelBands={oLevelBands}
             principalBands={principalBands}
             subsidiaryBands={subsidiaryBands}

@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { LEVEL_LABEL, type SchoolLevel } from '@/lib/levels';
 import { Modal } from '@/components/ui/Modal';
 import { Input } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
@@ -349,7 +350,7 @@ function EndAssignmentForm({ assignment, onDone }: { assignment: StaffAssignment
 // both O-Level and A-Level, as two distinct catalog rows) — this flat list
 // mixes both phases with no other grouping to disambiguate, unlike the
 // phase-headed checklist in StaffFormModal.
-const phaseSuffix = (phase: string) => (phase === 'O_LEVEL' ? 'O-Level' : 'A-Level');
+const phaseSuffix = (phase: string) => LEVEL_LABEL[phase as SchoolLevel] ?? phase;
 
 function SpecializationsPanel({ staff, onChanged }: { staff: Staff; onChanged: () => Promise<void> | void }) {
   const toast = useToast();

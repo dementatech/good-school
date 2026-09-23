@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { LEVEL_LABEL, SUBJECT_PHASES, offersLevel, useSchoolLevels, type SubjectPhase } from '@/lib/levels';
 import { Modal } from '@/components/ui/Modal';
 import { Input } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
@@ -38,13 +39,9 @@ import {
  * specialization picker below, not a stored field: the real, class-specific
  * "what do they actually teach" fact lives in subject_teacher_assignment
  * (assigned later, per subject, from the Subjects & Combinations page). */
-type TeachingLevel = 'O_LEVEL' | 'A_LEVEL' | 'both';
+type TeachingLevel = SubjectPhase | 'all';
 
-const TEACHING_LEVEL_LABEL: Record<TeachingLevel, string> = {
-  O_LEVEL: 'O-Level only',
-  A_LEVEL: 'A-Level only',
-  both: 'Both O-Level and A-Level',
-};
+const teachingLevelLabel = (l: TeachingLevel): string => (l === 'all' ? 'All levels' : `${LEVEL_LABEL[l]} only`);
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
@@ -140,7 +137,12 @@ export function StaffFormModal({
   // subject_teacher_assignment, set later per class/stream from the
   // Subjects & Combinations page). Optional at intake; can also be changed
   // later from the staff detail view.
-  const [teachingLevel, setTeachingLevel] = useState<TeachingLevel>('O_LEVEL');
+  const levels = useSchoolLevels();
+  // Only the levels with subjects this school runs — none until known.
+  const schoolPhases = SUBJECT_PHASES.filter((p) => levels && offersLevel(levels, p));
+  const [teachingLevelChoice, setTeachingLevel] = useState<TeachingLevel | null>(null);
+  const teachingLevel: TeachingLevel =
+    teachingLevelChoice ?? (schoolPhases.length === 1 ? schoolPhases[0] : 'all');
   const [subjects, setSubjects] = useState<CatalogSubject[]>([]);
   const [specializationIds, setSpecializationIds] = useState<string[]>(
     () => staff?.specializations.map((s) => s.subjectId) ?? [],
@@ -341,34 +343,33 @@ export function StaffFormModal({
               </div>
             </Section>
 
-            {category === 'teaching' && (
+            {category === 'teaching' && schoolPhases.length > 0 && (
             <Section title="Subject specializations (optional)">
               <p className="text-xs text-text-muted -mt-1">
                 Which subjects this person is <em>qualified</em> to teach — a hint for the candidate list
                 when allocating a subject to a teacher later, not an assignment itself. It doesn&apos;t
-                put them in front of any class; which specific classes they actually teach (e.g. Biology
-                in only S2 and S4) is set separately, per class/stream, from the Subjects &amp;
-                Combinations page — and can be changed any time regardless of what&apos;s ticked here.
+                put them in front of any class; which specific classes they actually teach (e.g.{' '}
+                {levels?.offersPrimary && !levels.offersOLevel ? 'Science in only P5 and P7' : 'Biology in only S2 and S4'}) is
+                set separately, per class/stream, from the {levels?.offersALevel ? 'Subjects & Combinations' : 'Subjects'}{' '}
+                page — and can be changed any time regardless of what&apos;s ticked here.
               </p>
               <Select
                 label="Teaches which level(s)?"
                 value={teachingLevel}
                 onChange={(e) => setTeachingLevel(e.target.value as TeachingLevel)}
-                options={(['O_LEVEL', 'A_LEVEL', 'both'] as const).map((l) => ({
+                options={[...schoolPhases, ...(schoolPhases.length > 1 ? (['all'] as const) : [])].map((l) => ({
                   value: l,
-                  label: TEACHING_LEVEL_LABEL[l],
+                  label: teachingLevelLabel(l),
                 }))}
               />
-              {(['O_LEVEL', 'A_LEVEL'] as const)
-                .filter((phase) => teachingLevel === 'both' || teachingLevel === phase)
+              {schoolPhases
+                .filter((phase) => teachingLevel === 'all' || teachingLevel === phase)
                 .map((phase) => {
                   const phaseSubjects = subjects.filter((s) => s.phase === phase);
                   return (
                     <div key={phase} className="space-y-1.5">
-                      {teachingLevel === 'both' && (
-                        <h4 className="text-xs font-medium text-text-faint">
-                          {phase === 'O_LEVEL' ? 'O-Level' : 'A-Level'}
-                        </h4>
+                      {teachingLevel === 'all' && (
+                        <h4 className="text-xs font-medium text-text-faint">{LEVEL_LABEL[phase]}</h4>
                       )}
                       <div className="flex flex-wrap gap-x-4 gap-y-2 max-h-40 overflow-y-auto pr-1">
                         {phaseSubjects.map((s) => (
@@ -384,7 +385,7 @@ export function StaffFormModal({
                         ))}
                         {phaseSubjects.length === 0 && (
                           <span className="text-xs text-text-faint">
-                            No {phase === 'O_LEVEL' ? 'O-Level' : 'A-Level'} subjects in the catalog yet.
+                            No {LEVEL_LABEL[phase]} subjects in the catalog yet.
                           </span>
                         )}
                       </div>

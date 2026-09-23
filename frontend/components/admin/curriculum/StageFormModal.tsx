@@ -26,6 +26,7 @@ export function StageFormModal({
     name: initial?.name ?? '',
     sequenceNumber: initial?.sequenceNumber ?? 1,
     phase: initial?.phase ?? 'O_LEVEL',
+    cycle: initial?.cycle ?? '',
     ageEquivalentYears:
       initial?.ageEquivalentYears != null ? String(initial.ageEquivalentYears) : '',
   });
@@ -39,6 +40,7 @@ export function StageFormModal({
       name: form.name.trim(),
       sequenceNumber: Number(form.sequenceNumber),
       phase: form.phase,
+      cycle: form.phase === 'PRIMARY' && form.cycle ? form.cycle : null,
       ageEquivalentYears: form.ageEquivalentYears ? Number(form.ageEquivalentYears) : null,
     };
     const res = initial
@@ -91,10 +93,29 @@ export function StageFormModal({
               onChange={(e) => setForm({ ...form, phase: e.target.value })}
               className="w-full border border-border rounded-lg px-3 py-2.5 text-sm"
             >
+              <option value="KINDERGARTEN">Kindergarten</option>
+              <option value="PRIMARY">Primary</option>
               <option value="O_LEVEL">O-Level</option>
               <option value="A_LEVEL">A-Level</option>
             </select>
           </div>
+          {form.phase === 'PRIMARY' && (
+            <div>
+              <label className="block text-xs font-medium text-text-muted tracking-wide mb-1">
+                Teaching cycle
+              </label>
+              <select
+                value={form.cycle}
+                onChange={(e) => setForm({ ...form, cycle: e.target.value })}
+                className="w-full border border-border rounded-lg px-3 py-2.5 text-sm"
+              >
+                <option value="">—</option>
+                <option value="LOWER">Lower Primary (P1–P3)</option>
+                <option value="TRANSITION">Transition (P4)</option>
+                <option value="UPPER">Upper Primary (P5–P7)</option>
+              </select>
+            </div>
+          )}
           <Input
             label="Typical age"
             type="number"

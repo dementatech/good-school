@@ -5,6 +5,7 @@ import React, { createContext, useContext, useState, useEffect, useCallback, use
 import { endSession, loadIdentity } from '@/lib/auth/identity';
 import { useRealtimeSocket } from '@/lib/realtime/useRealtimeSocket';
 import { playMessageSound, playNotificationSound } from '@/lib/realtime/sound';
+import { invalidateSchoolLevels } from '@/lib/levels';
 
 export interface User {
   id: string;
@@ -101,12 +102,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const login = (loggedInUser: User & { mustChangePassword?: boolean }) => {
     lastCheckRef.current = Date.now();
+    invalidateSchoolLevels();
     setUser(loggedInUser);
     setIsAuthenticated(true);
     setMustChangePassword(!!loggedInUser.mustChangePassword);
   };
 
   const logout = () => {
+    invalidateSchoolLevels();
     setUser(null);
     setIsAuthenticated(false);
     setMustChangePassword(false);

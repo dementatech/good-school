@@ -126,7 +126,7 @@ export function GradingSchemeFormModal({
     const payload = {
       regime: form.regime.trim(),
       appliesTo: form.appliesTo,
-      roleScope: form.appliesTo === 'O_LEVEL' ? 'any' : form.roleScope,
+      roleScope: form.appliesTo === 'A_LEVEL' ? form.roleScope : 'any',
       name: form.name.trim(),
       isActive: form.isActive,
       bands: bands.map((b) => ({

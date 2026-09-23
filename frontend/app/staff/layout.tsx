@@ -12,8 +12,9 @@ import { TopbarSearch } from '@/components/ui/TopbarSearch';
 import { MobileNavDrawer } from '@/components/ui/MobileNavDrawer';
 import { PortalSidebar } from '@/components/ui/PortalSidebar';
 import { useUnreadMessageCount } from '@/lib/communications/useUnreadMessageCount';
-import { LayoutDashboard, FileText, UserCircle, ClipboardList, MessageSquare } from 'lucide-react';
+import { LayoutDashboard, FileText, UserCircle, ClipboardList, MessageSquare, Baby } from 'lucide-react';
 import type { Role } from '@/lib/auth/session';
+import { useSchoolLevels } from '@/lib/levels';
 
 // 'teacher' is the role real accounts actually get (see portals.ts); 'staff'
 // is kept in case it's ever assigned, but nothing currently creates one.
@@ -29,6 +30,7 @@ const NAV_BASE = [
     activePrefixes: ['/staff/forms', '/staff/lessons', '/staff/attendance', '/staff/practical', '/staff/behaviour'],
   },
   { href: '/staff/exam-marks', label: 'Exam Marks', icon: ClipboardList },
+  { href: '/staff/kindergarten', label: 'Kindergarten Progress', icon: Baby },
   { href: '/staff/communications', label: 'Communication', icon: MessageSquare },
 ];
 
@@ -42,9 +44,20 @@ function StaffShell({ children }: { children: React.ReactNode }) {
   const { user, logout } = useAuth();
   const router = useRouter();
   const unreadMessages = useUnreadMessageCount();
+  // Teachers aren't section-scoped: they can teach in Nursery and Primary alike.
+  const levels = useSchoolLevels({ scoped: false });
   const NAV = React.useMemo(
-    () => NAV_BASE.map((item) => (item.href === '/staff/communications' ? { ...item, badge: unreadMessages } : item)),
-    [unreadMessages],
+    () =>
+      NAV_BASE.filter(
+        (item) =>
+          (item.href !== '/staff/kindergarten' || levels?.offersKindergarten) &&
+          // Exam marks only exist at levels with subjects — not in a Nursery-only school.
+          (item.href !== '/staff/exam-marks' ||
+            (levels && (levels.offersPrimary || levels.offersOLevel || levels.offersALevel))),
+      ).map((item) =>
+        item.href === '/staff/communications' ? { ...item, badge: unreadMessages } : item,
+      ),
+    [unreadMessages, levels],
   );
 
   return (

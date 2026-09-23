@@ -4,7 +4,12 @@ const schoolProps = {
   name: { type: "string", minLength: 1 },
   legalName: nullableStr,
   slug: nullableStr,
-  emisCode: nullableStr,
+  // EMIS number per section — each section is its own EMIS institution.
+  emisCodes: {
+    type: "object",
+    properties: { KINDERGARTEN: nullableStr, PRIMARY: nullableStr, SECONDARY: nullableStr },
+    additionalProperties: false,
+  },
   unebCentreNumber: nullableStr,
   ownershipType: {
     type: ["string", "null"],
@@ -26,6 +31,8 @@ const schoolProps = {
   website: nullableStr,
   schoolType: { type: ["string", "null"], enum: ["day", "boarding", "mixed", null] },
   genderComposition: { type: ["string", "null"], enum: ["boys", "girls", "mixed", null] },
+  offersKindergarten: { type: "boolean" },
+  offersPrimary: { type: "boolean" },
   offersOLevel: { type: "boolean" },
   offersALevel: { type: "boolean" },
   dataImportSource: { type: ["string", "null"], enum: ["fresh", "migrated", null] },

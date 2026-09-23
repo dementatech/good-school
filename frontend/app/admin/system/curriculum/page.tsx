@@ -21,10 +21,10 @@ import {
   type GradingAppliesTo,
   type GradingScheme,
 } from '@/components/admin/grading/types';
+import { LEVEL_LABEL, PRIMARY_CYCLE_LABEL, type SchoolLevel } from '@/lib/levels';
 import {
-  A_LEVEL_CATEGORIES,
+  CATEGORIES_FOR_PHASE,
   CATEGORY_LABEL,
-  O_LEVEL_CATEGORIES,
   submitJson,
   type Combination,
   type Curriculum,
@@ -154,10 +154,12 @@ export default function CurriculumPage() {
     [subjects],
   );
 
+  const primaryStages = stages.filter((s) => s.phase === 'PRIMARY');
   const oLevelStages = stages.filter((s) => s.phase === 'O_LEVEL');
   const aLevelStages = stages.filter((s) => s.phase === 'A_LEVEL');
   const approvedSubjects = subjects.filter((s) => s.status === 'approved');
   const pendingSubjects = subjects.filter((s) => s.status === 'pending');
+  const primarySubjects = approvedSubjects.filter((s) => s.phase === 'PRIMARY');
   const oLevelSubjects = approvedSubjects.filter((s) => s.phase === 'O_LEVEL');
   const aLevelSubjects = approvedSubjects.filter((s) => s.phase === 'A_LEVEL');
   const comboSubjects = aLevelSubjects.filter((s) => s.stageIds.length > 0);
@@ -222,7 +224,17 @@ export default function CurriculumPage() {
       key: 'phase',
       header: 'Phase',
       value: (s) => s.phase ?? '',
-      render: (s) => (s.phase ? <Badge variant={s.phase === 'A_LEVEL' ? 'accent' : 'muted'}>{s.phase}</Badge> : '—'),
+      render: (s) =>
+        s.phase ? (
+          <span className="inline-flex items-center gap-1.5">
+            <Badge variant={s.phase === 'A_LEVEL' ? 'accent' : s.phase === 'O_LEVEL' ? 'muted' : 'default'}>
+              {LEVEL_LABEL[s.phase as SchoolLevel] ?? s.phase}
+            </Badge>
+            {s.cycle && <span className="text-xs text-text-faint">{PRIMARY_CYCLE_LABEL[s.cycle] ?? s.cycle}</span>}
+          </span>
+        ) : (
+          '—'
+        ),
     },
     { key: 'ageEquivalentYears', header: 'Typical age', value: (s) => s.ageEquivalentYears ?? '', align: 'right', hideOnMobile: true },
   ];
@@ -466,6 +478,22 @@ export default function CurriculumPage() {
       )}
 
       <Section
+        title="Primary subjects"
+        description="P1–P7. Examinable subjects (English, Mathematics, Science, Social Studies) make up the PLE aggregate; the rest are taught but not aggregated. Kindergarten has no subjects — schools rate learning areas instead."
+      >
+        <DataTable
+          rows={primarySubjects}
+          columns={subjectCols}
+          rowActions={subjectActions('PRIMARY')}
+          rowKey={(s) => s.id}
+          initialSort={{ key: 'name', direction: 'asc' }}
+          emptyMessage="No Primary subjects yet."
+          exportFileName="primary-subjects"
+          actions={addBtn('Add Primary subject', () => setSubjectModal({ phase: 'PRIMARY' }), !curriculumId)}
+        />
+      </Section>
+
+      <Section
         title="O-Level subjects"
         description="The NLSC catalog — a learner sits 8–10 of these across Senior 1–4."
       >
@@ -565,8 +593,14 @@ export default function CurriculumPage() {
           onSaved={reloadAll}
           curriculumId={curriculumId}
           phase={subjectModal.phase}
-          stages={subjectModal.phase === 'O_LEVEL' ? oLevelStages : aLevelStages}
-          categories={subjectModal.phase === 'O_LEVEL' ? O_LEVEL_CATEGORIES : A_LEVEL_CATEGORIES}
+          stages={
+            subjectModal.phase === 'PRIMARY'
+              ? primaryStages
+              : subjectModal.phase === 'O_LEVEL'
+                ? oLevelStages
+                : aLevelStages
+          }
+          categories={CATEGORIES_FOR_PHASE[subjectModal.phase]}
           initial={subjectModal.initial}
         />
       )}

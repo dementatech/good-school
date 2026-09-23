@@ -1,5 +1,6 @@
 import type { PoolClient } from "pg";
 import { pool } from "../../../shared/db/index.js";
+import type { SubjectPhase } from "../../../shared/levels.js";
 
 // Grading schemes — turns a raw exam_result.raw_score into a letter/points
 // grade. See migration 1700000055000_grading-scheme-catalog.cjs and
@@ -21,7 +22,9 @@ import { pool } from "../../../shared/db/index.js";
 // distinction and is always 'any'. resolveSubjectRoleScope below is what
 // decides, per (student, subject), which one applies.
 
-export type GradingAppliesTo = "O_LEVEL" | "A_LEVEL";
+// Every level with subjects has a grading track — Kindergarten has none (no
+// national exam; see developmental assessment in the early-years module).
+export type GradingAppliesTo = SubjectPhase;
 export type GradeRoleScope = "any" | "principal" | "subsidiary";
 
 export interface GradeBandRecord {
@@ -36,6 +39,14 @@ export interface GradeBandRecord {
   comment: string;
 }
 
+/** An aggregate-based division rule (PLE): sum the points of the best
+ * `aggregate_subject_count` examinable subjects, lower is better. */
+export interface GradeDivision {
+  label: string;
+  minAggregate: number;
+  maxAggregate: number;
+}
+
 export interface GradingSchemeRecord {
   id: string;
   curriculumId: string;
@@ -45,6 +56,9 @@ export interface GradingSchemeRecord {
   name: string;
   isActive: boolean;
   bands: GradeBandRecord[];
+  /** Aggregate schemes only (PLE: 4) — null otherwise. */
+  aggregateSubjectCount: number | null;
+  divisions: GradeDivision[] | null;
   /** Null = shared catalog template. Set = one school's own private,
    * editable fork (see editSchoolGradingRanges) — never true when
    * roleScope is 'subsidiary'. */
@@ -92,6 +106,8 @@ interface SchemeRow {
   name: string;
   is_active: boolean;
   bands: GradeBandRecord[];
+  aggregate_subject_count: number | null;
+  divisions: GradeDivision[] | null;
   school_id: string | null;
   created_at: string;
   updated_at: string;
@@ -110,6 +126,7 @@ const BANDS_JSON = `
 
 const SELECT_SCHEME = `
   select gs.id, gs.curriculum_id, gs.regime, gs.applies_to, gs.role_scope, gs.name, gs.is_active,
+         gs.aggregate_subject_count, gs.divisions,
          gs.school_id, gs.created_at, gs.updated_at, ${BANDS_JSON} as bands
     from grading_scheme gs
 `;
@@ -124,6 +141,8 @@ function mapRow(r: SchemeRow): GradingSchemeRecord {
     name: r.name,
     isActive: r.is_active,
     schoolId: r.school_id,
+    aggregateSubjectCount: r.aggregate_subject_count,
+    divisions: r.divisions,
     bands: r.bands.map((b) => ({
       id: b.id,
       label: b.label,
@@ -176,13 +195,13 @@ export class NoGradingSchemeSelectedError extends Error {
 const isPgError = (err: unknown, code: string): boolean =>
   typeof err === "object" && err !== null && (err as { code?: string }).code === code;
 
-// O-Level never gets a principal/subsidiary split — that distinction is an
+// Only A-Level has a principal/subsidiary split — that distinction is an
 // A-Level combination concept. A-Level accepts 'any' too (the seeded Legacy
 // placeholder uses it), just not reachable through the school picker.
 function assertRoleScopeValid(appliesTo: GradingAppliesTo, roleScope: GradeRoleScope | undefined): GradeRoleScope {
   const scope = roleScope ?? "any";
-  if (appliesTo === "O_LEVEL" && scope !== "any") {
-    throw new InvalidGradingSchemeError("O-Level schemes don't have a principal/subsidiary distinction.");
+  if (appliesTo !== "A_LEVEL" && scope !== "any") {
+    throw new InvalidGradingSchemeError("Only A-Level schemes have a principal/subsidiary distinction.");
   }
   return scope;
 }
@@ -365,7 +384,7 @@ export async function getSchoolGradingSchemes(schoolId: string): Promise<SchoolG
   } & SchemeRow>(
     `select sgs.applies_to as sel_applies_to, sgs.role_scope as sel_role_scope,
             gs.id, gs.curriculum_id, gs.regime, gs.applies_to, gs.role_scope, gs.name, gs.is_active,
-            gs.school_id, gs.created_at, gs.updated_at, ${BANDS_JSON} as bands
+            gs.aggregate_subject_count, gs.divisions, gs.school_id, gs.created_at, gs.updated_at, ${BANDS_JSON} as bands
        from school_grading_scheme sgs
        join grading_scheme gs on gs.id = sgs.grading_scheme_id
       where sgs.school_id = $1
@@ -427,8 +446,11 @@ export async function editSchoolGradingRanges(
       curriculum_id: string;
       regime: string;
       name: string;
+      aggregate_subject_count: number | null;
+      divisions: GradeDivision[] | null;
     }>(
-      `select sgs.grading_scheme_id, gs.school_id, gs.curriculum_id, gs.regime, gs.name
+      `select sgs.grading_scheme_id, gs.school_id, gs.curriculum_id, gs.regime, gs.name,
+              gs.aggregate_subject_count, gs.divisions
          from school_grading_scheme sgs
          join grading_scheme gs on gs.id = sgs.grading_scheme_id
         where sgs.school_id = $1 and sgs.applies_to = $2 and sgs.role_scope = $3`,
@@ -444,9 +466,20 @@ export async function editSchoolGradingRanges(
       targetId = row.grading_scheme_id;
     } else {
       const inserted = await client.query<{ id: string }>(
-        `insert into grading_scheme (school_id, curriculum_id, regime, applies_to, role_scope, name, is_active)
-         values ($1, $2, $3, $4, $5, $6, true) returning id`,
-        [schoolId, row.curriculum_id, row.regime, appliesTo, roleScope, row.name],
+        `insert into grading_scheme
+           (school_id, curriculum_id, regime, applies_to, role_scope, name, is_active,
+            aggregate_subject_count, divisions)
+         values ($1, $2, $3, $4, $5, $6, true, $7, $8) returning id`,
+        [
+          schoolId,
+          row.curriculum_id,
+          row.regime,
+          appliesTo,
+          roleScope,
+          row.name,
+          row.aggregate_subject_count,
+          row.divisions === null ? null : JSON.stringify(row.divisions),
+        ],
       );
       targetId = inserted.rows[0].id;
       await client.query(
@@ -471,7 +504,7 @@ export async function editSchoolGradingRanges(
 // ─── Publish-time resolution ────────────────────────────────────────────────
 
 // Which of a school's selected schemes applies to this (student, subject) —
-// O-Level is always 'any'. A-Level: General Paper is graded on the
+// Primary and O-Level are always 'any'. A-Level: General Paper is graded on the
 // Subsidiary scale (it isn't a combination member with a stored role, but
 // the design doc groups it with subsidiary subjects for points purposes).
 // Otherwise, resolved from the student's CONFIRMED combination for that
@@ -487,7 +520,7 @@ export async function resolveSubjectRoleScope(
   studentUserId: string,
   subject: { id: string; phase: GradingAppliesTo; isGeneralPaper: boolean },
 ): Promise<GradeRoleScope | null> {
-  if (subject.phase === "O_LEVEL") return "any";
+  if (subject.phase !== "A_LEVEL") return "any";
   if (subject.isGeneralPaper) return "subsidiary";
 
   const { rows } = await pool.query<{ role: "principal" | "subsidiary" | "compulsory" | null }>(
@@ -534,6 +567,7 @@ export async function getActiveSchemeForSubject(
 
   const { rows } = await pool.query<SchemeRow>(
     `select gs.id, gs.curriculum_id, gs.regime, gs.applies_to, gs.role_scope, gs.name, gs.is_active,
+            gs.aggregate_subject_count, gs.divisions,
             gs.school_id, gs.created_at, gs.updated_at, ${BANDS_JSON} as bands
        from school_grading_scheme sgs
        join grading_scheme gs on gs.id = sgs.grading_scheme_id
