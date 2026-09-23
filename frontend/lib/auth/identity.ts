@@ -60,6 +60,7 @@ interface MeResponse {
   schoolId: string | null;
   schoolName: string | null;
   schoolLogoUrl: string | null;
+  photoUrl: string | null;
   mustChangePassword?: boolean;
 }
 
@@ -74,6 +75,7 @@ export function meToUser(me: MeResponse): User {
     logoUrl: me.schoolLogoUrl,
     schoolId: me.schoolId,
     className: null,
+    photoUrl: me.photoUrl,
   };
 }
 

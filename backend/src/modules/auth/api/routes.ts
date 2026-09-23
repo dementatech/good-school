@@ -1,8 +1,15 @@
 import type { FastifyInstance } from "fastify";
 import { login } from "../domain/login.js";
 import { resolveIdentifierKind } from "../domain/identifier.js";
-import { findUserById, findUsersByIdentifierForReset } from "../domain/users.repository.js";
+import {
+  findUserById,
+  findUserPhotoUrl,
+  findUsersByIdentifierForReset,
+  setUserPhoto,
+} from "../domain/users.repository.js";
 import { findSchoolBrandingById } from "../../schools/index.js";
+import { findStaffPhotoUrl } from "../../teachers/index.js";
+import { UnsupportedFileTypeError } from "../../../shared/media.js";
 import { hashPassword, verifyPassword } from "../domain/password.js";
 import { pool } from "../../../shared/db/index.js";
 import {
@@ -53,6 +60,16 @@ export async function authRoutes(fastify: FastifyInstance) {
       // super_admin has no school_id — the portal chrome falls back to the
       // platform default branding in that case.
       const branding = user.school_id ? await findSchoolBrandingById(user.school_id) : null;
+      // A teacher's photo lives on their `staff` row (see findStaffPhotoUrl);
+      // parent/school_admin/super_admin have one directly on `users` (see
+      // POST/DELETE /me/photo below). Anyone else (student, admin) gets null
+      // and the frontend falls back to an initials avatar.
+      const photoUrl =
+        user.role === "teacher" && user.school_id
+          ? await findStaffPhotoUrl(user.school_id, user.id)
+          : user.role === "parent" || user.role === "school_admin" || user.role === "super_admin"
+            ? await findUserPhotoUrl(user.id)
+            : null;
 
       return {
         id: user.id,
@@ -66,10 +83,34 @@ export async function authRoutes(fastify: FastifyInstance) {
         schoolId: user.school_id,
         schoolName: branding?.name ?? null,
         schoolLogoUrl: branding?.logoUrl ?? null,
+        photoUrl,
         mustChangePassword: user.must_change_password,
       };
     },
   );
+
+  // Self-service profile photo for the roles with nowhere else to manage one
+  // (teacher instead uses /api/v1/staff/:id/photo — see findStaffPhotoUrl).
+  // Not opened up to student or the generic admin role; ask before widening.
+  const CAN_MANAGE_OWN_PHOTO = requireAuth(["parent", "school_admin", "super_admin"]);
+
+  fastify.post("/me/photo", { preHandler: CAN_MANAGE_OWN_PHOTO }, async (request, reply) => {
+    const uploaded = await request.file();
+    if (!uploaded) return reply.status(400).send({ error: "No file uploaded" });
+    const data = await uploaded.toBuffer();
+    try {
+      const photoUrl = await setUserPhoto(request.authUser!.user_id, { mimeType: uploaded.mimetype, data });
+      return { photoUrl };
+    } catch (err) {
+      if (err instanceof UnsupportedFileTypeError) return reply.status(400).send({ error: err.message });
+      throw err;
+    }
+  });
+
+  fastify.delete("/me/photo", { preHandler: CAN_MANAGE_OWN_PHOTO }, async (request, reply) => {
+    await setUserPhoto(request.authUser!.user_id, null);
+    return reply.status(204).send();
+  });
 
   // Signed-in password change. Two callers: the forced first-login screen
   // (sends `newPassword` only) and the voluntary My Account form (sends
