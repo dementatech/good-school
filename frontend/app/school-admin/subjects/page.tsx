@@ -22,7 +22,7 @@ import {
   PHASE_LABEL,
   PRIMARY_CATEGORIES,
 } from '@/components/admin/curriculum/types';
-import { subjectPhasesOf, useSchoolLevels } from '@/lib/levels';
+import { SUBJECT_PHASES, offersLevel, subjectPhasesOf, useSchoolLevels } from '@/lib/levels';
 import { NurseryAssessmentCard } from '@/components/admin/subjects/NurseryAssessmentCard';
 import { SchoolSubjectModal } from '@/components/admin/subjects/SchoolSubjectModal';
 import {
@@ -89,7 +89,11 @@ export default function SchoolAdminSubjectsPage() {
   } | null>(null);
   const levels = useSchoolLevels();
   // Only this school's own levels that have subjects — nothing until known.
-  const phasesShown = subjectPhasesOf(levels);
+  // Every level this school runs — Nursery included whatever its assessment
+  // style: its subjects are used on the timetable and in lesson plans too, and
+  // are only marked when the school switches Nursery to marks.
+  const phasesShown = SUBJECT_PHASES.filter((p) => levels && offersLevel(levels, p));
+  const nurseryMarks = subjectPhasesOf(levels).includes('KINDERGARTEN');
   const showsALevel = phasesShown.includes('A_LEVEL');
 
   const currentYear = years.find((y) => y.isCurrent) ?? years[0];
@@ -355,8 +359,8 @@ export default function SchoolAdminSubjectsPage() {
             {showsALevel ? 'Subjects & Combinations' : 'Subjects'}
           </h1>
           <p className="text-sm text-text-muted">
-            Pick which subjects{showsALevel ? ' and A-Level combinations' : ''} your school runs and what
-            each is marked out of.
+            Pick which subjects{showsALevel ? ' and A-Level combinations' : ''} your school runs
+            {phasesShown.some((p) => p !== 'KINDERGARTEN') || nurseryMarks ? ' and what each is marked out of' : ''}.
           </p>
         </div>
         {years.length > 1 && (
@@ -398,8 +402,10 @@ export default function SchoolAdminSubjectsPage() {
               <h2 className="text-sm font-bold text-primary-900">{PHASE_LABEL[phase]} subjects</h2>
               {phase === 'KINDERGARTEN' && (
                 <p className="text-xs text-text-muted">
-                  Your Nursery subjects are your school&apos;s own — add, rename or remove them freely, and set what
-                  each is marked out of.
+                  Your Nursery subjects are your school&apos;s own — add, rename or remove them freely.{' '}
+                  {nurseryMarks
+                    ? 'Set what each is marked out of.'
+                    : 'They appear on the timetable and in lesson plans; they’re only marked if you switch Nursery to marks above.'}
                 </p>
               )}
               {phase === 'PRIMARY' && (
@@ -412,7 +418,13 @@ export default function SchoolAdminSubjectsPage() {
                 rows={subjectRows(phase)}
                 columns={
                   phase === 'KINDERGARTEN'
-                    ? subjectColumns.filter((c) => c.key !== 'category' && c.key !== 'isCompulsory')
+                    ? subjectColumns.filter(
+                        (c) =>
+                          c.key !== 'category' &&
+                          c.key !== 'isCompulsory' &&
+                          // "Out of" only matters once Nursery is marked.
+                          (nurseryMarks || c.key !== 'maxMark'),
+                      )
                     : subjectColumns
                 }
                 rowKey={(r) => r.subjectId}
