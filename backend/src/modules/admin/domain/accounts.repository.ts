@@ -104,7 +104,7 @@ export async function listAccounts(type: AccountType): Promise<AccountRecord[]> 
             u.school_id, sc.name as school_name,
             u.is_active, u.must_change_password, u.created_at,
             nullif(trim(concat_ws(' ', st.first_name, st.last_name)), '') as name,
-            cs.name as class_name
+            stage_label(cl.school_id, cs.id) as class_name
      from users u
      left join schools sc on sc.id = u.school_id
      join students st on st.user_id = u.id

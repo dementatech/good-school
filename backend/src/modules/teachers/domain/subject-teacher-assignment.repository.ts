@@ -69,7 +69,7 @@ interface AssignmentRow {
 
 const SELECT_ASSIGNMENT = `
   select sta.id, sta.school_id, sta.subject_id, sub.code as subject_code, sub.name as subject_name,
-         sta.academic_year_id, sta.class_id, cs.name as class_name,
+         sta.academic_year_id, sta.class_id, stage_label(c.school_id, cs.id) as class_name,
          sta.stream_id, st.name as stream_name,
          sta.staff_id, sf.first_name as staff_first_name, sf.last_name as staff_last_name,
          u.system_id as staff_system_id,
@@ -173,7 +173,7 @@ export async function listForSubjectOffering(
   const result = await pool.query<AssignmentRow>(
     `${SELECT_ASSIGNMENT}
      where sta.school_id = $1 and sta.academic_year_id = $2 and sta.subject_id = $3 and sta.status = 'active'
-     order by cs.name, st.name nulls first`,
+     order by cs.sequence_number, st.name nulls first`,
     [schoolId, academicYearId, subjectId],
   );
   return result.rows.map(mapRow);

@@ -65,12 +65,15 @@ import {
 import {
   createClass,
   deleteClass,
+  InvalidStageLabelError,
   listClasses,
+  setStageLabel,
   updateClass,
   type ClassInput,
 } from "../domain/classes.repository.js";
 import {
   createStream,
+  createStreamsForClasses,
   deleteStream,
   listStreams,
   updateStream,
@@ -135,6 +138,8 @@ import {
   streamBodySchema,
   subjectBodySchema,
   subjectOfferingBodySchema,
+  stageLabelBodySchema,
+  bulkStreamsBodySchema,
   sectionSettingsBodySchema,
   schoolSubjectBodySchema,
   schoolSubjectUpdateBodySchema,
@@ -171,6 +176,26 @@ function onlyVisible<T>(rows: T[], levels: SchoolLevel[] | null, levelOf: (row: 
 async function canSeeLevel(request: FastifyRequest, level: string): Promise<boolean> {
   const levels = await visibleLevels(request);
   return !levels || levels.includes(level as SchoolLevel);
+}
+
+/** A school sees its own names for class levels ("Level 1"); the platform
+ * (super_admin, no school) sees the national ones. */
+async function withSchoolLabels<T extends { id: string; name: string }>(
+  request: FastifyRequest,
+  stages: T[],
+): Promise<(T & { defaultName: string })[]> {
+  const schoolId = request.authUser?.school_id;
+  const labels = schoolId
+    ? new Map(
+        (
+          await pool.query<{ curriculum_stage_id: string; name: string }>(
+            `select curriculum_stage_id, name from school_stage_label where school_id = $1`,
+            [schoolId],
+          )
+        ).rows.map((r) => [r.curriculum_stage_id, r.name]),
+      )
+    : new Map<string, string>();
+  return stages.map((s) => ({ ...s, name: labels.get(s.id) ?? s.name, defaultName: s.name }));
 }
 
 async function stageVisible(request: FastifyRequest, stageId: string): Promise<boolean> {
@@ -223,7 +248,8 @@ export async function academicStructureRoutes(fastify: FastifyInstance) {
       if (!curriculumId && request.query.curriculum) {
         curriculumId = (await getCurriculumByCode(request.query.curriculum))?.id;
       }
-      return ok(onlyVisible(await listStages(curriculumId), await visibleLevels(request), (s) => s.phase));
+      const stages = onlyVisible(await listStages(curriculumId), await visibleLevels(request), (s) => s.phase);
+      return ok(await withSchoolLabels(request, stages));
     },
   );
 
@@ -231,7 +257,12 @@ export async function academicStructureRoutes(fastify: FastifyInstance) {
     "/curricula/:id/stages",
     { preHandler: SCHOOL },
     async (request) =>
-      ok(onlyVisible(await listStages(request.params.id), await visibleLevels(request), (s) => s.phase)),
+      ok(
+        await withSchoolLabels(
+          request,
+          onlyVisible(await listStages(request.params.id), await visibleLevels(request), (s) => s.phase),
+        ),
+      ),
   );
 
   fastify.post<{ Params: { id: string }; Body: StageInput }>(
@@ -653,6 +684,28 @@ export async function academicStructureRoutes(fastify: FastifyInstance) {
     },
   );
 
+  // A school's own name for a class level ("Level 1" for Primary 1), used
+  // everywhere the class is shown or printed. name null/blank = back to the
+  // national name.
+  fastify.put<{ Body: { curriculumStageId: string; name: string | null } }>(
+    "/stage-labels",
+    { preHandler: SCHOOL, schema: { body: stageLabelBodySchema } },
+    async (request, reply) => {
+      const schoolId = schoolOf(request, reply);
+      if (!schoolId) return;
+      if (!(await stageVisible(request, request.body.curriculumStageId))) {
+        return reply.status(400).send(fail("Unknown class level."));
+      }
+      try {
+        await setStageLabel(schoolId, request.body.curriculumStageId, request.body.name);
+        return ok(null);
+      } catch (err) {
+        if (err instanceof InvalidStageLabelError) return reply.status(400).send(fail(err.message));
+        throw err;
+      }
+    },
+  );
+
   fastify.delete<{ Params: { id: string } }>(
     "/classes/:id",
     { preHandler: SCHOOL },
@@ -681,6 +734,33 @@ export async function academicStructureRoutes(fastify: FastifyInstance) {
       );
       const phaseOfClass = new Map(rows.map((r) => [r.id, r.phase]));
       return ok(onlyVisible(streams, levels, (st) => phaseOfClass.get(st.classId) ?? null));
+    },
+  );
+
+  // Same streams in several classes at once ("East, West" for S1–S4).
+  fastify.post<{ Body: { classIds: string[]; names: string[]; capacity?: number | null } }>(
+    "/streams/bulk",
+    { preHandler: SCHOOL, schema: { body: bulkStreamsBodySchema } },
+    async (request, reply) => {
+      const schoolId = schoolOf(request, reply);
+      if (!schoolId) return;
+      // Only classes in the section being worked in.
+      const levels = await visibleLevels(request);
+      const { rows } = await pool.query<{ id: string }>(
+        `select c.id from classes c join curriculum_stage cs on cs.id = c.curriculum_stage_id
+          where c.school_id = $1 and c.id = any($2::uuid[])
+            and ($3::text[] is null or cs.phase = any($3::text[]))`,
+        [schoolId, request.body.classIds, levels],
+      );
+      return ok(
+        await createStreamsForClasses(
+          schoolId,
+          rows.map((r) => r.id),
+          request.body.names,
+          request.body.capacity ?? null,
+          request.authUser!.user_id,
+        ),
+      );
     },
   );
 

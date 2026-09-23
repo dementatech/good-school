@@ -12,7 +12,10 @@ export interface ClassRecord {
   academicYearId: string;
   curriculumStageId: string;
   stageCode: string;
+  /** The school's own name for this level ("Level 1"), else the national one. */
   stageName: string;
+  /** The national name ("Primary 1") — what stageName falls back to. */
+  stageDefaultName: string;
   stagePhase: SchoolLevel;
   hasStreams: boolean;
   classTeacherId: string | null;
@@ -35,6 +38,7 @@ interface ClassRow {
   curriculum_stage_id: string;
   stage_code: string;
   stage_name: string;
+  stage_default_name: string;
   stage_phase: SchoolLevel;
   has_streams: boolean;
   class_teacher_id: string | null;
@@ -45,7 +49,8 @@ interface ClassRow {
 
 const SELECT_CLASS = `
   select c.id, c.academic_year_id, c.curriculum_stage_id,
-         cs.code as stage_code, cs.name as stage_name, cs.phase as stage_phase,
+         cs.code as stage_code, stage_label(c.school_id, cs.id) as stage_name, cs.name as stage_default_name,
+         cs.phase as stage_phase,
          c.has_streams, c.class_teacher_id, c.is_active, c.created_at, c.updated_at
   from classes c
   join curriculum_stage cs on cs.id = c.curriculum_stage_id
@@ -58,6 +63,7 @@ function mapRow(row: ClassRow): ClassRecord {
     curriculumStageId: row.curriculum_stage_id,
     stageCode: row.stage_code,
     stageName: row.stage_name,
+    stageDefaultName: row.stage_default_name,
     stagePhase: row.stage_phase,
     hasStreams: row.has_streams,
     classTeacherId: row.class_teacher_id,
@@ -200,4 +206,48 @@ export async function deleteClass(schoolId: string, id: string): Promise<boolean
     schoolId,
   ]);
   return (result.rowCount ?? 0) > 0;
+}
+
+// ─── A school's own names for its class levels ──────────────────────────────
+
+export class InvalidStageLabelError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "InvalidStageLabelError";
+  }
+}
+
+/**
+ * Names (or, with null/blank, un-names) a class level for this school —
+ * "Level 1" for Primary 1. Applies in every academic year; the national stage
+ * underneath is unchanged.
+ */
+export async function setStageLabel(schoolId: string, stageId: string, name: string | null): Promise<void> {
+  const clean = name?.trim() || null;
+  const stage = await pool.query<{ name: string }>(`select name from curriculum_stage where id = $1`, [stageId]);
+  if (!stage.rows[0]) throw new InvalidStageLabelError("Unknown class level.");
+  if (!clean || clean === stage.rows[0].name) {
+    await pool.query(`delete from school_stage_label where school_id = $1 and curriculum_stage_id = $2`, [
+      schoolId,
+      stageId,
+    ]);
+    return;
+  }
+  if (clean.length > 40) throw new InvalidStageLabelError("Keep the class name to 40 characters or fewer.");
+  // Another level's name — the school's own or a national one it still uses.
+  const clash = await pool.query<{ label: string }>(
+    `select stage_label($1, cs.id) as label
+       from curriculum_stage cs
+      where cs.id <> $2
+        and cs.curriculum_id = (select curriculum_id from curriculum_stage where id = $2)
+        and lower(stage_label($1, cs.id)) = lower($3)
+      limit 1`,
+    [schoolId, stageId, clean],
+  );
+  if (clash.rows[0]) throw new InvalidStageLabelError(`Another class is already called "${clash.rows[0].label}".`);
+  await pool.query(
+    `insert into school_stage_label (school_id, curriculum_stage_id, name) values ($1, $2, $3)
+     on conflict (school_id, curriculum_stage_id) do update set name = excluded.name, updated_at = now()`,
+    [schoolId, stageId, clean],
+  );
 }

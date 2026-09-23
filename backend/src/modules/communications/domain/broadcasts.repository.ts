@@ -30,12 +30,12 @@ export async function listOwnedClasses(schoolId: string, teacherUserId: string):
   if (!year) return [];
 
   const { rows } = await pool.query<{ class_id: string; stream_id: string | null; label: string }>(
-    `select c.id as class_id, null::uuid as stream_id, cs.name as label
+    `select c.id as class_id, null::uuid as stream_id, stage_label(c.school_id, cs.id) as label
        from classes c
        join curriculum_stage cs on cs.id = c.curriculum_stage_id
       where c.school_id = $1 and c.academic_year_id = $2 and c.class_teacher_id = $3
      union all
-     select s.class_id, s.id as stream_id, cs.name || ' ' || s.name as label
+     select s.class_id, s.id as stream_id, stage_label(c.school_id, cs.id) || ' ' || s.name as label
        from streams s
        join classes c on c.id = s.class_id
        join curriculum_stage cs on cs.id = c.curriculum_stage_id

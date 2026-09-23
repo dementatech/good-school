@@ -295,3 +295,24 @@ export const schoolSubjectUpdateBodySchema = {
   },
   additionalProperties: false,
 } as const;
+
+export const stageLabelBodySchema = {
+  type: "object",
+  required: ["curriculumStageId", "name"],
+  properties: {
+    curriculumStageId: { type: "string", format: "uuid" },
+    name: { type: ["string", "null"], maxLength: 60 },
+  },
+  additionalProperties: false,
+} as const;
+
+export const bulkStreamsBodySchema = {
+  type: "object",
+  required: ["classIds", "names"],
+  properties: {
+    classIds: { type: "array", items: { type: "string", format: "uuid" }, minItems: 1, maxItems: 50 },
+    names: { type: "array", items: { type: "string", minLength: 1, maxLength: 40 }, minItems: 1, maxItems: 20 },
+    capacity: { type: ["integer", "null"], minimum: 1, maximum: 500 },
+  },
+  additionalProperties: false,
+} as const;
