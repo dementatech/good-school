@@ -11,6 +11,7 @@ import {
   deleteSchool,
   getSchool,
   listSchools,
+  listUserIdsForSchool,
   setOnboardingStatus,
   setSchoolLogo,
   UniqueViolationError,
@@ -19,6 +20,7 @@ import {
   type OnboardingStatus,
   type SchoolInput,
 } from "../domain/schools.repository.js";
+import { pushToUser } from "../../realtime/index.js";
 import {
   attach as attachCurriculum,
   detach as detachCurriculum,
@@ -128,6 +130,14 @@ export async function schoolsRoutes(fastify: FastifyInstance) {
     { preHandler: SUPER, schema: { body: statusBodySchema } },
     async (request, reply) => {
       const updated = await setOnboardingStatus(request.params.id, request.body.status);
+      if (updated && request.body.status === "suspended") {
+        // Login already blocks a suspended tenant (see auth/domain/login.ts)
+        // — this kicks anyone already signed in, right now, instead of
+        // leaving them logged in until they happen to click something.
+        for (const userId of await listUserIdsForSchool(request.params.id)) {
+          pushToUser(userId, { type: "force_signout", reason: "school_suspended" });
+        }
+      }
       return updated ? ok(updated) : reply.status(404).send(fail("not_found"));
     },
   );

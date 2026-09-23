@@ -5,6 +5,8 @@ import { notifyUsers } from "../../notifications/index.js";
 import {
   NotFoundError,
   UnknownReferenceError,
+  countUnreadForAdmin,
+  countUnreadForTeacher,
   getOrCreateConversation,
   getParticipants,
   listConversationsForAdmin,
@@ -20,7 +22,7 @@ import {
   prepareClassBroadcast,
   prepareTeacherBroadcast,
 } from "../domain/broadcasts.repository.js";
-import { consumeTicket, issueTicket, pushToUser, subscribe, unsubscribe } from "../domain/realtime.js";
+import { pushToUser } from "../../realtime/index.js";
 import {
   broadcastClassBodySchema,
   broadcastTeachersBodySchema,
@@ -119,6 +121,17 @@ export async function communicationsRoutes(fastify: FastifyInstance) {
     );
   });
 
+  // Cheap aggregate for the sidebar badge — avoids shipping the full
+  // conversation list just to know whether to show a number.
+  fastify.get("/unread-count", { preHandler: EITHER }, async (request, reply) => {
+    const schoolId = schoolOf(request, reply);
+    if (!schoolId) return;
+    const { user_id: userId, role } = request.authUser!;
+    const count =
+      role === "school_admin" ? await countUnreadForAdmin(schoolId, userId) : await countUnreadForTeacher(userId);
+    return ok({ count });
+  });
+
   // Admin-initiated only — a teacher replies within a thread the admin started.
   fastify.post<{ Body: { teacherUserId: string } }>(
     "/conversations",
@@ -210,28 +223,6 @@ export async function communicationsRoutes(fastify: FastifyInstance) {
       if (!participant) return;
       await markRead(request.params.id, request.authUser!.user_id, participant.side);
       return ok(null);
-    },
-  );
-
-  // ── Realtime (WebSocket) ─────────────────────────────────────────────────
-  // See domain/realtime.ts for why this is ticket-authenticated rather than
-  // cookie-authenticated.
-
-  fastify.post("/realtime/ticket", { preHandler: EITHER }, async (request) => {
-    return ok({ ticket: issueTicket(request.authUser!) });
-  });
-
-  fastify.get<{ Querystring: { ticket?: string } }>(
-    "/realtime",
-    { websocket: true },
-    (socket, request) => {
-      const authUser = request.query.ticket ? consumeTicket(request.query.ticket) : null;
-      if (!authUser) {
-        socket.close(4401, "invalid_ticket");
-        return;
-      }
-      subscribe(authUser.user_id, socket);
-      socket.on("close", () => unsubscribe(authUser.user_id, socket));
     },
   );
 }

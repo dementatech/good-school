@@ -159,6 +159,20 @@ export async function listStaff(schoolId: string): Promise<StaffRecord[]> {
   return Promise.all(result.rows.map((row) => hydrate(schoolId, mapRow(row))));
 }
 
+/** Just the photo, for contexts that don't need the full hydrated record —
+ *  e.g. the auth `/me` response, which every signed-in page loads. */
+export async function findStaffPhotoUrl(schoolId: string, userId: string): Promise<string | null> {
+  const { rows } = await pool.query<{ photo_path: string | null; photo_provider: StorageProvider | null }>(
+    `select s.photo_path, s.photo_provider from staff s
+       join users u on u.id = s.user_id
+      where u.school_id = $1 and s.user_id = $2`,
+    [schoolId, userId],
+  );
+  const row = rows[0];
+  if (!row?.photo_path) return null;
+  return fileUrl({ provider: row.photo_provider ?? "local", ref: row.photo_path, mimeType: "image/jpeg" });
+}
+
 export async function getStaff(schoolId: string, userId: string): Promise<StaffRecord | null> {
   const result = await pool.query<StaffRow>(`${SELECT_STAFF} where u.school_id = $1 and u.id = $2`, [
     schoolId,

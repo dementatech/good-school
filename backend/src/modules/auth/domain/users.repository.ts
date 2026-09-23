@@ -1,6 +1,7 @@
 import { pool } from "../../../shared/db/index.js";
 import type { Role } from "../../../shared/types/index.js";
 import type { IdentifierKind } from "./identifier.js";
+import { deleteStoredFile, fileUrl, storeFile, type StorageProvider } from "../../../shared/media.js";
 
 export interface AuthUserRecord {
   id: string;
@@ -63,6 +64,48 @@ export async function findUsersByIdentifierForReset(
     [value],
   );
   return result.rows;
+}
+
+/** Profile photo for a role with no other identity table to hang one off —
+ *  parent, school_admin, super_admin. Teacher stays on staff.photo_path (see
+ *  teachers/domain/staff.repository.ts's findStaffPhotoUrl) since the admin
+ *  staff directory already reads from there. */
+export async function findUserPhotoUrl(userId: string): Promise<string | null> {
+  const { rows } = await pool.query<{ photo_path: string | null; photo_provider: StorageProvider | null }>(
+    `select photo_path, photo_provider from users where id = $1`,
+    [userId],
+  );
+  const row = rows[0];
+  if (!row?.photo_path) return null;
+  return fileUrl({ provider: row.photo_provider ?? "local", ref: row.photo_path, mimeType: "image/jpeg" });
+}
+
+/** Same store/replace/clear shape as setStaffPhoto — see there for why the
+ *  prior file is deleted only after the new row is committed. */
+export async function setUserPhoto(
+  userId: string,
+  file: { mimeType: string; data: Buffer } | null,
+): Promise<string | null> {
+  const { rows } = await pool.query<{ photo_path: string | null; photo_provider: StorageProvider | null }>(
+    `select photo_path, photo_provider from users where id = $1`,
+    [userId],
+  );
+  const prior = rows[0];
+
+  let stored: Awaited<ReturnType<typeof storeFile>> | null = null;
+  if (file) stored = await storeFile("avatars", file.mimeType, file.data);
+
+  await pool.query(`update users set photo_path = $1, photo_provider = $2, updated_at = now() where id = $3`, [
+    stored?.ref ?? null,
+    stored?.provider ?? null,
+    userId,
+  ]);
+
+  if (prior?.photo_path) {
+    await deleteStoredFile({ provider: prior.photo_provider ?? "local", ref: prior.photo_path, mimeType: "image/jpeg" });
+  }
+
+  return stored ? fileUrl(stored) : null;
 }
 
 export async function findUserById(id: string): Promise<AuthUserRecord | null> {

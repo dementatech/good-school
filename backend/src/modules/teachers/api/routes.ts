@@ -181,32 +181,44 @@ export async function staffRoutes(fastify: FastifyInstance) {
 
   // Multipart upload — @fastify/multipart is registered globally in
   // server.ts. A staff record with no photo shows an initials avatar
-  // instead; this is how that gets replaced with a real one.
-  fastify.post<{ Params: { id: string } }>("/:id/photo", { preHandler: ADMIN }, async (request, reply) => {
-    const schoolId = schoolOf(request, reply);
-    if (!schoolId) return;
-    const uploaded = await request.file();
-    if (!uploaded) return reply.status(400).send(fail("No file uploaded"));
-    const data = await uploaded.toBuffer();
-    try {
-      const staff = await setStaffPhoto(schoolId, request.params.id, {
-        mimeType: uploaded.mimetype,
-        data,
-      });
-      return staff ? ok(staff) : reply.status(404).send(fail("not_found"));
-    } catch (err) {
-      if (err instanceof UnsupportedFileTypeError) return reply.status(400).send(fail(err.message));
-      throw err;
-    }
-  });
+  // instead; this is how that gets replaced with a real one. Self-service
+  // (isSelfOrAdmin), same reasoning as the academic documents below: once a
+  // staff member has logged in, their own photo is theirs to manage.
+  fastify.post<{ Params: { id: string } }>(
+    "/:id/photo",
+    { preHandler: requireAuth() },
+    async (request, reply) => {
+      if (!isSelfOrAdmin(request, request.params.id)) return reply.status(403).send(fail("forbidden"));
+      const schoolId = schoolOf(request, reply);
+      if (!schoolId) return;
+      const uploaded = await request.file();
+      if (!uploaded) return reply.status(400).send(fail("No file uploaded"));
+      const data = await uploaded.toBuffer();
+      try {
+        const staff = await setStaffPhoto(schoolId, request.params.id, {
+          mimeType: uploaded.mimetype,
+          data,
+        });
+        return staff ? ok(staff) : reply.status(404).send(fail("not_found"));
+      } catch (err) {
+        if (err instanceof UnsupportedFileTypeError) return reply.status(400).send(fail(err.message));
+        throw err;
+      }
+    },
+  );
 
   // Clears back to the default initials avatar.
-  fastify.delete<{ Params: { id: string } }>("/:id/photo", { preHandler: ADMIN }, async (request, reply) => {
-    const schoolId = schoolOf(request, reply);
-    if (!schoolId) return;
-    const staff = await setStaffPhoto(schoolId, request.params.id, null);
-    return staff ? ok(staff) : reply.status(404).send(fail("not_found"));
-  });
+  fastify.delete<{ Params: { id: string } }>(
+    "/:id/photo",
+    { preHandler: requireAuth() },
+    async (request, reply) => {
+      if (!isSelfOrAdmin(request, request.params.id)) return reply.status(403).send(fail("forbidden"));
+      const schoolId = schoolOf(request, reply);
+      if (!schoolId) return;
+      const staff = await setStaffPhoto(schoolId, request.params.id, null);
+      return staff ? ok(staff) : reply.status(404).send(fail("not_found"));
+    },
+  );
 
   // ── Academic documents (self-service — see isSelfOrAdmin) ──────────────
 

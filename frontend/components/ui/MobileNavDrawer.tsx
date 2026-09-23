@@ -16,6 +16,8 @@ export type NavItem = {
   activePrefixes?: string[];
   /** A nested group — the parent row expands/flies out instead of navigating. */
   children?: NavItem[];
+  /** A count badge, e.g. unread messages — omitted (not zero) hides it. */
+  badge?: number;
 };
 
 type MobileNavDrawerProps = {
@@ -37,6 +39,16 @@ const linkClass = (active: boolean) =>
   `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-colors ${
     active ? 'bg-primary-700 text-white' : 'text-text-secondary hover:bg-bg-muted'
   }`;
+
+/** A count pill for a nav item with something pending — shared by the mobile
+ *  drawer and the desktop sidebar (PortalSidebar). */
+export function NavBadge({ count }: { count: number }) {
+  return (
+    <span className="min-w-[18px] h-[18px] px-1 rounded-full bg-[#C26565] text-white text-[10px] font-medium flex items-center justify-center shrink-0">
+      {count > 99 ? '99+' : count}
+    </span>
+  );
+}
 
 /** A parent nav row that expands in place to reveal its children (mobile). */
 function NavGroup({ item, active }: { item: NavItem; active: (i: NavItem) => boolean }) {
@@ -161,9 +173,12 @@ export function MobileNavDrawer({
       return <NavGroup key={item.label} item={item} active={isActive} />;
     }
     return (
-      <Link key={item.href} href={item.href!} className={linkClass(isActive(item))}>
-        <Icon className="w-4.5 h-4.5 shrink-0" />
-        {item.label}
+      <Link key={item.href} href={item.href!} className={`${linkClass(isActive(item))} justify-between`}>
+        <span className="flex items-center gap-3">
+          <Icon className="w-4.5 h-4.5 shrink-0" />
+          {item.label}
+        </span>
+        {!!item.badge && <NavBadge count={item.badge} />}
       </Link>
     );
   };

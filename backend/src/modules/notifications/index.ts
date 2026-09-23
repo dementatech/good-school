@@ -2,6 +2,7 @@ import type { FastifyInstance } from "fastify";
 import { notificationsRoutes } from "./api/routes.js";
 import { createNotification, type CreateNotificationInput } from "./domain/notifications.repository.js";
 import { sendPushToUser } from "./domain/push-sender.js";
+import { pushToUser } from "../realtime/index.js";
 
 export async function registerNotificationsModule(fastify: FastifyInstance) {
   await fastify.register(notificationsRoutes, { prefix: "/api/v1/notifications" });
@@ -13,14 +14,17 @@ export async function registerNotificationsModule(fastify: FastifyInstance) {
  * more event types get wired up (exam results published is the first).
  *
  * Writes the in-app notification row (the source of truth — always visible
- * in the bell/notifications page regardless of push) and best-effort nudges
- * any of the user's subscribed devices via Web Push. Never throws: a
- * notification failing must never break the action that triggered it, so
- * callers can fire this without awaiting or wrapping in their own try/catch.
+ * in the bell/notifications page regardless of push), pushes it instantly to
+ * any tab the user has open right now (see ../realtime), and best-effort
+ * nudges any of the user's subscribed devices via Web Push for when they
+ * don't. Never throws: a notification failing must never break the action
+ * that triggered it, so callers can fire this without awaiting or wrapping
+ * in their own try/catch.
  */
 export async function notifyUser(input: CreateNotificationInput): Promise<void> {
   try {
     const notification = await createNotification(input);
+    pushToUser(input.userId, { type: "notification", notification });
     await sendPushToUser(input.userId, {
       title: notification.title,
       body: notification.body,

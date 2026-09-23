@@ -311,6 +311,13 @@ export async function setOnboardingStatus(
   return rowCount ? getSchool(id) : null;
 }
 
+/** Every signed-in-capable user of a school — used to force-signout everyone
+ *  at once when their school gets suspended. */
+export async function listUserIdsForSchool(schoolId: string): Promise<string[]> {
+  const { rows } = await pool.query<{ id: string }>(`select id from users where school_id = $1`, [schoolId]);
+  return rows.map((r) => r.id);
+}
+
 // Uploads a new logo (replacing and deleting any prior one — via Cloudinary
 // when configured, local disk otherwise, see shared/media.ts) or, given `null`,
 // clears it back to the initials-tile fallback the frontend renders when
