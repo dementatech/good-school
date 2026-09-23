@@ -22,9 +22,11 @@ import {
   CalendarRange,
   ClipboardCheck,
   NotebookPen,
+  GraduationCap,
 } from 'lucide-react';
 import type { Role } from '@/lib/auth/session';
 import { subjectPhasesOf, usesNurseryRatings, useSchoolLevels } from '@/lib/levels';
+import { useDirectorOfStudies } from '@/lib/portal';
 
 // 'teacher' is the role real accounts actually get (see portals.ts); 'staff'
 // is kept in case it's ever assigned, but nothing currently creates one.
@@ -59,9 +61,14 @@ function StaffShell({ children }: { children: React.ReactNode }) {
   const unreadMessages = useUnreadMessageCount();
   // Teachers aren't section-scoped: they can teach in Nursery and Primary alike.
   const levels = useSchoolLevels({ scoped: false });
+  const dos = useDirectorOfStudies();
   const NAV = React.useMemo(
     () =>
-      NAV_BASE.filter(
+      [
+        ...NAV_BASE,
+        // The Director of Studies reaches their own portal from here.
+        ...(dos?.isDos ? [{ href: '/dos', label: 'Director of Studies', short: 'DOS', icon: GraduationCap }] : []),
+      ].filter(
         (item) =>
           (item.href !== '/staff/kindergarten' || usesNurseryRatings(levels)) &&
           // Exam marks only where the school gives marks.
@@ -69,7 +76,7 @@ function StaffShell({ children }: { children: React.ReactNode }) {
       ).map((item) =>
         item.href === '/staff/communications' ? { ...item, badge: unreadMessages } : item,
       ),
-    [unreadMessages, levels],
+    [unreadMessages, levels, dos?.isDos],
   );
 
   return (

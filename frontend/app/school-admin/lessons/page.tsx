@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { usePortalBase } from '@/lib/portal';
 import { useRouter } from 'next/navigation';
 import { BookOpenCheck } from 'lucide-react';
 import { Badge } from '@/components/ui/Badge';
@@ -39,6 +40,7 @@ interface TeacherCompliance {
 export default function SchoolAdminLessonsPage() {
   const toast = useToast();
   const router = useRouter();
+  const base = usePortalBase();
   const [tab, setTab] = useState<Tab>('review');
   const [context, setContext] = useState<TermContext | null>(null);
   const [termId, setTermId] = useState('');
@@ -129,10 +131,10 @@ export default function SchoolAdminLessonsPage() {
         ) : (
           <div className="space-y-4">
             {pendingSchemes.length > 0 && (
-              <SchemeTable title="Schemes of work" rows={pendingSchemes} onOpen={(id) => router.push(`/school-admin/lessons/schemes/${id}`)} />
+              <SchemeTable title="Schemes of work" rows={pendingSchemes} onOpen={(id) => router.push(`${base}/lessons/schemes/${id}`)} />
             )}
             {pendingPlans.length > 0 && (
-              <PlanTable title="Lesson plans" rows={pendingPlans} onOpen={(id) => router.push(`/school-admin/lessons/plans/${id}`)} />
+              <PlanTable title="Lesson plans" rows={pendingPlans} onOpen={(id) => router.push(`${base}/lessons/plans/${id}`)} />
             )}
           </div>
         )
@@ -184,9 +186,9 @@ export default function SchoolAdminLessonsPage() {
           </table>
         </Card>
       ) : tab === 'schemes' ? (
-        <SchemeTable rows={schemes!} onOpen={(id) => router.push(`/school-admin/lessons/schemes/${id}`)} />
+        <SchemeTable rows={schemes!} onOpen={(id) => router.push(`${base}/lessons/schemes/${id}`)} />
       ) : (
-        <PlanTable rows={plans!} onOpen={(id) => router.push(`/school-admin/lessons/plans/${id}`)} />
+        <PlanTable rows={plans!} onOpen={(id) => router.push(`${base}/lessons/plans/${id}`)} />
       )}
     </div>
   );

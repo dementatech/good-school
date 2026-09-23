@@ -52,3 +52,48 @@ export const copyBodySchema = {
   properties: { fromTermId: uuid, toTermId: uuid },
   additionalProperties: false,
 } as const;
+
+export const generateBodySchema = {
+  type: "object",
+  required: ["termId", "section"],
+  properties: {
+    termId: uuid,
+    section,
+    lessonsPerWeek: {
+      type: "object",
+      propertyNames: { format: "uuid" },
+      additionalProperties: { type: "integer", minimum: 0, maximum: 20 },
+    },
+    keepExisting: { type: "boolean" },
+    seed: { type: "integer", minimum: 0, maximum: 2147483647 },
+  },
+  additionalProperties: false,
+} as const;
+
+export const applyGeneratedBodySchema = {
+  type: "object",
+  required: ["termId", "section", "lessons"],
+  properties: {
+    termId: uuid,
+    section,
+    keepExisting: { type: "boolean" },
+    lessons: {
+      type: "array",
+      maxItems: 5000,
+      items: {
+        type: "object",
+        required: ["classId", "streamId", "dayOfWeek", "periodId", "subjectId", "staffId"],
+        properties: {
+          classId: uuid,
+          streamId: nullableUuid,
+          dayOfWeek: { type: "integer", minimum: 1, maximum: 6 },
+          periodId: uuid,
+          subjectId: uuid,
+          staffId: nullableUuid,
+        },
+        additionalProperties: false,
+      },
+    },
+  },
+  additionalProperties: false,
+} as const;

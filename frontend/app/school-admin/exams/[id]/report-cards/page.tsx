@@ -1,13 +1,14 @@
 'use client';
 
 import { Suspense, useEffect, useMemo, useState } from 'react';
+import { usePortalBase } from '@/lib/portal';
 import { useParams, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { useAuth } from '@/components/auth/AuthContext';
 import { Loader } from '@/components/ui/loader';
 import { useToast } from '@/components/ui/ToastProvider';
 import { fetchList, fetchOne } from '@/lib/api/envelope';
-import { ArrowLeft, Download } from 'lucide-react';
+import { ArrowLeft, Download, Printer } from 'lucide-react';
 import type { SchoolLevel, SubjectPhase } from '@/lib/levels';
 
 type SubjectRole = 'principal' | 'subsidiary';
@@ -533,6 +534,7 @@ function StudentReportCardSheet({
 function ReportCardsContent() {
   const { id: examId } = useParams<{ id: string }>();
   const search = useSearchParams();
+  const base = usePortalBase();
   const { user } = useAuth();
   const toast = useToast();
 
@@ -650,11 +652,11 @@ function ReportCardsContent() {
   );
 
   const backHref = useMemo(() => {
-    if (!classIdParam) return '/school-admin/report-card-studio';
+    if (!classIdParam) return `${base}/report-card-studio`;
     const p = new URLSearchParams({ classId: classIdParam });
     if (streamIdParam) p.set('stream', streamIdParam);
-    return `/school-admin/report-card-studio?${p.toString()}`;
-  }, [classIdParam, streamIdParam]);
+    return `${base}/report-card-studio?${p.toString()}`;
+  }, [base, classIdParam, streamIdParam]);
 
   async function downloadPdf() {
     setDownloading(true);
@@ -688,7 +690,18 @@ function ReportCardsContent() {
         <Link href={backHref} className="text-sm text-primary-700 inline-flex items-center gap-1">
           <ArrowLeft className="w-4 h-4" aria-hidden /> Back to Report Card Studio
         </Link>
-        {!loading && sheets.length > 0 && (
+        {!loading && sheets.length > 0 && base === '/dos' && (
+          <button
+            type="button"
+            onClick={() => window.print()}
+            className="h-9 inline-flex items-center gap-1.5 rounded-lg bg-primary-700 px-3.5 text-sm font-semibold text-white hover:bg-primary-800 transition-colors"
+          >
+            <Printer className="w-4 h-4" aria-hidden /> Print
+          </button>
+        )}
+        {/* The server-side PDF renders the admin portal's page, which the DOS's
+            teacher login can't open — in the DOS portal, use the browser's Print. */}
+        {!loading && sheets.length > 0 && base === '/school-admin' && (
           <button
             type="button"
             onClick={() => void downloadPdf()}
