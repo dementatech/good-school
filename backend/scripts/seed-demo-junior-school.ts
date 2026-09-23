@@ -494,6 +494,41 @@ async function main() {
       }
     }
 
+    console.log("9/9 Director of Studies (Paul Kasozi)...");
+    // The academic head's position, as Organisation Studio's leadership
+    // template names it, held by the P7 teacher — so /dos has someone in it.
+    let dosPositionId = (
+      await client.query<{ id: string }>(`select id from position where school_id = $1 and is_academic_root`, [schoolId])
+    ).rows[0]?.id;
+    if (!dosPositionId) {
+      const headTeacherId = await findOrCreate(
+        client,
+        `select id from position where school_id = $1 and title = 'Head Teacher'`,
+        [schoolId],
+        `insert into position (school_id, title, category, parent_position_id, is_unique)
+         values ($1, 'Head Teacher', 'executive', null, true) returning id`,
+        [schoolId],
+      );
+      dosPositionId = await findOrCreate(
+        client,
+        `select id from position where school_id = $1 and title = 'Deputy Head Teacher — Academics / DOS'`,
+        [schoolId],
+        `insert into position (school_id, title, category, parent_position_id, is_unique)
+         values ($1, 'Deputy Head Teacher — Academics / DOS', 'executive', $2, true) returning id`,
+        [schoolId, headTeacherId],
+      );
+      await client.query(`update position set is_academic_root = true where id = $1`, [dosPositionId]);
+    }
+    const dosTeacherId = teacherIds[TEACHER_DEFS.findIndex((t) => t.last === "Kasozi")];
+    await findOrCreate(
+      client,
+      `select id from staff_position where position_id = $1 and academic_year_id = $2 and status = 'active'`,
+      [dosPositionId, academicYearId],
+      `insert into staff_position (staff_id, position_id, academic_year_id, start_date, status)
+       values ($1, $2, $3, '2026-02-01', 'active') returning id`,
+      [dosTeacherId, dosPositionId, academicYearId],
+    );
+
     await client.query("COMMIT");
 
     const { rows: adminRow } = await client.query<{ system_id: string }>(`select system_id from users where id = $1`, [
@@ -503,6 +538,7 @@ async function main() {
     console.log(`  School: ${SCHOOL_NAME} (Kindergarten + Primary)`);
     console.log(`  School admin login: ${ADMIN_EMAIL} or ${adminRow[0].system_id} / ${PASSWORD}`);
     console.log(`  Teachers: firstname.lastname@${EMAIL_DOMAIN} / ${PASSWORD} (e.g. harriet.nabukenya@${EMAIL_DOMAIN} — Baby Class)`);
+    console.log(`  Director of Studies: paul.kasozi@${EMAIL_DOMAIN} / ${PASSWORD} (DOS portal at /dos)`);
     console.log(`  New pupils: ${newPupils}; exam marks inserted: ${resultCount}; assessments inserted: ${assessmentCount}`);
     console.log(`  Timetabled lessons added: ${timetabled}`);
   } catch (err) {

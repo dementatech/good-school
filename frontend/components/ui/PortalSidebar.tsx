@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { createPortal } from 'react-dom';
@@ -87,6 +87,14 @@ function NavLink({
   );
 }
 
+/** Beside the trigger, moved up if a long group would run off the bottom. */
+function flyoutPosition(anchor: HTMLElement, childCount: number): CSSProperties {
+  const rect = anchor.getBoundingClientRect();
+  // Heading plus one 36px row per child, with the panel's padding.
+  const height = 40 + childCount * 36;
+  return { top: Math.max(8, Math.min(rect.top, window.innerHeight - height - 8)), left: rect.right + 8 };
+}
+
 /**
  * A parent nav row holding `children`. Expanded sidebar: a disclosure that
  * toggles an indented child list (open by default when a child is current).
@@ -169,7 +177,7 @@ function NavGroupNode({
           createPortal(
             <div
               className="fixed z-[100] min-w-44 rounded-xl border border-primary-100 bg-white p-1.5 shadow-xl"
-              style={{ top: hoverAnchor.getBoundingClientRect().top, left: hoverAnchor.getBoundingClientRect().right + 8 }}
+              style={flyoutPosition(hoverAnchor, item.children!.length)}
               onMouseEnter={cancelClose}
               onMouseLeave={scheduleClose}
             >

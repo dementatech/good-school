@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
+import { usePortalBase } from '@/lib/portal';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Card } from '@/components/ui/Card';
@@ -18,10 +19,10 @@ import {
 
 const fmt = (d: string) => new Date(d).toLocaleDateString();
 
-function sheetHref(examId: string, slot: ExamCompletionSlot): string {
+function sheetHref(base: string, examId: string, slot: ExamCompletionSlot): string {
   const p = new URLSearchParams({ subject: slot.subjectId, class: slot.classId });
   if (slot.streamId) p.set('stream', slot.streamId);
-  return `/school-admin/exams/${examId}/marksheet?${p.toString()}`;
+  return `${base}/exams/${examId}/marksheet?${p.toString()}`;
 }
 
 function Progress({ slot }: { slot: ExamCompletionSlot }) {
@@ -43,6 +44,7 @@ function Progress({ slot }: { slot: ExamCompletionSlot }) {
 export default function SchoolAdminExamDetailPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
+  const base = usePortalBase();
   const toast = useToast();
   const [data, setData] = useState<ExamCompletion | null>(null);
   const [loading, setLoading] = useState(true);
@@ -76,7 +78,7 @@ export default function SchoolAdminExamDetailPage() {
   if (!data) {
     return (
       <div className="space-y-3">
-        <Link href="/school-admin/exams" className="text-sm text-primary-700 inline-flex items-center gap-1">
+        <Link href={`${base}/exams`} className="text-sm text-primary-700 inline-flex items-center gap-1">
           <ArrowLeft className="w-4 h-4" aria-hidden /> Back to exams
         </Link>
         <p className="text-sm text-text-muted">This exam could not be loaded.</p>
@@ -91,7 +93,7 @@ export default function SchoolAdminExamDetailPage() {
 
   return (
     <div className="space-y-4">
-      <Link href="/school-admin/exams" className="text-sm text-primary-700 inline-flex items-center gap-1">
+      <Link href={`${base}/exams`} className="text-sm text-primary-700 inline-flex items-center gap-1">
         <ArrowLeft className="w-4 h-4" aria-hidden /> Back to exams
       </Link>
 
@@ -160,7 +162,7 @@ export default function SchoolAdminExamDetailPage() {
                   <Button
                     inline
                     variant="outline"
-                    onClick={() => router.push(sheetHref(id, slot))}
+                    onClick={() => router.push(sheetHref(base, id, slot))}
                   >
                     {slot.submitted ? 'View' : 'Enter marks'}
                   </Button>

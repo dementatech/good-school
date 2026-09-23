@@ -12,6 +12,7 @@ import { findStaffPhotoUrl } from "../../teachers/index.js";
 import { UnsupportedFileTypeError } from "../../../shared/media.js";
 import { hashPassword, verifyPassword } from "../domain/password.js";
 import { pool } from "../../../shared/db/index.js";
+import { directorOfStudies } from "../../../shared/dos.js";
 import {
   consumeResetToken,
   createResetToken,
@@ -154,6 +155,14 @@ export async function authRoutes(fastify: FastifyInstance) {
       return reply.status(200).send({ success: true });
     },
   );
+
+  // Whether the signed-in teacher is the school's Director of Studies — the
+  // staff portal shows the DOS portal link, and the DOS portal lets them in.
+  fastify.get("/dos", { preHandler: requireAuth() }, async (request) => {
+    const auth = request.authUser!;
+    const dos = auth.role === "teacher" && auth.school_id ? await directorOfStudies(auth.school_id, auth.user_id) : null;
+    return { isDos: !!dos, positionTitle: dos?.positionTitle ?? null };
+  });
 
   // Clears the auth cookie. The JWT itself is stateless, so "logout" is just
   // dropping the cookie client-side; the frontend calls this on sign-out.

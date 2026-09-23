@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { CalendarRange, Copy } from 'lucide-react';
+import { CalendarRange, Copy, Wand2 } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { Select } from '@/components/ui/Select';
@@ -12,6 +12,7 @@ import { fetchList, fetchOne, submitJson } from '@/lib/api/envelope';
 import { useSchoolSections } from '@/lib/levels';
 import { TimetableGrid } from '@/components/timetable/TimetableGrid';
 import { PeriodsEditor } from '@/components/timetable/PeriodsEditor';
+import { GeneratePanel } from '@/components/timetable/GeneratePanel';
 import { SlotModal, type SubjectOption, type TeacherOption } from '@/components/timetable/SlotModal';
 import type { ClassTimetable, Period, Slot, TermContext } from '@/components/timetable/types';
 
@@ -46,7 +47,7 @@ interface TeacherLoad {
   classes: number;
 }
 
-type Tab = 'classes' | 'day' | 'teachers';
+type Tab = 'classes' | 'generate' | 'day' | 'teachers';
 
 export default function SchoolAdminTimetablePage() {
   const toast = useToast();
@@ -178,6 +179,7 @@ export default function SchoolAdminTimetablePage() {
       <Tabs
         tabs={[
           { key: 'classes', label: 'Class timetables' },
+          { key: 'generate', label: 'Generate' },
           { key: 'day', label: 'School day' },
           { key: 'teachers', label: 'Teachers' },
         ]}
@@ -193,6 +195,19 @@ export default function SchoolAdminTimetablePage() {
         section && <PeriodsEditor section={section} onSaved={() => void loadTimetable()} />
       ) : tab === 'teachers' ? (
         <TeacherLoads termId={termId} />
+      ) : tab === 'generate' ? (
+        section &&
+        termId && (
+          <GeneratePanel
+            key={`${section}-${termId}`}
+            termId={termId}
+            section={section}
+            onApplied={() => {
+              setTab('classes');
+              void loadTimetable();
+            }}
+          />
+        )
       ) : classes.length === 0 ? (
         <Card>
           <p className="text-sm text-text-muted">Open some classes first (Classes &amp; Streams).</p>
@@ -224,8 +239,12 @@ export default function SchoolAdminTimetablePage() {
                 />
               </div>
             )}
-            {otherTerms.length > 0 && timetable && timetable.slots.length === 0 && (
+            {timetable && timetable.slots.length === 0 && (
               <div className="ml-auto flex flex-wrap gap-2">
+                <Button inline onClick={() => setTab('generate')}>
+                  <Wand2 className="w-4 h-4 mr-1.5" aria-hidden />
+                  Generate timetable
+                </Button>
                 {otherTerms.map((t) => (
                   <Button key={t.id} inline variant="outline" onClick={() => void copyFrom(t.id)}>
                     <Copy className="w-4 h-4 mr-1.5" aria-hidden />

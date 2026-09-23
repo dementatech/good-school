@@ -33,44 +33,54 @@ import {
   MessageSquare,
   Baby,
   CalendarRange,
+  Users,
 } from 'lucide-react';
 import type { Role } from '@/lib/auth/session';
 import { subjectPhasesOf, usesNurseryRatings, useSchoolLevels } from '@/lib/levels';
 
 const SCHOOL_ADMIN_ROLES: Role[] = ['school_admin'];
 
+// Grouped so the menu fits: day-to-day academic work under Academics, results
+// under Exams & Reports, people under People. Top-level entries stay for what
+// isn't part of a family (Communication carries its unread badge).
 const NAV_BASE = [
   { href: '/school-admin', label: 'Dashboard', icon: LayoutDashboard, exact: true },
-  { href: '/school-admin/academic-years', label: 'Academic Years', icon: CalendarDays },
-  { href: '/school-admin/classes', label: 'Classes & Streams', icon: Layers },
   {
-    label: 'Curriculum & Subjects',
+    label: 'Academics',
     icon: BookOpen,
     children: [
-      { href: '/school-admin/subjects', label: 'Manage Subjects', icon: BookOpen, exact: true },
-      { href: '/school-admin/subjects/options', label: 'Manage Options', icon: ListChecks },
+      { href: '/school-admin/academic-years', label: 'Academic Years', icon: CalendarDays },
+      { href: '/school-admin/terms', label: 'Terms', icon: CalendarDays },
+      { href: '/school-admin/classes', label: 'Classes & Streams', icon: Layers },
+      { href: '/school-admin/subjects', label: 'Subjects', icon: BookOpen, exact: true },
+      { href: '/school-admin/subjects/options', label: 'Subject Options', icon: ListChecks },
       { href: '/school-admin/subjects/combinations', label: 'Combinations', icon: Combine },
+      { href: '/school-admin/timetable', label: 'Timetable', icon: CalendarRange },
+      { href: '/school-admin/lessons', label: 'Lesson Preparation', icon: NotebookPen },
+      { href: '/school-admin/attendance', label: 'Attendance', icon: ClipboardCheck },
     ],
   },
-  { href: '/school-admin/staff', label: 'Staff', icon: UserCog },
-  { href: '/school-admin/communications', label: 'Communication', icon: MessageSquare },
-  { href: '/school-admin/organisation-studio', label: 'Organisation Studio', icon: Network },
-  { href: '/school-admin/students', label: 'Students', icon: GraduationCap },
-  { href: '/school-admin/kindergarten', label: 'Kindergarten Progress', icon: Baby },
   {
-    label: 'Exams',
+    label: 'Exams & Reports',
     icon: ClipboardList,
     children: [
       { href: '/school-admin/exams', label: 'Manage Exams', icon: ClipboardList, exact: true },
       { href: '/school-admin/report-card-studio', label: 'Report Card Studio', icon: FileBarChart2 },
       { href: '/school-admin/grading-schemes', label: 'Grading Schemes', icon: Award },
+      { href: '/school-admin/kindergarten', label: 'Kindergarten Progress', icon: Baby },
     ],
   },
-  { href: '/school-admin/timetable', label: 'Timetable', icon: CalendarRange },
-  { href: '/school-admin/attendance', label: 'Attendance', icon: ClipboardCheck },
-  { href: '/school-admin/lessons', label: 'Lesson Preparation', icon: NotebookPen },
+  {
+    label: 'People',
+    icon: Users,
+    children: [
+      { href: '/school-admin/students', label: 'Students', icon: GraduationCap },
+      { href: '/school-admin/staff', label: 'Staff', icon: UserCog },
+      { href: '/school-admin/organisation-studio', label: 'Organisation Studio', icon: Network },
+    ],
+  },
+  { href: '/school-admin/communications', label: 'Communication', icon: MessageSquare },
   { href: '/school-admin/events', label: 'Events', icon: CalendarClock },
-  { href: '/school-admin/terms', label: 'Terms', icon: CalendarDays },
   { href: '/school-admin/school', label: 'My School', icon: School },
 ];
 

@@ -219,7 +219,7 @@ export function standardDay(section: SchoolSection): PeriodInput[] {
 
 // ─── Grid ───────────────────────────────────────────────────────────────────
 
-const SELECT_SLOT = `
+export const SELECT_SLOT = `
   select sl.id, sl.term_id, sl.class_id, stage_label(c.school_id, cs.id) as class_name, sl.stream_id, st.name as stream_name,
          sl.day_of_week, sl.period_id, sl.subject_id, sub.name as subject_name,
          sub.short_name as subject_short_name, sl.activity, sl.staff_id,
@@ -233,7 +233,7 @@ const SELECT_SLOT = `
     left join staff tf on tf.user_id = sl.staff_id
 `;
 
-interface SlotRow {
+export interface SlotRow {
   id: string;
   term_id: string;
   class_id: string;
@@ -251,7 +251,7 @@ interface SlotRow {
   room: string | null;
 }
 
-const mapSlot = (r: SlotRow): SlotRecord => ({
+export const mapSlot = (r: SlotRow): SlotRecord => ({
   id: r.id,
   termId: r.term_id,
   classId: r.class_id,

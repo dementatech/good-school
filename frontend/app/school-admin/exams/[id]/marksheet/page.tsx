@@ -1,12 +1,14 @@
 'use client';
 
 import { Suspense } from 'react';
+import { usePortalBase } from '@/lib/portal';
 import { useParams, useSearchParams } from 'next/navigation';
 import { Loader } from '@/components/ui/loader';
 import { MarkSheet } from '@/components/exams/MarkSheet';
 
 function SheetContent() {
   const { id } = useParams<{ id: string }>();
+  const base = usePortalBase();
   const params = useSearchParams();
   const subjectId = params.get('subject') ?? '';
   const classId = params.get('class') ?? '';
@@ -21,7 +23,7 @@ function SheetContent() {
       examId={id}
       slot={{ subjectId, classId, streamId: streamId || null }}
       canReopen
-      backHref={`/school-admin/exams/${id}`}
+      backHref={`${base}/exams/${id}`}
     />
   );
 }

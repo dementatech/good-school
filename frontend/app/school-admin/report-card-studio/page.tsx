@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { usePortalBase } from '@/lib/portal';
 import { useSchoolLevels, type SchoolLevel } from '@/lib/levels';
 import { useRouter } from 'next/navigation';
 import { arc as d3arc, max, pie as d3pie, scaleBand, scaleLinear } from 'd3';
@@ -683,6 +684,7 @@ function SubjectRows({ rows }: { rows: ReportCardStudentSubject[] }) {
 
 export default function ReportCardStudioPage() {
   const router = useRouter();
+  const base = usePortalBase();
   const toast = useToast();
   const [years, setYears] = useState<AcademicYear[]>([]);
   const [yearId, setYearId] = useState('');
@@ -812,11 +814,11 @@ export default function ReportCardStudioPage() {
   function sheetHref(subjectId: string): string {
     const p = new URLSearchParams({ subject: subjectId, class: classId });
     if (streamId) p.set('stream', streamId);
-    return `/school-admin/exams/${examId}/marksheet?${p.toString()}`;
+    return `${base}/exams/${examId}/marksheet?${p.toString()}`;
   }
 
   function openReportCards(params: Record<string, string>) {
-    window.open(`/school-admin/exams/${examId}/report-cards?${new URLSearchParams(params).toString()}`, '_blank');
+    window.open(`${base}/exams/${examId}/report-cards?${new URLSearchParams(params).toString()}`, '_blank');
   }
 
   const selectedStreamName = streams.find((s) => s.id === streamId)?.name;

@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
+import { usePortalBase } from '@/lib/portal';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
@@ -28,6 +29,7 @@ const fmt = (d: string) => new Date(d).toLocaleDateString();
 export default function SchoolAdminExamsPage() {
   const toast = useToast();
   const router = useRouter();
+  const base = usePortalBase();
   const [years, setYears] = useState<AcademicYear[]>([]);
   const [terms, setTerms] = useState<Term[]>([]);
   const [yearId, setYearId] = useState('');
@@ -122,7 +124,7 @@ export default function SchoolAdminExamsPage() {
     {
       label: 'Enter / view marks',
       icon: ClipboardList,
-      onClick: () => router.push(`/school-admin/exams/${e.id}`),
+      onClick: () => router.push(`${base}/exams/${e.id}`),
     },
     { label: 'Edit', icon: Pencil, onClick: () => setModal({ initial: e }) },
     e.status === 'active'
@@ -232,7 +234,7 @@ export default function SchoolAdminExamsPage() {
               columns={columns}
               rowActions={rowActions}
               rowKey={(e) => e.id}
-              onRowClick={(e) => router.push(`/school-admin/exams/${e.id}`)}
+              onRowClick={(e) => router.push(`${base}/exams/${e.id}`)}
               initialSort={{ key: 'window', direction: 'desc' }}
               emptyMessage="No exams for this selection yet."
               exportFileName="exams"

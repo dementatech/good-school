@@ -29,7 +29,19 @@ import {
   type PeriodInput,
   type SlotInput,
 } from "../domain/timetable.repository.js";
-import { copyBodySchema, periodsBodySchema, slotBodySchema } from "./schemas.js";
+import {
+  applyGeneratedTimetable,
+  generateTimetable,
+  type GenerateInput,
+  type GeneratedLesson,
+} from "../domain/generator.js";
+import {
+  applyGeneratedBodySchema,
+  copyBodySchema,
+  generateBodySchema,
+  periodsBodySchema,
+  slotBodySchema,
+} from "./schemas.js";
 
 const ADMIN = requireAuth(["school_admin", "admin"]);
 const ANY_STAFF = requireAuth(["school_admin", "admin", "teacher"]);
@@ -211,6 +223,36 @@ export async function timetableRoutes(fastify: FastifyInstance) {
       return ok({ copied });
     },
   );
+
+  // ── Generator ─────────────────────────────────────────────────────────────
+  // A draft of the section's whole week (nothing saved), then applying it.
+  fastify.post<{ Body: GenerateInput }>(
+    "/generate",
+    { preHandler: ADMIN, schema: { body: generateBodySchema } },
+    async (request, reply) => {
+      const schoolId = schoolOf(request, reply);
+      if (!schoolId) return;
+      try {
+        await assertSection(request, schoolId, request.body.section);
+        return ok(await generateTimetable(schoolId, request.body));
+      } catch (err) {
+        return replyError(err, reply);
+      }
+    },
+  );
+
+  fastify.post<{
+    Body: { termId: string; section: SchoolSection; keepExisting?: boolean; lessons: GeneratedLesson[] };
+  }>("/generate/apply", { preHandler: ADMIN, schema: { body: applyGeneratedBodySchema } }, async (request, reply) => {
+    const schoolId = schoolOf(request, reply);
+    if (!schoolId) return;
+    try {
+      await assertSection(request, schoolId, request.body.section);
+      return ok(await applyGeneratedTimetable(schoolId, request.body, request.authUser!.user_id));
+    } catch (err) {
+      return replyError(err, reply);
+    }
+  });
 
   // ── Teachers ──────────────────────────────────────────────────────────────
   fastify.get<{ Querystring: { termId?: string } }>("/me", { preHandler: ANY_STAFF }, async (request, reply) => {
