@@ -430,7 +430,7 @@ async function resolveSlot(exam: ExamContext, slot: SlotRef): Promise<ResolvedSl
                      'contributionPercent', sv.contribution_percent
                    ) order by sv.code), '[]'::json)
                from subject_variant sv where sv.subject_id = sub.id) as variants,
-            sta.class_id, cs.name as class_name,
+            sta.class_id, stage_label(c.school_id, cs.id) as class_name,
             sta.stream_id, st.name as stream_name
        from subject_teacher_assignment sta
        join subject sub on sub.id = sta.subject_id
@@ -830,7 +830,7 @@ async function slotsForExam(
     submitted: boolean;
   }>(
     `select sta.subject_id, sub.code as subject_code, sub.name as subject_name,
-            sta.class_id, cs.name as class_name,
+            sta.class_id, stage_label(c.school_id, cs.id) as class_name,
             sta.stream_id, st.name as stream_name,
             tf.first_name as teacher_first, tf.last_name as teacher_last,
             (
@@ -880,7 +880,7 @@ async function slotsForExam(
       where sta.school_id = $1 and sta.academic_year_id = $2 and sta.status = 'active'
         and sta.is_lead = true
         and ($4::uuid is null or sta.staff_id = $4::uuid)
-      order by cs.name, st.name nulls first, sub.name`,
+      order by cs.sequence_number, st.name nulls first, sub.name`,
     [exam.schoolId, exam.academicYearId, exam.id, staffId, STREAM_SENTINEL],
   );
 
@@ -1194,7 +1194,7 @@ export async function getExamReportCard(
     stream_id: string | null;
     stream_name: string | null;
   }>(
-    `select c.id, cs.name as class_name, cs.phase as stage_phase, st.id as stream_id, st.name as stream_name
+    `select c.id, stage_label(c.school_id, cs.id) as class_name, cs.phase as stage_phase, st.id as stream_id, st.name as stream_name
        from classes c
        join curriculum_stage cs on cs.id = c.curriculum_stage_id
        left join streams st on st.id = $3

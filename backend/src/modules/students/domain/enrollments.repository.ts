@@ -72,7 +72,7 @@ interface EnrollmentRow {
 
 const SELECT_ENROLLMENT = `
   select se.id, se.student_user_id, se.school_id, se.academic_year_id, ay.year_name as academic_year_name,
-         se.class_id, cs.code as stage_code, cs.name as stage_name, cs.phase as stage_phase,
+         se.class_id, cs.code as stage_code, stage_label(se.school_id, cs.id) as stage_name, cs.phase as stage_phase,
          se.stream_id, st.name as stream_name,
          se.entry_date, se.entry_type, se.exit_date, se.exit_type, se.status,
          se.created_at, se.updated_at

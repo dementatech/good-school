@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/Input';
 import { Badge } from '@/components/ui/Badge';
 import { useToast } from '@/components/ui/ToastProvider';
 import { Loader } from '@/components/ui/loader';
-import { Layers, Plus, Trash2 } from 'lucide-react';
+import { Layers, Pencil, Plus, Trash2 } from 'lucide-react';
 import { fetchList } from '@/lib/api/envelope';
 import { LEVEL_LABEL, SCHOOL_LEVELS, offersLevel, useSchoolLevels, type SchoolLevel } from '@/lib/levels';
 
@@ -32,7 +32,9 @@ interface SchoolClass {
   id: string;
   curriculumStageId: string;
   stageCode: string;
+  /** The school's own name for this level ("Level 1"), else the national one. */
   stageName: string;
+  stageDefaultName: string;
   stagePhase: SchoolLevel;
   hasStreams: boolean;
   classTeacherId: string | null;
@@ -63,6 +65,7 @@ export default function SchoolAdminClassesPage() {
   const [streams, setStreams] = useState<Stream[]>([]);
   const [newStream, setNewStream] = useState<Record<string, { name: string; capacity: string }>>({});
   const [teachers, setTeachers] = useState<Teacher[]>([]);
+  const [renaming, setRenaming] = useState<{ classId: string; name: string } | null>(null);
   const levels = useSchoolLevels();
 
   const currentYear = years.find((y) => y.isCurrent) ?? years[0];
@@ -173,6 +176,24 @@ export default function SchoolAdminClassesPage() {
       await loadStructure();
     } else {
       toast.error(data.error ?? 'Could not update the class teacher.');
+    }
+  }
+
+  // The school's own name for a class level — "Level 1" for Primary 1. It's
+  // per level, so it carries into every academic year. Blank = national name.
+  async function renameClass(cls: SchoolClass, name: string) {
+    const res = await fetch('/api/v1/academic/stage-labels', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ curriculumStageId: cls.curriculumStageId, name: name.trim() || null }),
+    });
+    const data = await res.json();
+    if (data.success) {
+      setRenaming(null);
+      toast.success(name.trim() ? `Renamed to ${name.trim()}.` : `Back to ${cls.stageDefaultName}.`);
+      await loadStructure();
+    } else {
+      toast.error(data.error ?? 'Could not rename the class.');
     }
   }
 
@@ -314,6 +335,8 @@ export default function SchoolAdminClassesPage() {
             </Card>
           )}
 
+          {classes.length > 1 && <BulkStreams classes={classes} onDone={loadStructure} />}
+
           <Card>
             {classes.length === 0 ? (
               <p className="text-sm text-text-muted">No classes opened for this year yet.</p>
@@ -325,11 +348,56 @@ export default function SchoolAdminClassesPage() {
                   return (
                     <div key={cls.id} className="rounded-xl border border-[#EAEAEA] p-3">
                       <div className="flex flex-wrap items-center gap-2 justify-between">
-                        <div className="flex items-center gap-2">
-                          <Layers className="w-4 h-4 text-primary-700" aria-hidden />
-                          <span className="font-medium text-[#12333F]">{cls.stageName}</span>
-                          <Badge variant="muted">{cls.stageCode}</Badge>
-                        </div>
+                        {renaming?.classId === cls.id ? (
+                          <form
+                            className="flex flex-wrap items-center gap-2"
+                            onSubmit={(e) => {
+                              e.preventDefault();
+                              void renameClass(cls, renaming.name);
+                            }}
+                          >
+                            <Layers className="w-4 h-4 text-primary-700" aria-hidden />
+                            <input
+                              autoFocus
+                              // Typing replaces the old name rather than adding to it.
+                              onFocus={(e) => e.target.select()}
+                              value={renaming.name}
+                              onChange={(e) => setRenaming({ classId: cls.id, name: e.target.value })}
+                              placeholder={cls.stageDefaultName}
+                              maxLength={40}
+                              aria-label="Class name"
+                              className="border border-border rounded-lg px-2 py-1 text-sm w-44"
+                            />
+                            <Button inline type="submit">
+                              Save
+                            </Button>
+                            <Button inline type="button" variant="ghost" onClick={() => setRenaming(null)}>
+                              Cancel
+                            </Button>
+                            <span className="text-xs text-text-faint">
+                              Used everywhere, every year. Leave blank for &ldquo;{cls.stageDefaultName}&rdquo;.
+                            </span>
+                          </form>
+                        ) : (
+                          <div className="flex items-center gap-2">
+                            <Layers className="w-4 h-4 text-primary-700" aria-hidden />
+                            <span className="font-medium text-[#12333F]">{cls.stageName}</span>
+                            {cls.stageName !== cls.stageDefaultName ? (
+                              <span className="text-xs text-text-faint">({cls.stageDefaultName})</span>
+                            ) : (
+                              <Badge variant="muted">{cls.stageCode}</Badge>
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => setRenaming({ classId: cls.id, name: cls.stageName })}
+                              title="Rename this class"
+                              aria-label={`Rename ${cls.stageName}`}
+                              className="text-text-faint hover:text-primary-700"
+                            >
+                              <Pencil className="w-3.5 h-3.5" aria-hidden />
+                            </button>
+                          </div>
+                        )}
                         <label className="ml-auto flex items-center gap-2 text-xs text-text-muted">
                           Class teacher
                           <select
@@ -418,5 +486,122 @@ export default function SchoolAdminClassesPage() {
         </>
       )}
     </div>
+  );
+}
+
+/**
+ * The same streams in several classes at once — type "East, West" once, tick
+ * the classes, done. A class that already has a stream of that name keeps it.
+ */
+function BulkStreams({ classes, onDone }: { classes: SchoolClass[]; onDone: () => Promise<void> }) {
+  const toast = useToast();
+  const [names, setNames] = useState('');
+  const [capacity, setCapacity] = useState('');
+  const [picked, setPicked] = useState<Set<string>>(new Set());
+  const [saving, setSaving] = useState(false);
+  const nameList = names
+    .split(/[,\n]/)
+    .map((n) => n.trim())
+    .filter(Boolean);
+  const allPicked = picked.size === classes.length;
+
+  const toggle = (id: string) =>
+    setPicked((p) => {
+      const next = new Set(p);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+
+  async function create() {
+    setSaving(true);
+    const res = await fetch('/api/v1/academic/streams/bulk', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        classIds: [...picked],
+        names: nameList,
+        capacity: capacity ? Number(capacity) : null,
+      }),
+    });
+    const data = await res.json();
+    setSaving(false);
+    if (!data.success) {
+      toast.error(data.error ?? 'Could not add the streams.');
+      return;
+    }
+    const { created, skipped } = data.data as { created: number; skipped: number };
+    toast.success(
+      `Added ${created} stream${created === 1 ? '' : 's'}` +
+        (skipped ? ` (${skipped} already existed)` : '') +
+        '.',
+    );
+    setNames('');
+    setCapacity('');
+    setPicked(new Set());
+    await onDone();
+  }
+
+  return (
+    <Card className="space-y-3">
+      <div>
+        <p className="text-sm font-medium text-primary-900">Add streams to several classes</p>
+        <p className="text-xs text-text-muted">
+          Type the stream names once — separated by commas — and pick the classes that should have them.
+        </p>
+      </div>
+      <div className="flex flex-wrap items-end gap-2">
+        <div className="flex-1 min-w-[14rem]">
+          <Input
+            label="Stream names"
+            placeholder="East, West"
+            value={names}
+            onChange={(e) => setNames(e.target.value)}
+          />
+        </div>
+        <div className="w-28">
+          <Input
+            label="Capacity (each)"
+            type="number"
+            placeholder="45"
+            value={capacity}
+            onChange={(e) => setCapacity(e.target.value)}
+          />
+        </div>
+      </div>
+      <div className="flex flex-wrap gap-x-4 gap-y-2">
+        <label className="flex items-center gap-1.5 text-sm font-medium text-[#12333F]">
+          <input
+            type="checkbox"
+            checked={allPicked}
+            onChange={() => setPicked(allPicked ? new Set() : new Set(classes.map((c) => c.id)))}
+            className="rounded border-[#E5E5E5]"
+          />
+          All classes
+        </label>
+        {classes.map((c) => (
+          <label key={c.id} className="flex items-center gap-1.5 text-sm text-[#12333F]">
+            <input
+              type="checkbox"
+              checked={picked.has(c.id)}
+              onChange={() => toggle(c.id)}
+              className="rounded border-[#E5E5E5]"
+            />
+            {c.stageName}
+          </label>
+        ))}
+      </div>
+      <Button
+        inline
+        onClick={() => void create()}
+        isLoading={saving}
+        disabled={nameList.length === 0 || picked.size === 0}
+      >
+        <Plus className="w-4 h-4 mr-1.5" aria-hidden />
+        {nameList.length && picked.size
+          ? `Add ${nameList.length} stream${nameList.length === 1 ? '' : 's'} to ${picked.size} class${picked.size === 1 ? '' : 'es'}`
+          : 'Add streams'}
+      </Button>
+    </Card>
   );
 }

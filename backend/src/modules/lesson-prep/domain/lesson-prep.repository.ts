@@ -65,7 +65,7 @@ export async function listTeachingAssignments(
     scheme_status: ReviewStatus | null;
   }>(
     `select distinct on (sta.subject_id, sta.class_id)
-            sta.subject_id, sub.name as subject_name, sta.class_id, cs.name as class_name, cs.phase,
+            sta.subject_id, sub.name as subject_name, sta.class_id, stage_label(c.school_id, cs.id) as class_name, cs.phase,
             sw.id as scheme_id, sw.status as scheme_status
        from subject_teacher_assignment sta
        join terms t on t.id = $2 and t.school_id = $1 and t.academic_year_id = sta.academic_year_id
@@ -153,7 +153,7 @@ export interface Scheme extends SchemeSummary {
 }
 
 const SCHEME_SUMMARY_SQL = `
-  select sw.id, sw.term_id, t.name as term_name, sw.class_id, cs.name as class_name, cs.phase,
+  select sw.id, sw.term_id, t.name as term_name, sw.class_id, stage_label(c.school_id, cs.id) as class_name, cs.phase,
          sw.subject_id, sub.name as subject_name, sw.teacher_id,
          trim(tf.first_name || ' ' || tf.last_name) as teacher_name,
          sw.status, sw.submitted_at, sw.reviewed_at, sw.review_comment, sw.reviewed_by,
@@ -219,7 +219,7 @@ export async function listSchemes(
         and ($3::uuid is null or sw.teacher_id = $3::uuid)
         and ($4::text is null or sw.status = $4::text)
         and ($5::text[] is null or cs.phase = any($5::text[]))
-      order by sw.submitted_at desc nulls last, cs.name, sub.name`,
+      order by sw.submitted_at desc nulls last, cs.sequence_number, sub.name`,
     [schoolId, filter.termId ?? null, filter.teacherId ?? null, filter.status ?? null, filter.levels ?? null],
   );
   return rows.map(mapScheme);
@@ -533,7 +533,7 @@ export interface LessonPlan {
 
 const PLAN_SQL = `
   select lp.*, to_char(lp.lesson_date, 'YYYY-MM-DD') as lesson_date_s,
-         cs.name as class_name, cs.phase, st.name as stream_name, sub.name as subject_name,
+         stage_label(c.school_id, cs.id) as class_name, cs.phase, st.name as stream_name, sub.name as subject_name,
          trim(tf.first_name || ' ' || tf.last_name) as teacher_name, w.week_number as scheme_week_number,
          ${reviewerName("lp.reviewed_by")} as reviewed_by_name
     from lesson_plan lp

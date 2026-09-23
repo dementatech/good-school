@@ -131,3 +131,56 @@ export async function deleteStream(schoolId: string, id: string): Promise<boolea
   ]);
   return (result.rowCount ?? 0) > 0;
 }
+
+/**
+ * Creates the same streams ("East", "West") in several classes at once. A
+ * class that already has a stream of that name (any case) keeps it — nothing
+ * is duplicated. Classes that aren't this school's are ignored.
+ */
+export async function createStreamsForClasses(
+  schoolId: string,
+  classIds: string[],
+  names: string[],
+  capacity: number | null,
+  createdBy: string,
+): Promise<{ created: number; skipped: number }> {
+  // Trimmed, blanks dropped, and a name typed twice ("Red", "red") kept once
+  // in the spelling it was first typed.
+  const firstSpelling = new Map<string, string>();
+  for (const n of names.map((x) => x.trim()).filter(Boolean)) {
+    if (!firstSpelling.has(n.toLowerCase())) firstSpelling.set(n.toLowerCase(), n);
+  }
+  const cleanNames = [...firstSpelling.values()];
+  if (cleanNames.length === 0 || classIds.length === 0) return { created: 0, skipped: 0 };
+  const client = await pool.connect();
+  let created = 0;
+  let skipped = 0;
+  try {
+    await client.query("BEGIN");
+    const { rows: classes } = await client.query<{ id: string }>(
+      `select id from classes where school_id = $1 and id = any($2::uuid[])`,
+      [schoolId, classIds],
+    );
+    for (const { id: classId } of classes) {
+      for (const name of cleanNames) {
+        const { rowCount } = await client.query(
+          `insert into streams (school_id, class_id, name, capacity, is_active, created_by)
+           select $1, $2, $3, $4, true, $5
+            where not exists (select 1 from streams where class_id = $2 and lower(name) = lower($3))`,
+          [schoolId, classId, name, capacity, createdBy],
+        );
+        if (rowCount) created++;
+        else skipped++;
+      }
+      // A class with streams is a streamed class.
+      await client.query(`update classes set has_streams = true, updated_at = now() where id = $1`, [classId]);
+    }
+    await client.query("COMMIT");
+  } catch (err) {
+    await client.query("ROLLBACK");
+    throw err;
+  } finally {
+    client.release();
+  }
+  return { created, skipped };
+}

@@ -30,7 +30,7 @@ export async function listChildrenForGuardianUser(userId: string): Promise<Linke
     `select st.user_id as student_user_id, su.system_id,
             trim(concat_ws(' ', st.first_name, st.last_name)) as name,
             sg.role as relationship, sg.is_primary_contact as is_primary,
-            nullif(trim(concat_ws(' - ', cs.name, str.name)), '') as class_name, su.school_id
+            nullif(trim(concat_ws(' - ', stage_label(c.school_id, cs.id), str.name)), '') as class_name, su.school_id
        from guardian g
        join student_guardian sg on sg.guardian_id = g.id
        join students st on st.user_id = sg.student_user_id

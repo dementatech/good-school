@@ -220,7 +220,7 @@ export function standardDay(section: SchoolSection): PeriodInput[] {
 // ─── Grid ───────────────────────────────────────────────────────────────────
 
 const SELECT_SLOT = `
-  select sl.id, sl.term_id, sl.class_id, cs.name as class_name, sl.stream_id, st.name as stream_name,
+  select sl.id, sl.term_id, sl.class_id, stage_label(c.school_id, cs.id) as class_name, sl.stream_id, st.name as stream_name,
          sl.day_of_week, sl.period_id, sl.subject_id, sub.name as subject_name,
          sub.short_name as subject_short_name, sl.activity, sl.staff_id,
          nullif(trim(coalesce(tf.first_name, '') || ' ' || coalesce(tf.last_name, '')), '') as teacher_name,
@@ -286,7 +286,7 @@ export async function loadClass(schoolId: string, classId: string): Promise<Clas
     phase: SchoolLevel;
     has_streams: boolean;
   }>(
-    `select c.id, cs.name, c.academic_year_id, cs.phase, c.has_streams
+    `select c.id, stage_label(c.school_id, cs.id) as name, c.academic_year_id, cs.phase, c.has_streams
        from classes c join curriculum_stage cs on cs.id = c.curriculum_stage_id
       where c.id = $1 and c.school_id = $2`,
     [classId, schoolId],
@@ -458,7 +458,7 @@ export async function setSlot(schoolId: string, input: SlotInput, actorId: strin
 
     if (staffId) {
       const teacherClash = await client.query<{ where_: string }>(
-        `select cs.name || coalesce(' ' || st.name, '') || ' — ' || coalesce(sub.name, sl.activity) as where_
+        `select stage_label(c.school_id, cs.id) || coalesce(' ' || st.name, '') || ' — ' || coalesce(sub.name, sl.activity) as where_
            from timetable_slot sl
            join classes c on c.id = sl.class_id
            join curriculum_stage cs on cs.id = c.curriculum_stage_id

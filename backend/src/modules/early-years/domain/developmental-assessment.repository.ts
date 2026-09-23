@@ -117,7 +117,7 @@ export async function listKindergartenClasses(
     streams: { id: string; name: string }[];
     pupil_count: string;
   }>(
-    `select c.id, cs.name, cs.code as stage_code, c.academic_year_id,
+    `select c.id, stage_label(c.school_id, cs.id) as name, cs.code as stage_code, c.academic_year_id,
             coalesce((select json_agg(json_build_object('id', st.id, 'name', st.name) order by st.name)
                         from streams st where st.class_id = c.id and st.is_active), '[]'::json) as streams,
             (select count(*) from student_enrollment en
@@ -173,7 +173,7 @@ async function loadClass(schoolId: string, classId: string, actor: AssessmentAct
     teacher_last: string | null;
     actor_teaches: boolean;
   }>(
-    `select c.id, cs.name, c.academic_year_id, tf.first_name as teacher_first, tf.last_name as teacher_last,
+    `select c.id, stage_label(c.school_id, cs.id) as name, c.academic_year_id, tf.first_name as teacher_first, tf.last_name as teacher_last,
             ${TEACHES_CLASS_SQL.replaceAll("$TEACHER", "$3")} as actor_teaches
        from classes c
        join curriculum_stage cs on cs.id = c.curriculum_stage_id

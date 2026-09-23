@@ -79,7 +79,7 @@ async function currentYearClassRefs(schoolId: string): Promise<{
   if (year.rowCount === 0) return { yearName: null, classes: [] };
 
   const rows = await pool.query<{ name: string; code: string; stream: string | null }>(
-    `select cs.name, cs.code, st.name as stream
+    `select stage_label(c.school_id, cs.id) as name, cs.code, st.name as stream
        from classes c
        join curriculum_stage cs on cs.id = c.curriculum_stage_id
        left join streams st on st.class_id = c.id and st.is_active
@@ -297,7 +297,7 @@ async function resolveClass(
        from classes c
        join curriculum_stage cs on cs.id = c.curriculum_stage_id
       where c.school_id = $1 and c.academic_year_id = $2 and c.is_active
-        and (lower(cs.name) = lower($3) or lower(cs.code) = lower($3))
+        and (lower(stage_label(c.school_id, cs.id)) = lower($3) or lower(cs.name) = lower($3) or lower(cs.code) = lower($3))
       limit 1`,
     [schoolId, academicYearId, className],
   );

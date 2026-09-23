@@ -72,7 +72,7 @@ export async function listRegisterClasses(
     late: string;
     excused: string;
   }>(
-    `select c.id as class_id, cs.name as class_name, cs.phase,
+    `select c.id as class_id, stage_label(c.school_id, cs.id) as class_name, cs.phase,
             nullif(trim(coalesce(tf.first_name, '') || ' ' || coalesce(tf.last_name, '')), '') as class_teacher_name,
             count(distinct en.student_user_id)::text as pupils,
             count(ar.id)::text as marked,
@@ -90,7 +90,7 @@ export async function listRegisterClasses(
       where c.school_id = $1 and c.is_active
         and ($3::text[] is null or cs.phase = any($3::text[]))
         ${teacherClause}
-      group by c.id, cs.name, cs.phase, cs.sequence_number, tf.first_name, tf.last_name
+      group by c.id, cs.id, cs.phase, cs.sequence_number, tf.first_name, tf.last_name
       order by cs.sequence_number`,
     params,
   );
@@ -124,7 +124,7 @@ async function loadClass(schoolId: string, classId: string, actor: AttendanceAct
     academic_year_id: string;
     actor_teaches: boolean;
   }>(
-    `select c.id, cs.name, cs.phase, c.academic_year_id, ${TEACHES_SQL.replaceAll("$T", "$3")} as actor_teaches
+    `select c.id, stage_label(c.school_id, cs.id) as name, cs.phase, c.academic_year_id, ${TEACHES_SQL.replaceAll("$T", "$3")} as actor_teaches
        from classes c join curriculum_stage cs on cs.id = c.curriculum_stage_id
       where c.id = $1 and c.school_id = $2`,
     [classId, schoolId, actor.userId],
@@ -328,7 +328,7 @@ export async function attendanceSummary(
       late: string;
       excused: string;
     }>(
-      `select c.id as class_id, cs.name as class_name,
+      `select c.id as class_id, stage_label(c.school_id, cs.id) as class_name,
               count(distinct ar.attendance_date)::text as days,
               count(*) filter (where ar.status = 'present')::text as present,
               count(*) filter (where ar.status = 'absent')::text as absent,
@@ -339,12 +339,12 @@ export async function attendanceSummary(
          join curriculum_stage cs on cs.id = c.curriculum_stage_id
          left join attendance_record ar on ar.class_id = c.id and ar.attendance_date between $2 and $3
         where c.school_id = $1 and ($4::text[] is null or cs.phase = any($4::text[]))
-        group by c.id, cs.name, cs.sequence_number
+        group by c.id, cs.id, cs.sequence_number
         order by cs.sequence_number`,
       [schoolId, from, to, levels],
     ),
     pool.query<{ student_user_id: string; name: string; class_name: string; absences: string }>(
-      `select ar.student_user_id, trim(s.first_name || ' ' || s.last_name) as name, cs.name as class_name,
+      `select ar.student_user_id, trim(s.first_name || ' ' || s.last_name) as name, stage_label(c.school_id, cs.id) as class_name,
               count(*)::text as absences
          from attendance_record ar
          join students s on s.user_id = ar.student_user_id
@@ -352,7 +352,7 @@ export async function attendanceSummary(
          join curriculum_stage cs on cs.id = c.curriculum_stage_id
         where ar.school_id = $1 and ar.status = 'absent' and ar.attendance_date between $2 and $3
           and ($4::text[] is null or cs.phase = any($4::text[]))
-        group by ar.student_user_id, s.first_name, s.last_name, cs.name
+        group by ar.student_user_id, s.first_name, s.last_name, c.school_id, cs.id
         order by count(*) desc
         limit 10`,
       [schoolId, from, to, levels],
