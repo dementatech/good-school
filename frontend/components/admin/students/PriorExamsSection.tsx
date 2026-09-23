@@ -10,12 +10,13 @@ import { fetchList, submitJson } from '@/lib/api/envelope';
 import { Pencil, Plus, Trash2 } from 'lucide-react';
 import {
   PLE_DIVISIONS,
-  PRIOR_EXAM_TYPES,
   PRIOR_EXAM_TYPE_LABEL,
   UCE_RESULTS,
+  priorExamTypesFor,
   type PriorExam,
   type PriorExamType,
 } from './types';
+import type { SchoolLevel } from '@/lib/levels';
 
 interface FormState {
   id: string | null;
@@ -49,7 +50,15 @@ function toForm(exam: PriorExam): FormState {
   };
 }
 
-export function PriorExamsSection({ studentUserId }: { studentUserId: string }) {
+/** PLE/UCE results — only for a secondary student (see priorExamTypesFor);
+ * a Nursery or Primary pupil has no such thing, so the section isn't there. */
+export function PriorExamsSection({ studentUserId, phase }: { studentUserId: string; phase: SchoolLevel | null }) {
+  const examTypes = priorExamTypesFor(phase);
+  if (examTypes.length === 0) return null;
+  return <PriorExams studentUserId={studentUserId} examTypes={examTypes} />;
+}
+
+function PriorExams({ studentUserId, examTypes }: { studentUserId: string; examTypes: PriorExamType[] }) {
   const toast = useToast();
   const [exams, setExams] = useState<PriorExam[] | null>(null);
   const [form, setForm] = useState<FormState | null>(null);
@@ -110,7 +119,7 @@ export function PriorExamsSection({ studentUserId }: { studentUserId: string }) 
       <div className="flex items-center justify-between mb-2">
         <h3 className="text-xs font-bold uppercase tracking-widest text-text-faint">Prior exams</h3>
         {!form && (
-          <Button type="button" variant="outline" inline onClick={() => setForm(blankForm)}>
+          <Button type="button" variant="outline" inline onClick={() => setForm({ ...blankForm, examType: examTypes[0] })}>
             <Plus className="w-3.5 h-3.5 mr-1" aria-hidden />
             Add result
           </Button>
@@ -120,7 +129,7 @@ export function PriorExamsSection({ studentUserId }: { studentUserId: string }) 
       {exams === null ? (
         <p className="text-sm text-text-faint">Loading…</p>
       ) : exams.length === 0 && !form ? (
-        <p className="text-sm text-text-faint">No PLE/UCE results on file.</p>
+        <p className="text-sm text-text-faint">No {examTypes.join(' or ')} results on file.</p>
       ) : (
         <div className="space-y-2">
           {exams.map((exam) => (
@@ -160,7 +169,7 @@ export function PriorExamsSection({ studentUserId }: { studentUserId: string }) 
               label="Exam"
               value={form.examType}
               onChange={(e) => setForm({ ...form, examType: e.target.value as PriorExamType, divisionOrResult: '' })}
-              options={PRIOR_EXAM_TYPES.map((t) => ({ value: t, label: PRIOR_EXAM_TYPE_LABEL[t] }))}
+              options={examTypes.map((t) => ({ value: t, label: PRIOR_EXAM_TYPE_LABEL[t] }))}
             />
             <Input label="Exam year" type="number" value={form.examYear} onChange={(e) => setForm({ ...form, examYear: e.target.value })} required />
           </div>

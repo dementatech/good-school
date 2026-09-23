@@ -8,8 +8,10 @@ import {
   CompulsorySubjectError,
   DuplicatePaymentCodeError,
   DuplicatePriorExamError,
+  InvalidEntryTypeError,
   InvalidGuardianInputError,
   InvalidSubsidiaryError,
+  PriorExamNotApplicableError,
   SubjectNotOfferedError,
   UnknownCombinationReferenceError,
   UnknownReferenceError,
@@ -126,6 +128,8 @@ export async function studentsRoutes(fastify: FastifyInstance) {
       } catch (err) {
         if (
           err instanceof UnknownReferenceError ||
+          err instanceof InvalidEntryTypeError ||
+          err instanceof PriorExamNotApplicableError ||
           err instanceof InvalidGuardianInputError ||
           err instanceof SubjectNotOfferedError ||
           err instanceof UnknownCombinationReferenceError ||
@@ -271,7 +275,9 @@ export async function studentsRoutes(fastify: FastifyInstance) {
         return reply.status(201).send(ok(enrollment));
       } catch (err) {
         await client.query("ROLLBACK");
-        if (err instanceof UnknownReferenceError) return reply.status(400).send(fail(err.message));
+        if (err instanceof UnknownReferenceError || err instanceof InvalidEntryTypeError) {
+          return reply.status(400).send(fail(err.message));
+        }
         if (err instanceof ActiveEnrollmentExistsError) {
           return reply.status(409).send(fail(err.message));
         }
@@ -360,7 +366,11 @@ export async function studentsRoutes(fastify: FastifyInstance) {
   fastify.get<{ Params: { id: string } }>(
     "/:id/prior-exams",
     { preHandler: ADMIN },
-    async (request) => ok(await listPriorExams(request.params.id)),
+    async (request, reply) => {
+      const schoolId = schoolOf(request, reply);
+      if (!schoolId) return;
+      return ok(await listPriorExams(schoolId, request.params.id));
+    },
   );
 
   fastify.post<{ Params: { id: string }; Body: PriorExamInput }>(
@@ -386,6 +396,7 @@ export async function studentsRoutes(fastify: FastifyInstance) {
         if (err instanceof DuplicatePriorExamError) {
           return reply.status(409).send(fail(err.message));
         }
+        if (err instanceof PriorExamNotApplicableError) return reply.status(400).send(fail(err.message));
         throw err;
       } finally {
         client.release();
@@ -412,6 +423,7 @@ export async function studentsRoutes(fastify: FastifyInstance) {
         if (err instanceof DuplicatePriorExamError) {
           return reply.status(409).send(fail(err.message));
         }
+        if (err instanceof PriorExamNotApplicableError) return reply.status(400).send(fail(err.message));
         throw err;
       }
     },

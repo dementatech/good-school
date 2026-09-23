@@ -11,7 +11,7 @@ import { fetchList, submitJson } from '@/lib/api/envelope';
 import { Camera, Trash2, X } from 'lucide-react';
 import {
   ENTRY_TYPE_LABEL,
-  ENTRY_TYPES,
+  entryTypesFor,
   EXIT_TYPE_LABEL,
   EXIT_TYPES,
   GUARDIAN_ROLES,
@@ -372,13 +372,17 @@ function NewEnrollmentForm({ student, onDone }: { student: Student; onDone: () =
     <form onSubmit={submit} className="space-y-3 rounded-xl border border-border p-3">
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <Select label="Academic year" value={academicYearId} onChange={(e) => setAcademicYearId(e.target.value)} options={years.map((y) => ({ value: y.id, label: y.yearName }))} />
-        <Select label="Entry type" value={entryType} onChange={(e) => setEntryType(e.target.value as EntryType)} options={ENTRY_TYPES.map((t) => ({ value: t, label: ENTRY_TYPE_LABEL[t] }))} />
+        <Select label="Entry type" value={entryType} onChange={(e) => setEntryType(e.target.value as EntryType)} options={entryTypesFor(selectedClass?.stageCode).map((t) => ({ value: t, label: ENTRY_TYPE_LABEL[t] }))} />
       </div>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <Select
           label="Class"
           value={classId}
-          onChange={(e) => setClassId(e.target.value)}
+          onChange={(e) => {
+            setClassId(e.target.value);
+            const code = classes.find((c) => c.id === e.target.value)?.stageCode;
+            if (!entryTypesFor(code).includes(entryType)) setEntryType('repeat');
+          }}
           options={[{ value: '', label: 'Select a class…' }, ...classes.map((c) => ({ value: c.id, label: c.stageName }))]}
         />
         {selectedClass?.hasStreams && (
@@ -558,7 +562,7 @@ export function StudentDetailModal({
           )}
         </section>
 
-        <PriorExamsSection studentUserId={student.userId} />
+        <PriorExamsSection studentUserId={student.userId} phase={student.activeEnrollment?.stagePhase ?? null} />
 
         <section>
           <h3 className="text-xs font-bold uppercase tracking-widest text-text-faint mb-2">
