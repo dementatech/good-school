@@ -14,7 +14,7 @@ import { PortalSidebar } from '@/components/ui/PortalSidebar';
 import { useUnreadMessageCount } from '@/lib/communications/useUnreadMessageCount';
 import { LayoutDashboard, FileText, UserCircle, ClipboardList, MessageSquare, Baby } from 'lucide-react';
 import type { Role } from '@/lib/auth/session';
-import { useSchoolLevels } from '@/lib/levels';
+import { subjectPhasesOf, usesNurseryRatings, useSchoolLevels } from '@/lib/levels';
 
 // 'teacher' is the role real accounts actually get (see portals.ts); 'staff'
 // is kept in case it's ever assigned, but nothing currently creates one.
@@ -50,10 +50,9 @@ function StaffShell({ children }: { children: React.ReactNode }) {
     () =>
       NAV_BASE.filter(
         (item) =>
-          (item.href !== '/staff/kindergarten' || levels?.offersKindergarten) &&
-          // Exam marks only exist at levels with subjects — not in a Nursery-only school.
-          (item.href !== '/staff/exam-marks' ||
-            (levels && (levels.offersPrimary || levels.offersOLevel || levels.offersALevel))),
+          (item.href !== '/staff/kindergarten' || usesNurseryRatings(levels)) &&
+          // Exam marks only where the school gives marks.
+          (item.href !== '/staff/exam-marks' || subjectPhasesOf(levels).length > 0),
       ).map((item) =>
         item.href === '/staff/communications' ? { ...item, badge: unreadMessages } : item,
       ),

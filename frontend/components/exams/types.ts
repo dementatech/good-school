@@ -39,7 +39,15 @@ export interface MarkSheet {
     marksEntryOpen: boolean;
     publishedAt: string | null;
   };
-  subject: { id: string; code: string; name: string; hasVariant: boolean; variants: SubjectVariantSummary[] };
+  subject: {
+    id: string;
+    code: string;
+    name: string;
+    hasVariant: boolean;
+    variants: SubjectVariantSummary[];
+    /** Marks are entered out of this (100, 50, ...) — the school's choice per subject. */
+    maxMark: number;
+  };
   class: { id: string; name: string };
   stream: { id: string; name: string } | null;
   submitted: boolean;

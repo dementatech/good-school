@@ -22,7 +22,9 @@ import {
   PHASE_LABEL,
   PRIMARY_CATEGORIES,
 } from '@/components/admin/curriculum/types';
-import { SUBJECT_PHASES, offersLevel, useSchoolLevels } from '@/lib/levels';
+import { subjectPhasesOf, useSchoolLevels } from '@/lib/levels';
+import { NurseryAssessmentCard } from '@/components/admin/subjects/NurseryAssessmentCard';
+import { SchoolSubjectModal } from '@/components/admin/subjects/SchoolSubjectModal';
 import {
   CATEGORY_LABEL,
   STATUS_LABEL,
@@ -39,6 +41,7 @@ import {
 // a school can freely propose a Science, Art, or ordinary Subsidiary subject.
 // See backend routes.ts POST /subjects.
 const PROPOSABLE_CATEGORIES: Record<Phase, typeof O_LEVEL_CATEGORIES> = {
+  KINDERGARTEN: [],
   PRIMARY: PRIMARY_CATEGORIES.filter((c) => c !== 'core'),
   O_LEVEL: O_LEVEL_CATEGORIES.filter((c) => c !== 'core'),
   A_LEVEL: A_LEVEL_CATEGORIES,
@@ -55,6 +58,11 @@ interface OfferingRow {
   phase: Phase;
   isOffered: boolean;
   isCompulsory: boolean;
+  /** Marked out of (100, 50, ...) — per school, per year. */
+  maxMark: number;
+  /** The school's own subject: it can rename or delete it. */
+  schoolOwned: boolean;
+  shortName: string;
 }
 
 export default function SchoolAdminSubjectsPage() {
@@ -75,9 +83,13 @@ export default function SchoolAdminSubjectsPage() {
     subjectPhase: Phase;
   } | null>(null);
   const [proposeModal, setProposeModal] = useState<{ phase: Phase } | null>(null);
+  const [schoolSubjectModal, setSchoolSubjectModal] = useState<{
+    phase: Phase;
+    subject?: { id: string; name: string; shortName: string };
+  } | null>(null);
   const levels = useSchoolLevels();
-  // Only this school's own levels — nothing at all until they're known.
-  const phasesShown = SUBJECT_PHASES.filter((p) => levels && offersLevel(levels, p));
+  // Only this school's own levels that have subjects — nothing until known.
+  const phasesShown = subjectPhasesOf(levels);
   const showsALevel = phasesShown.includes('A_LEVEL');
 
   const currentYear = years.find((y) => y.isCurrent) ?? years[0];
@@ -127,14 +139,26 @@ export default function SchoolAdminSubjectsPage() {
     return () => controller.abort();
   }, [load]);
 
-  async function setOffering(subjectId: string, isOffered: boolean, isCompulsory: boolean) {
+  async function setOffering(subjectId: string, isOffered: boolean, isCompulsory: boolean, maxMark?: number) {
     const res = await submitJson(`/api/v1/academic/subject-offerings?academicYearId=${effectiveYearId}`, 'POST', {
       subjectId,
       isOffered,
       isCompulsory,
+      ...(maxMark !== undefined ? { maxMark } : {}),
     });
     if (res.ok) await load();
     else toast.error(res.error!);
+  }
+
+  async function deleteSchoolSubject(r: OfferingRow) {
+    if (!confirm(`Delete ${r.name}? This can't be undone.`)) return;
+    const res = await submitJson(`/api/v1/academic/school-subjects/${r.subjectId}`, 'DELETE');
+    if (res.ok) {
+      toast.success(`${r.name} deleted.`);
+      await Promise.all([loadSubjects(curriculumId), load()]);
+    } else {
+      toast.error(res.error!);
+    }
   }
 
   async function removeCombination(combo: SchoolCombination) {
@@ -149,6 +173,9 @@ export default function SchoolAdminSubjectsPage() {
   }
 
   const offeringByCode = new Map(offerings.map((o) => [o.subjectId, o]));
+  // Only gaps in the section being worked in (the gaps list is school-wide).
+  const sectionSubjectIds = new Set(offerings.map((o) => o.subjectId));
+  const sectionGaps = gaps.filter((g) => sectionSubjectIds.has(g.subjectId));
 
   function subjectRows(phase: Phase): OfferingRow[] {
     return catalogSubjects
@@ -163,6 +190,9 @@ export default function SchoolAdminSubjectsPage() {
           phase: s.phase,
           isOffered: o?.isOffered ?? false,
           isCompulsory: o?.isCompulsory ?? false,
+          maxMark: o?.maxMark ?? 100,
+          schoolOwned: !!s.schoolId,
+          shortName: s.shortName,
         };
       });
   }
@@ -176,6 +206,7 @@ export default function SchoolAdminSubjectsPage() {
         <span className="flex items-center gap-1.5">
           <span className="font-medium">{r.name}</span>
           <Badge variant="muted">{r.code}</Badge>
+          {r.schoolOwned && r.phase !== 'KINDERGARTEN' && <Badge variant="accent">School&apos;s own</Badge>}
         </span>
       ),
     },
@@ -213,6 +244,36 @@ export default function SchoolAdminSubjectsPage() {
           className="rounded border-[#E5E5E5] disabled:opacity-40"
         />
       ),
+    },
+    {
+      // Some schools mark a subject out of 50, others out of 100 — marks are
+      // entered as given; grades and averages use the percentage.
+      key: 'maxMark',
+      header: 'Out of',
+      value: (r) => r.maxMark,
+      align: 'right',
+      render: (r) =>
+        r.isOffered ? (
+          <input
+            key={`${r.subjectId}-${r.maxMark}`}
+            type="number"
+            min={1}
+            max={999}
+            defaultValue={r.maxMark}
+            aria-label={`${r.name} marked out of`}
+            onBlur={(e) => {
+              const v = Number(e.target.value);
+              if (v !== r.maxMark && Number.isInteger(v) && v >= 1 && v <= 999) {
+                void setOffering(r.subjectId, r.isOffered, r.isCompulsory, v);
+              } else {
+                e.target.value = String(r.maxMark);
+              }
+            }}
+            className="w-16 border border-border rounded-lg px-2 py-1 text-sm text-right tabular-nums"
+          />
+        ) : (
+          <span className="text-text-faint">—</span>
+        ),
     },
     {
       // docs/design/teachers-module.md §4 — allocate right on this screen,
@@ -294,8 +355,8 @@ export default function SchoolAdminSubjectsPage() {
             {showsALevel ? 'Subjects & Combinations' : 'Subjects'}
           </h1>
           <p className="text-sm text-text-muted">
-            Pick which subjects{showsALevel ? ' and A-Level combinations' : ''} your school runs — the
-            catalog itself is set platform-wide.
+            Pick which subjects{showsALevel ? ' and A-Level combinations' : ''} your school runs and what
+            each is marked out of.
           </p>
         </div>
         {years.length > 1 && (
@@ -314,20 +375,33 @@ export default function SchoolAdminSubjectsPage() {
         <p className="text-sm text-text-muted">Set up an academic year first.</p>
       ) : (
         <>
-          {gaps.length > 0 && (
+          {sectionGaps.length > 0 && (
             <div className="flex items-start gap-2.5 rounded-xl border border-accent-light bg-accent-lighter p-3 text-sm text-accent-dark">
               <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" aria-hidden />
               <span>
-                <strong>{gaps.length}</strong> subject{gaps.length > 1 ? 's' : ''} offered here with nobody
-                assigned to teach {gaps.length > 1 ? 'them' : 'it'} yet: {gaps.map((g) => g.subjectName).join(', ')}.
+                <strong>{sectionGaps.length}</strong> subject{sectionGaps.length > 1 ? 's' : ''} offered here with nobody
+                assigned to teach {sectionGaps.length > 1 ? 'them' : 'it'} yet: {sectionGaps.map((g) => g.subjectName).join(', ')}.
                 Click <em>Unassigned</em> in the Teacher column below to fix it.
               </span>
             </div>
           )}
 
+          {levels?.offersKindergarten && (
+            <NurseryAssessmentCard
+              current={levels.nurseryAssessment}
+              showPositions={levels.showPositions.KINDERGARTEN ?? false}
+            />
+          )}
+
           {phasesShown.map((phase) => (
             <div key={phase} className="space-y-2">
               <h2 className="text-sm font-bold text-primary-900">{PHASE_LABEL[phase]} subjects</h2>
+              {phase === 'KINDERGARTEN' && (
+                <p className="text-xs text-text-muted">
+                  Your Nursery subjects are your school&apos;s own — add, rename or remove them freely, and set what
+                  each is marked out of.
+                </p>
+              )}
               {phase === 'PRIMARY' && (
                 <p className="text-xs text-text-muted">
                   English, Mathematics, Integrated Science and Social Studies are examined at PLE and make up
@@ -336,26 +410,68 @@ export default function SchoolAdminSubjectsPage() {
               )}
               <DataTable
                 rows={subjectRows(phase)}
-                columns={subjectColumns}
+                columns={
+                  phase === 'KINDERGARTEN'
+                    ? subjectColumns.filter((c) => c.key !== 'category' && c.key !== 'isCompulsory')
+                    : subjectColumns
+                }
                 rowKey={(r) => r.subjectId}
+                rowActions={(r) =>
+                  r.schoolOwned
+                    ? [
+                        {
+                          label: 'Rename',
+                          icon: Pencil,
+                          onClick: () =>
+                            setSchoolSubjectModal({
+                              phase,
+                              subject: { id: r.subjectId, name: r.name, shortName: r.shortName },
+                            }),
+                        },
+                        {
+                          label: 'Delete',
+                          icon: Trash2,
+                          danger: true,
+                          separatorBefore: true,
+                          onClick: () => void deleteSchoolSubject(r),
+                        },
+                      ]
+                    : []
+                }
                 initialSort={{ key: 'name', direction: 'asc' }}
                 searchPlaceholder="Search subjects…"
-                emptyMessage={`No ${PHASE_LABEL[phase]} subjects in the catalog yet — a super-admin sets those up.`}
+                emptyMessage={
+                  phase === 'KINDERGARTEN'
+                    ? 'No Nursery subjects yet — add your first one.'
+                    : `No ${PHASE_LABEL[phase]} subjects in the catalog yet — a super-admin sets those up.`
+                }
                 exportFileName={`${phase.toLowerCase().replace('_', '-')}-subjects`}
                 actions={
-                  <Button variant="outline" onClick={() => setProposeModal({ phase })} disabled={!curriculumId}>
-                    <Plus className="w-4 h-4 mr-1.5" aria-hidden />
-                    Propose a subject
-                  </Button>
+                  <div className="flex flex-wrap gap-2">
+                    <Button
+                      inline
+                      variant={phase === 'KINDERGARTEN' ? 'primary' : 'outline'}
+                      onClick={() => setSchoolSubjectModal({ phase })}
+                      disabled={!curriculumId || !effectiveYearId}
+                    >
+                      <Plus className="w-4 h-4 mr-1.5" aria-hidden />
+                      {phase === 'KINDERGARTEN' ? 'Add subject' : 'Add school subject'}
+                    </Button>
+                    {phase !== 'KINDERGARTEN' && (
+                      <Button inline variant="outline" onClick={() => setProposeModal({ phase })} disabled={!curriculumId}>
+                        Propose an exam subject
+                      </Button>
+                    )}
+                  </div>
                 }
               />
             </div>
           ))}
 
-          {levels?.offersKindergarten && (
+          {levels?.offersKindergarten && levels.nurseryAssessment !== 'marks' && (
             <p className="rounded-xl border border-border bg-bg-card p-3 text-sm text-text-muted">
-              Kindergarten (Baby, Middle and Top Class) is taught through learning areas rather than subjects —
-              manage them under <strong>Kindergarten Progress</strong>.
+              The Nursery progress ratings (Emerging / Developing / Proficient) are rated against learning
+              areas — manage them under <strong>Kindergarten Progress</strong>.
             </p>
           )}
 
@@ -444,6 +560,17 @@ export default function SchoolAdminSubjectsPage() {
           stages={stages.filter((s) => s.phase === proposeModal.phase)}
           categories={PROPOSABLE_CATEGORIES[proposeModal.phase]}
           isProposal
+        />
+      )}
+
+      {schoolSubjectModal && effectiveYearId && (
+        <SchoolSubjectModal
+          open
+          onClose={() => setSchoolSubjectModal(null)}
+          onSaved={() => Promise.all([loadSubjects(curriculumId), load()]).then(() => undefined)}
+          phase={schoolSubjectModal.phase}
+          academicYearId={effectiveYearId}
+          subject={schoolSubjectModal.subject}
         />
       )}
 

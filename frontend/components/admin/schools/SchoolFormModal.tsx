@@ -151,7 +151,7 @@ export function SchoolFormModal({
   const [saving, setSaving] = useState(false);
   const set = <K extends keyof FormState>(k: K, v: FormState[K]) => setForm((f) => ({ ...f, [k]: v }));
   // Each ticked section is its own EMIS institution and gets its own number.
-  const sectionsTicked = sectionsOf(form);
+  const sectionsTicked = sectionsOf({ ...form, nurseryAssessment: 'ratings', showPositions: {} });
 
   // Logo is a separate multipart upload (POST /schools/:id/logo), done after
   // the school row exists — so on create we save the row first, then upload.

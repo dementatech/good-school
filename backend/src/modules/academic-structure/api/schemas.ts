@@ -168,6 +168,7 @@ export const subjectOfferingBodySchema = {
     subjectId: { type: "string" },
     isOffered: { type: "boolean" },
     isCompulsory: { type: "boolean" },
+    maxMark: { type: "integer", minimum: 1, maximum: 999 },
   },
   additionalProperties: false,
 } as const;
@@ -255,6 +256,42 @@ export const schoolGradingRangesBodySchema = {
     appliesTo: { type: "string", enum: ["PRIMARY", "O_LEVEL", "A_LEVEL"] },
     roleScope: { type: "string", enum: ["any", "principal", "subsidiary"] },
     bands: { type: "array", items: gradeBandSchema, minItems: 1 },
+  },
+  additionalProperties: false,
+} as const;
+
+export const sectionSettingsBodySchema = {
+  type: "object",
+  required: ["section"],
+  properties: {
+    section: { type: "string", enum: ["KINDERGARTEN", "PRIMARY", "SECONDARY"] },
+    assessmentStyle: { type: "string", enum: ["ratings", "marks", "both"] },
+    showPositions: { type: "boolean" },
+  },
+  additionalProperties: false,
+} as const;
+
+export const schoolSubjectBodySchema = {
+  type: "object",
+  required: ["phase", "name", "shortName"],
+  properties: {
+    phase: { type: "string", enum: ["KINDERGARTEN", "PRIMARY", "O_LEVEL", "A_LEVEL"] },
+    name: { type: "string", minLength: 1, maxLength: 120 },
+    shortName: { type: "string", minLength: 1, maxLength: 12 },
+    category: { type: "string", enum: ["language", "science", "art", "subsidiary", "vocational", "religion", "special"] },
+    stageIds: { type: "array", items: { type: "string" } },
+    maxMark: { type: "integer", minimum: 1, maximum: 999 },
+  },
+  additionalProperties: false,
+} as const;
+
+export const schoolSubjectUpdateBodySchema = {
+  type: "object",
+  required: ["name", "shortName"],
+  properties: {
+    name: { type: "string", minLength: 1, maxLength: 120 },
+    shortName: { type: "string", minLength: 1, maxLength: 12 },
+    stageIds: { type: "array", items: { type: "string" } },
   },
   additionalProperties: false,
 } as const;

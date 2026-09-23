@@ -18,7 +18,11 @@ interface ReportCardStudentSubject {
   role: SubjectRole;
   hasVariant: boolean;
   variantScores?: { name: string; rawScore: number | null; isAbsent: boolean }[];
+  /** Percentage (0–100) — what grades and averages use. */
   rawScore: number | null;
+  /** As entered, out of maxMark (e.g. 38 of 50); null for a multi-paper subject. */
+  mark: number | null;
+  maxMark: number;
   isAbsent: boolean;
   computedGrade: string | null;
   /** Primary: counts toward the PLE aggregate. */
@@ -52,7 +56,9 @@ interface GradeDivision {
   maxAggregate: number;
 }
 interface ExamReportCard {
-  exam: { id: string; name: string; termName: string; publishedAt: string | null };
+  exam: { id: string; name: string; termId: string; termName: string; publishedAt: string | null };
+  /** The school's choice, per section, whether report cards show positions. */
+  showPositions: boolean;
   class: { id: string; name: string; phase: SchoolLevel };
   stream: { id: string; name: string } | null;
   aggregation: { subjectCount: number; divisions: GradeDivision[] } | null;
@@ -70,6 +76,13 @@ interface SchoolInfo {
   logoUrl: string | null;
   /** Per section — a report card prints its own section's EMIS number. */
   emisCodes?: Partial<Record<string, string>>;
+  sectionSettings?: { section: string; assessmentStyle: string | null }[];
+}
+
+/** A Nursery pupil's progress ratings for the exam's term ("both" mode). */
+interface NurseryRatings {
+  areas: { id: string; name: string }[];
+  ratings: Record<string, { rating: string | null; comment: string | null }>;
 }
 interface GradeBand {
   label: string;
@@ -129,6 +142,8 @@ interface Sheet {
   stream: ExamReportCard['stream'];
   aggregation: ExamReportCard['aggregation'];
   totalInClass: number;
+  showPositions: boolean;
+  nurseryRatings: NurseryRatings | null;
 }
 
 function ReportSubjectTable({
@@ -178,7 +193,8 @@ function ReportSubjectTable({
                   {s.isAbsent ? (
                     <span className="text-text-muted font-normal">Absent</span>
                   ) : s.rawScore !== null ? (
-                    round(s.rawScore)
+                    // Out of the subject's own full mark when it isn't 100.
+                    s.mark !== null && s.maxMark !== 100 ? `${round(s.mark)}/${s.maxMark}` : round(s.rawScore)
                   ) : (
                     '—'
                   )}
@@ -207,6 +223,39 @@ function ReportSubjectTable({
               </tr>
             );
           })}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+const RATING_LABEL: Record<string, string> = {
+  emerging: 'Emerging',
+  developing: 'Developing',
+  proficient: 'Proficient',
+};
+
+function NurseryRatingsTable({ data }: { data: NurseryRatings }) {
+  if (data.areas.length === 0) return null;
+  return (
+    <div>
+      <p className="text-xs font-bold uppercase tracking-wide text-text-faint mb-1.5">Progress Ratings</p>
+      <table className="w-full text-sm border border-border">
+        <thead>
+          <tr className="bg-bg-subtle text-left text-[10.5px] font-bold uppercase tracking-wide text-text-faint">
+            <th className="py-1 px-2 border-b border-r border-border">Learning Area</th>
+            <th className="py-1 px-2 border-b border-border w-32">Rating</th>
+          </tr>
+        </thead>
+        <tbody>
+          {data.areas.map((a) => (
+            <tr key={a.id} className="border-b border-border last:border-0">
+              <td className="py-1 px-2 border-r border-border">{a.name}</td>
+              <td className="py-1 px-2 font-semibold text-primary-900">
+                {RATING_LABEL[data.ratings[a.id]?.rating ?? ''] ?? '—'}
+              </td>
+            </tr>
+          ))}
         </tbody>
       </table>
     </div>
@@ -290,6 +339,7 @@ function StudentReportCardSheet({
   sheet,
   schoolInfo,
   primaryBands,
+  nurseryBands,
   oLevelBands,
   principalBands,
   subsidiaryBands,
@@ -297,22 +347,25 @@ function StudentReportCardSheet({
   sheet: Sheet;
   schoolInfo: SchoolInfo | null;
   primaryBands: GradeBand[];
+  nurseryBands: GradeBand[];
   oLevelBands: GradeBand[];
   principalBands: GradeBand[];
   subsidiaryBands: GradeBand[];
 }) {
-  const { student, exam, klass, stream, aggregation, totalInClass } = sheet;
+  const { student, exam, klass, stream, aggregation, totalInClass, showPositions, nurseryRatings } = sheet;
   const isALevel = klass.phase === 'A_LEVEL';
   const isPrimary = klass.phase === 'PRIMARY';
   const pleSubjects = student.subjects.filter((s) => s.isExaminable);
   const otherSubjects = student.subjects.filter((s) => !s.isExaminable);
   const pleScored = pleSubjects.filter((s) => !s.isAbsent && s.rawScore !== null);
-  const pleTotal = pleScored.reduce((sum, s) => sum + s.rawScore!, 0);
+  const pleTotal = pleScored.reduce((sum, s) => sum + (s.mark ?? s.rawScore!), 0);
+  const pleOutOf = pleSubjects.reduce((sum, s) => sum + (s.mark !== null ? s.maxMark : 100), 0);
+  const isNursery = klass.phase === 'KINDERGARTEN';
   const principalSubjects = student.subjects.filter((s) => s.role === 'principal');
   const subsidiarySubjects = student.subjects.filter((s) => s.role === 'subsidiary');
   const schoolName = schoolInfo?.name ?? 'School';
   const subtitle = [schoolInfo?.address, schoolInfo?.district].filter(Boolean).join(', ');
-  const emis = schoolInfo?.emisCodes?.[isPrimary ? 'PRIMARY' : 'SECONDARY'];
+  const emis = schoolInfo?.emisCodes?.[isPrimary ? 'PRIMARY' : klass.phase === 'KINDERGARTEN' ? 'KINDERGARTEN' : 'SECONDARY'];
   const issuedOn = exam.publishedAt
     ? new Date(exam.publishedAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })
     : new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
@@ -370,12 +423,14 @@ function StudentReportCardSheet({
                   {student.systemId ?? '—'}
                 </span>
               </p>
-              <p className="flex items-baseline gap-2">
-                <span className="text-text-muted">Position:</span>
-                <span className="font-semibold text-primary-900 border-b border-dotted border-border-strong px-2 min-w-16 inline-block">
-                  {student.rank ? `${student.rank} of ${totalInClass}` : '—'}
-                </span>
-              </p>
+              {showPositions && (
+                <p className="flex items-baseline gap-2">
+                  <span className="text-text-muted">Position:</span>
+                  <span className="font-semibold text-primary-900 border-b border-dotted border-border-strong px-2 min-w-16 inline-block">
+                    {student.rank ? `${student.rank} of ${totalInClass}` : '—'}
+                  </span>
+                </p>
+              )}
             </div>
           </div>
 
@@ -415,7 +470,7 @@ function StudentReportCardSheet({
               <ReportSubjectTable title="Other Subjects" subjects={otherSubjects} bands={primaryBands} />
               <StatRow
                 items={[
-                  { label: 'Total Marks', value: pleScored.length ? `${round(pleTotal)} / ${pleSubjects.length * 100}` : '—' },
+                  { label: 'Total Marks', value: pleScored.length ? `${round(pleTotal)} / ${pleOutOf}` : '—' },
                   { label: 'Average', value: student.average !== null ? `${round(student.average)}%` : '—' },
                   { label: 'Aggregate', value: student.aggregate !== null ? String(student.aggregate) : '—' },
                   { label: 'Division', value: student.division ?? '—' },
@@ -425,13 +480,18 @@ function StudentReportCardSheet({
             </div>
           ) : (
             <div className="space-y-2.5">
-              <ReportSubjectTable title="Subjects" subjects={student.subjects} />
+              <ReportSubjectTable
+                title="Subjects"
+                subjects={student.subjects}
+                bands={isNursery ? nurseryBands : []}
+              />
               <StatRow
                 items={[
                   { label: 'Average', value: student.average !== null ? `${round(student.average)}%` : '—' },
                   { label: 'Overall Grade', value: student.overallGrade ?? '—' },
                 ]}
               />
+              {nurseryRatings && <NurseryRatingsTable data={nurseryRatings} />}
               <RemarksBox lines={[{ label: 'Overall', text: student.overallComment }]} />
             </div>
           )}
@@ -453,7 +513,15 @@ function StudentReportCardSheet({
           <p className="text-[10px] text-text-faint mt-2">Issued on {issuedOn}</p>
 
           <GradingLegend
-            bands={isALevel ? [...principalBands, ...subsidiaryBands] : isPrimary ? primaryBands : oLevelBands}
+            bands={
+              isALevel
+                ? [...principalBands, ...subsidiaryBands]
+                : isPrimary
+                  ? primaryBands
+                  : isNursery
+                    ? nurseryBands
+                    : oLevelBands
+            }
             divisions={isPrimary ? aggregation?.divisions : undefined}
           />
         </div>
@@ -497,11 +565,31 @@ function ReportCardsContent() {
       setLoading(true);
       setError(null);
 
+      const [school, schemes] = await Promise.all([
+        fetchOne<SchoolInfo>('/api/v1/schools/me', toast.error),
+        fetchList<SchoolGradingSchemeSelection>('/api/v1/academic/school-grading-schemes', toast.error),
+      ]);
+      setSchoolInfo(school);
+      setGradingSchemes(schemes);
+      const nurseryStyle =
+        school?.sectionSettings?.find((x) => x.section === 'KINDERGARTEN')?.assessmentStyle ?? 'ratings';
+
       async function loadForClass(classId: string, streamId: string | null): Promise<Sheet[]> {
         const qs = new URLSearchParams({ classId });
         if (streamId) qs.set('streamId', streamId);
         const report = await fetchOne<ExamReportCard>(`/api/v1/exams/${examId}/report-card?${qs.toString()}`, toast.error);
         if (!report) return [];
+        // "Both" mode: a Nursery report card also carries the term's progress ratings.
+        let ratings: {
+          learningAreas: { id: string; name: string }[];
+          pupils: { studentUserId: string; ratings: NurseryRatings['ratings'] }[];
+        } | null = null;
+        if (report.class.phase === 'KINDERGARTEN' && nurseryStyle === 'both') {
+          ratings = await fetchOne(
+            `/api/v1/early-years/sheet?classId=${classId}&termId=${report.exam.termId}`,
+            toast.error,
+          );
+        }
         const students = studentIdParam ? report.students.filter((s) => s.studentUserId === studentIdParam) : report.students;
         return students.map((student) => ({
           student,
@@ -510,15 +598,15 @@ function ReportCardsContent() {
           stream: report.stream,
           aggregation: report.aggregation,
           totalInClass: report.students.length,
+          showPositions: report.showPositions,
+          nurseryRatings: ratings
+            ? {
+                areas: ratings.learningAreas,
+                ratings: ratings.pupils.find((p) => p.studentUserId === student.studentUserId)?.ratings ?? {},
+              }
+            : null,
         }));
       }
-
-      const [school, schemes] = await Promise.all([
-        fetchOne<SchoolInfo>('/api/v1/schools/me', toast.error),
-        fetchList<SchoolGradingSchemeSelection>('/api/v1/academic/school-grading-schemes', toast.error),
-      ]);
-      setSchoolInfo(school);
-      setGradingSchemes(schemes);
 
       if (wholeSchool) {
         if (!yearIdParam) {
@@ -527,8 +615,8 @@ function ReportCardsContent() {
           return;
         }
         const classList = await fetchList<SchoolClass>(`/api/v1/academic/classes?academicYearId=${yearIdParam}`, toast.error);
-        // Kindergarten sits no exams — its progress report lives under Kindergarten Progress.
-        const examined = classList.filter((c) => c.stagePhase !== 'KINDERGARTEN');
+        // A Nursery on progress ratings sits no exams — its report lives under Kindergarten Progress.
+        const examined = classList.filter((c) => c.stagePhase !== 'KINDERGARTEN' || nurseryStyle !== 'ratings');
         const perClass = await Promise.all(examined.map((c) => loadForClass(c.id, null)));
         setSheets(perClass.flat());
       } else if (classIdParam) {
@@ -542,6 +630,10 @@ function ReportCardsContent() {
 
   const primaryBands = useMemo(
     () => gradingSchemes.find((g) => g.appliesTo === 'PRIMARY' && g.roleScope === 'any')?.scheme.bands ?? [],
+    [gradingSchemes],
+  );
+  const nurseryBands = useMemo(
+    () => gradingSchemes.find((g) => g.appliesTo === 'KINDERGARTEN' && g.roleScope === 'any')?.scheme.bands ?? [],
     [gradingSchemes],
   );
   const oLevelBands = useMemo(
@@ -628,6 +720,7 @@ function ReportCardsContent() {
             sheet={sheet}
             schoolInfo={schoolInfo ?? (user ? { name: user.school, district: null, address: null, logoUrl: user.logoUrl ?? null } : null)}
             primaryBands={primaryBands}
+            nurseryBands={nurseryBands}
             oLevelBands={oLevelBands}
             principalBands={principalBands}
             subsidiaryBands={subsidiaryBands}

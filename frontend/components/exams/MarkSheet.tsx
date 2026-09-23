@@ -33,7 +33,9 @@ interface Column {
 const fmt = (d: string) => new Date(d).toLocaleDateString();
 
 function columnsFor(sheet: MarkSheetData): Column[] {
-  if (!sheet.subject.hasVariant) return [{ key: PLAIN_KEY, label: 'Score', sublabel: null }];
+  if (!sheet.subject.hasVariant) {
+    return [{ key: PLAIN_KEY, label: 'Score', sublabel: `out of ${sheet.subject.maxMark}` }];
+  }
   return sheet.subject.variants.map((v) => ({
     key: v.id,
     label: v.name,
@@ -189,7 +191,7 @@ export function MarkSheet({
         const t = cell.score.trim();
         if (t === '') return false;
         const n = Number(t);
-        return !Number.isFinite(n) || n < 0 || n > 100;
+        return !Number.isFinite(n) || n < 0 || n > (sheet.subject.hasVariant ? 100 : sheet.subject.maxMark);
       }),
     );
   }
@@ -207,7 +209,7 @@ export function MarkSheet({
 
   async function save(): Promise<boolean> {
     if (hasInvalidScore()) {
-      toast.error('Scores must be between 0 and 100.');
+      toast.error(`Marks must be between 0 and ${sheet?.subject.hasVariant ? 100 : sheet?.subject.maxMark}.`);
       return false;
     }
     setBusy(true);
@@ -356,7 +358,7 @@ export function MarkSheet({
                         <input
                           type="number"
                           min={0}
-                          max={100}
+                          max={hasVariant ? 100 : sheet.subject.maxMark}
                           inputMode="decimal"
                           aria-label={`${r.studentName} — ${c.label}`}
                           className="w-16 rounded-lg border-2 border-[#E5E5E5] bg-white px-2 py-1.5 text-sm focus:border-primary-700 focus:outline-none disabled:bg-bg-muted disabled:text-text-muted"

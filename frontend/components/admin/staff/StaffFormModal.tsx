@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { LEVEL_LABEL, SUBJECT_PHASES, offersLevel, useSchoolLevels, type SubjectPhase } from '@/lib/levels';
+import { LEVEL_LABEL, subjectPhasesOf, useSchoolLevels, type SubjectPhase } from '@/lib/levels';
 import { Modal } from '@/components/ui/Modal';
 import { Input } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
@@ -139,7 +139,7 @@ export function StaffFormModal({
   // later from the staff detail view.
   const levels = useSchoolLevels();
   // Only the levels with subjects this school runs — none until known.
-  const schoolPhases = SUBJECT_PHASES.filter((p) => levels && offersLevel(levels, p));
+  const schoolPhases = subjectPhasesOf(levels);
   const [teachingLevelChoice, setTeachingLevel] = useState<TeachingLevel | null>(null);
   const teachingLevel: TeachingLevel =
     teachingLevelChoice ?? (schoolPhases.length === 1 ? schoolPhases[0] : 'all');

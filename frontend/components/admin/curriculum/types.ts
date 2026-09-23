@@ -94,7 +94,11 @@ export const CATEGORY_LABEL: Record<SubjectCategory, string> = {
   language: 'Language',
 };
 
+/** Nursery subjects are always the school's own — grouped as language or other. */
+export const KINDERGARTEN_CATEGORIES: SubjectCategory[] = ['language', 'special'];
+
 export const CATEGORIES_FOR_PHASE: Record<Phase, SubjectCategory[]> = {
+  KINDERGARTEN: KINDERGARTEN_CATEGORIES,
   PRIMARY: PRIMARY_CATEGORIES,
   O_LEVEL: O_LEVEL_CATEGORIES,
   A_LEVEL: A_LEVEL_CATEGORIES,
@@ -111,8 +115,14 @@ export const STATUS_VARIANT: Record<SubjectApprovalStatus, 'default' | 'accent' 
   rejected: 'muted',
 };
 
-export const PHASE_LABEL: Record<Phase, string> = { PRIMARY: 'Primary', O_LEVEL: 'O-Level', A_LEVEL: 'A-Level' };
+export const PHASE_LABEL: Record<Phase, string> = {
+  KINDERGARTEN: 'Nursery',
+  PRIMARY: 'Primary',
+  O_LEVEL: 'O-Level',
+  A_LEVEL: 'A-Level',
+};
 export const PHASE_RANGE: Record<Phase, string> = {
+  KINDERGARTEN: 'Baby – Top Class',
   PRIMARY: 'Primary 1–7',
   O_LEVEL: 'Senior 1–4',
   A_LEVEL: 'Senior 5–6',

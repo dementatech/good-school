@@ -9,6 +9,12 @@ export type { TermRecord } from "./domain/terms.repository.js";
 export { getCurrentTerm } from "./domain/terms.repository.js";
 export type { GradeBandRecord } from "./domain/grading-schemes.repository.js";
 export { computeGrade, getActiveSchemeForSubject } from "./domain/grading-schemes.repository.js";
+export type { AssessmentStyle, SectionSettings } from "./domain/section-settings.repository.js";
+export {
+  getSectionSettings,
+  nurseryAssessmentStyle,
+  showPositionsFor,
+} from "./domain/section-settings.repository.js";
 
 export async function registerAcademicStructureModule(fastify: FastifyInstance) {
   await fastify.register(academicStructureRoutes, { prefix: "/api/v1/academic" });

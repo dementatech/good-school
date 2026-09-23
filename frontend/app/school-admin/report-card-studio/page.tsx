@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import type { SchoolLevel } from '@/lib/levels';
+import { useSchoolLevels, type SchoolLevel } from '@/lib/levels';
 import { useRouter } from 'next/navigation';
 import { arc as d3arc, max, pie as d3pie, scaleBand, scaleLinear } from 'd3';
 import { Card } from '@/components/ui/Card';
@@ -704,20 +704,26 @@ export default function ReportCardStudioPage() {
     })();
   }, []);
 
+  const levels = useSchoolLevels();
+  const levelsLoaded = !!levels;
+  const nurseryGivesMarks = !!levels && levels.nurseryAssessment !== 'ratings';
+
   useEffect(() => {
-    if (!yearId) return;
+    if (!yearId || !levelsLoaded) return;
     void (async () => {
       const [examList, classList] = await Promise.all([
         fetchList<SchoolExam>(`/api/v1/exams?academicYearId=${yearId}`, toast.error),
         fetchList<SchoolClass>(`/api/v1/academic/classes?academicYearId=${yearId}`, toast.error),
       ]);
       setExamId((prev) => prev || examList[0]?.id || '');
-      // Kindergarten sits no exams — its reports live under Kindergarten Progress.
-      const examined = classList.filter((c) => c.stagePhase !== 'KINDERGARTEN');
+      // A Nursery on progress ratings sits no exams — its reports live under
+      // Kindergarten Progress. A Nursery that gives marks is compiled here too.
+      const examined = classList.filter((c) => c.stagePhase !== 'KINDERGARTEN' || nurseryGivesMarks);
       setClasses(examined);
       setClassId((prev) => prev || examined[0]?.id || '');
     })();
-  }, [yearId]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [yearId, levelsLoaded, nurseryGivesMarks]);
 
   const selectedClass = classes.find((c) => c.id === classId) ?? null;
 

@@ -57,7 +57,7 @@ export function StudentResultTable({ result }: { result: StudentExamResult }) {
                   ) : s.rawScore === null ? (
                     <span className="text-text-faint font-normal">—</span>
                   ) : (
-                    s.rawScore
+                    `${s.rawScore}${s.maxMark && s.maxMark !== 100 ? `/${s.maxMark}` : ''}`
                   )}
                 </td>
                 <td className="py-2 px-2">

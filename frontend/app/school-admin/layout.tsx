@@ -34,7 +34,7 @@ import {
   Baby,
 } from 'lucide-react';
 import type { Role } from '@/lib/auth/session';
-import { useSchoolLevels } from '@/lib/levels';
+import { subjectPhasesOf, usesNurseryRatings, useSchoolLevels } from '@/lib/levels';
 
 const SCHOOL_ADMIN_ROLES: Role[] = ['school_admin'];
 
@@ -80,20 +80,16 @@ function SchoolAdminShell({ children }: { children: React.ReactNode }) {
   const NAV = React.useMemo(() => {
     // Hide pages for levels this school doesn't run — and every level-specific
     // page until its levels are known, so nothing flashes up for the wrong school.
-    // A Nursery-only school has no subjects, exams or grading at all.
-    const hasSubjects = !!levels && (levels.offersPrimary || levels.offersOLevel || levels.offersALevel);
+    // Exams and grading exist only where there are marks — a Nursery on
+    // progress ratings has none. Subjects always shows: in a ratings-only
+    // Nursery it's where the school turns marks on.
+    const hasMarks = subjectPhasesOf(levels).length > 0;
     const hidden = new Set<string>([
-      ...(levels?.offersKindergarten ? [] : ['/school-admin/kindergarten']),
+      ...(usesNurseryRatings(levels) ? [] : ['/school-admin/kindergarten']),
       ...(levels?.offersOLevel ? [] : ['/school-admin/subjects/options']),
       ...(levels?.offersALevel ? [] : ['/school-admin/subjects/combinations']),
-      ...(hasSubjects
-        ? []
-        : [
-            '/school-admin/subjects',
-            '/school-admin/exams',
-            '/school-admin/report-card-studio',
-            '/school-admin/grading-schemes',
-          ]),
+      ...(levels ? [] : ['/school-admin/subjects']),
+      ...(hasMarks ? [] : ['/school-admin/exams', '/school-admin/report-card-studio', '/school-admin/grading-schemes']),
     ]);
     return NAV_BASE.filter((item) => !item.href || !hidden.has(item.href))
       .map((item) => {

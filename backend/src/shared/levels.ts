@@ -10,11 +10,12 @@ export type SchoolLevel = "KINDERGARTEN" | "PRIMARY" | "O_LEVEL" | "A_LEVEL";
 
 export const SCHOOL_LEVELS: SchoolLevel[] = ["KINDERGARTEN", "PRIMARY", "O_LEVEL", "A_LEVEL"];
 
-/** Levels that have a subject catalog. Kindergarten is taught through
- * learning areas, not subjects, so it never appears here. */
-export type SubjectPhase = Exclude<SchoolLevel, "KINDERGARTEN">;
+/** Levels that can have subjects. Nursery only uses them when the school
+ * has switched its Nursery to marks (see school_section.assessment_style);
+ * its subjects are always the school's own. */
+export type SubjectPhase = SchoolLevel;
 
-export const SUBJECT_PHASES: SubjectPhase[] = ["PRIMARY", "O_LEVEL", "A_LEVEL"];
+export const SUBJECT_PHASES: SubjectPhase[] = ["KINDERGARTEN", "PRIMARY", "O_LEVEL", "A_LEVEL"];
 
 export const LEVEL_LABEL: Record<SchoolLevel, string> = {
   KINDERGARTEN: "Kindergarten",

@@ -20,6 +20,10 @@ export interface SubjectOfferingRecord {
   subjectPhase: SubjectPhase;
   isOffered: boolean;
   isCompulsory: boolean;
+  /** What this subject is marked out of here (100, 50, ...). */
+  maxMark: number;
+  /** True for the school's own subject (see subject.school_id). */
+  subjectIsSchoolOwned: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -28,6 +32,8 @@ export interface SubjectOfferingInput {
   subjectId: string;
   isOffered: boolean;
   isCompulsory: boolean;
+  /** Omit to keep the current full mark (100 for a new offering). */
+  maxMark?: number;
 }
 
 interface SubjectOfferingRow {
@@ -43,6 +49,8 @@ interface SubjectOfferingRow {
   subject_phase: SubjectPhase;
   is_offered: boolean;
   is_compulsory: boolean;
+  max_mark: number;
+  subject_is_school_owned: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -51,7 +59,8 @@ const SELECT_OFFERING = `
   select o.id, o.school_id, o.academic_year_id, o.subject_id,
          s.code as subject_code, s.short_name as subject_short_name, s.name as subject_name,
          s.category as subject_category, s.is_general_paper as subject_is_general_paper,
-         s.phase as subject_phase, o.is_offered, o.is_compulsory, o.created_at, o.updated_at
+         s.phase as subject_phase, o.is_offered, o.is_compulsory, o.max_mark,
+         s.school_id is not null as subject_is_school_owned, o.created_at, o.updated_at
   from subject_offering o
   join subject s on s.id = o.subject_id
 `;
@@ -70,6 +79,8 @@ function mapRow(row: SubjectOfferingRow): SubjectOfferingRecord {
     subjectPhase: row.subject_phase,
     isOffered: row.is_offered,
     isCompulsory: row.is_compulsory,
+    maxMark: row.max_mark,
+    subjectIsSchoolOwned: row.subject_is_school_owned,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -79,6 +90,13 @@ export class UnknownSubjectError extends Error {
   constructor() {
     super("Unknown subject, or not part of a curriculum this school runs");
     this.name = "UnknownSubjectError";
+  }
+}
+
+export class InvalidMaxMarkError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "InvalidMaxMarkError";
   }
 }
 
@@ -127,8 +145,14 @@ async function seedAlwaysOnOfferings(schoolId: string, academicYearId: string): 
      from subject s
      join school_curriculum sc on sc.curriculum_id = s.curriculum_id and sc.school_id = $1
      join schools sch on sch.id = $1
-     where (s.category = 'core' or s.is_general_paper) and s.is_active
+     where s.is_active
        and ${schoolOffersLevelSql("sch", "s.phase")}
+       and (s.school_id is null or s.school_id = $1)
+       -- National core subjects and General Paper; plus a school's own
+       -- Nursery subjects, offered by default every new year (the school can
+       -- still stop offering one — on conflict leaves its choice alone).
+       and ((s.category = 'core' or s.is_general_paper) and s.school_id is null
+            or (s.school_id = $1 and s.phase = 'KINDERGARTEN'))
      on conflict (school_id, subject_id, academic_year_id) do nothing`,
     [schoolId, academicYearId],
   );
@@ -164,10 +188,17 @@ export async function setSubjectOffering(
   academicYearId: string,
   input: SubjectOfferingInput,
 ): Promise<SubjectOfferingRecord> {
-  const owned = await pool.query<{ category: string; name: string; status: string; is_general_paper: boolean }>(
-    `select s.category, s.name, s.status, s.is_general_paper from subject s
+  const owned = await pool.query<{
+    category: string;
+    name: string;
+    status: string;
+    is_general_paper: boolean;
+    has_variant: boolean;
+  }>(
+    `select s.category, s.name, s.status, s.is_general_paper, s.has_variant from subject s
      join school_curriculum sc on sc.curriculum_id = s.curriculum_id
-     where s.id = $1 and sc.school_id = $2`,
+     where s.id = $1 and sc.school_id = $2
+       and (s.school_id is null or s.school_id = $2)`,
     [input.subjectId, schoolId],
   );
   if (owned.rowCount === 0) throw new UnknownSubjectError();
@@ -189,13 +220,25 @@ export async function setSubjectOffering(
     if ((otherReligious.rowCount ?? 0) === 0) throw new LastReligiousSubjectError();
   }
 
+  if (input.maxMark !== undefined) {
+    if (!Number.isInteger(input.maxMark) || input.maxMark < 1 || input.maxMark > 999) {
+      throw new InvalidMaxMarkError("The full mark must be a whole number between 1 and 999.");
+    }
+    // A multi-paper subject merges its papers as percentages (Theory 70% +
+    // Practical 30%), so it's always out of 100.
+    if (owned.rows[0].has_variant && input.maxMark !== 100) {
+      throw new InvalidMaxMarkError("A subject with separate papers is always marked out of 100.");
+    }
+  }
+
   const result = await pool.query<{ id: string }>(
-    `insert into subject_offering (school_id, subject_id, academic_year_id, is_offered, is_compulsory)
-     values ($1, $2, $3, $4, $5)
+    `insert into subject_offering (school_id, subject_id, academic_year_id, is_offered, is_compulsory, max_mark)
+     values ($1, $2, $3, $4, $5, coalesce($6, 100))
      on conflict (school_id, subject_id, academic_year_id) do update
-       set is_offered = excluded.is_offered, is_compulsory = excluded.is_compulsory, updated_at = now()
+       set is_offered = excluded.is_offered, is_compulsory = excluded.is_compulsory,
+           max_mark = coalesce($6, subject_offering.max_mark), updated_at = now()
      returning id`,
-    [schoolId, input.subjectId, academicYearId, input.isOffered, input.isCompulsory],
+    [schoolId, input.subjectId, academicYearId, input.isOffered, input.isCompulsory, input.maxMark ?? null],
   );
 
   const row = await pool.query<SubjectOfferingRow>(`${SELECT_OFFERING} where o.id = $1`, [

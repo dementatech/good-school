@@ -38,6 +38,10 @@ export interface SubjectRecord {
   stageIds: string[];
   status: SubjectApprovalStatus;
   proposedBySchoolId: string | null;
+  /** Set for a school's OWN subject (all Nursery subjects, and a school's
+   * non-examinable extras at other levels) — private to that school, no
+   * approval needed. Null for the platform catalog. */
+  schoolId: string | null;
   reviewedBy: string | null;
   reviewedAt: string | null;
   rejectionReason: string | null;
@@ -99,6 +103,7 @@ interface SubjectRow {
   stage_ids: string[] | null;
   status: SubjectApprovalStatus;
   proposed_by_school_id: string | null;
+  school_id: string | null;
   reviewed_by: string | null;
   reviewed_at: string | null;
   rejection_reason: string | null;
@@ -122,6 +127,7 @@ const mapRow = (r: SubjectRow): SubjectRecord => ({
   stageIds: r.stage_ids ?? [],
   status: r.status,
   proposedBySchoolId: r.proposed_by_school_id,
+  schoolId: r.school_id,
   reviewedBy: r.reviewed_by,
   reviewedAt: r.reviewed_at,
   rejectionReason: r.rejection_reason,
@@ -139,7 +145,7 @@ const SELECT_SUBJECT = `
   select s.id, s.curriculum_id, s.phase, s.code, s.short_name, s.name, s.category, s.is_examinable, s.is_active,
          (select coalesce(array_agg(ss.curriculum_stage_id), '{}')
             from subject_stage ss where ss.subject_id = s.id) as stage_ids,
-         s.status, s.proposed_by_school_id, s.reviewed_by, s.reviewed_at, s.rejection_reason, s.is_general_paper,
+         s.status, s.proposed_by_school_id, s.school_id, s.reviewed_by, s.reviewed_at, s.rejection_reason, s.is_general_paper,
          s.has_variant,
          (select coalesce(json_agg(json_build_object(
                   'id', sv.id, 'name', sv.name, 'code', sv.code,
@@ -154,8 +160,10 @@ export interface ListSubjectsFilter {
   curriculumId?: string;
   phase?: SubjectPhase;
   status?: SubjectApprovalStatus;
-  /** Restrict to `approved` subjects plus this school's own proposals
-   * (any status) — the visibility rule for a non-super-admin caller. */
+  /** Restrict to approved catalog subjects, this school's own subjects, and
+   * its own proposals (any status) — the visibility rule for a
+   * non-super-admin caller. Omitted: the platform catalog only (another
+   * school's private subjects are never listed, not even to a super admin). */
   visibleToSchoolId?: string;
 }
 
@@ -176,7 +184,12 @@ export async function listSubjects(filter: ListSubjectsFilter = {}): Promise<Sub
   }
   if (filter.visibleToSchoolId) {
     params.push(filter.visibleToSchoolId);
-    where.push(`(s.status = 'approved' or s.proposed_by_school_id = $${params.length})`);
+    where.push(
+      `((s.status = 'approved' and (s.school_id is null or s.school_id = $${params.length}))
+        or s.proposed_by_school_id = $${params.length})`,
+    );
+  } else {
+    where.push(`s.school_id is null`);
   }
   const clause = where.length ? `where ${where.join(" and ")}` : "";
   const { rows } = await pool.query<SubjectRow>(
@@ -220,13 +233,20 @@ export const A_LEVEL_CATEGORIES: SubjectCategory[] = ["science", "art", "subsidi
  * 'special'. See docs/design/primary-schools-extension.md §2–3. */
 export const PRIMARY_CATEGORIES: SubjectCategory[] = ["core", "language", "religion", "special"];
 
+/** Nursery subjects are always the school's own; the category only groups
+ * them (language vs. everything else) — never 'core', which would make them
+ * impossible to stop offering. */
+export const KINDERGARTEN_CATEGORIES: SubjectCategory[] = ["language", "special"];
+
 export const CATEGORIES_BY_PHASE: Record<SubjectPhase, SubjectCategory[]> = {
+  KINDERGARTEN: KINDERGARTEN_CATEGORIES,
   PRIMARY: PRIMARY_CATEGORIES,
   O_LEVEL: O_LEVEL_CATEGORIES,
   A_LEVEL: A_LEVEL_CATEGORIES,
 };
 
 function defaultCategoryForPhase(phase: SubjectPhase): SubjectCategory {
+  if (phase === "KINDERGARTEN") return "special";
   return phase === "A_LEVEL" ? "science" : "core";
 }
 
@@ -588,4 +608,171 @@ export async function rejectSubject(
     throw new SubjectNotPendingError();
   }
   return getSubject(id);
+}
+
+// ─── School-owned subjects ──────────────────────────────────────────────────
+// A school's own subjects: every Nursery subject (they vary school to school),
+// and non-examinable extras at other levels (Computer, French, ...). Private
+// to the school, approved from the start — nothing national depends on them.
+
+export interface SchoolSubjectInput {
+  phase: SubjectPhase;
+  name: string;
+  shortName: string;
+  category?: SubjectCategory;
+  /** Defaults to every stage of the level. */
+  stageIds?: string[];
+}
+
+export class SubjectInUseError extends Error {
+  constructor() {
+    super("This subject already has marks recorded — stop offering it instead of deleting it.");
+    this.name = "SubjectInUseError";
+  }
+}
+
+async function schoolCurriculumId(client: PoolClient, schoolId: string): Promise<string> {
+  const { rows } = await client.query<{ curriculum_id: string }>(
+    `select curriculum_id from school_curriculum where school_id = $1 order by is_primary desc limit 1`,
+    [schoolId],
+  );
+  if (!rows[0]) throw new InvalidSubjectError("Your school hasn't been assigned a curriculum yet.");
+  return rows[0].curriculum_id;
+}
+
+function assertSchoolSubjectAllowed(input: { phase: SubjectPhase; category: SubjectCategory }): void {
+  if (input.category === "core") {
+    throw new InvalidSubjectError("A school's own subject can't be a core subject.");
+  }
+  assertCategoryValidForPhase(input.phase, input.category);
+}
+
+const isUniqueViolation = (err: unknown): boolean =>
+  typeof err === "object" && err !== null && (err as { code?: string }).code === "23505";
+
+export async function createSchoolSubject(
+  schoolId: string,
+  input: SchoolSubjectInput,
+  /** Run inside the caller's transaction; the new row isn't read back then. */
+  client?: PoolClient,
+): Promise<SubjectRecord | null> {
+  const own = !client;
+  const db = client ?? (await pool.connect());
+  try {
+    if (own) await db.query("BEGIN");
+    const curriculumId = await schoolCurriculumId(db, schoolId);
+    const category = input.category ?? "special";
+    assertSchoolSubjectAllowed({ phase: input.phase, category });
+    const code = await nextSequentialCode(db, {
+      table: "subject",
+      column: "code",
+      prefix: "X",
+      where: "school_id = $1 and phase = $2",
+      params: [schoolId, input.phase],
+    });
+    const { rows } = await db.query<{ id: string }>(
+      `insert into subject
+         (curriculum_id, phase, code, short_name, name, category, is_examinable, is_active,
+          status, proposed_by_school_id, school_id)
+       values ($1, $2, $3, $4, $5, $6, $7, true, 'approved', $8, $8) returning id`,
+      [
+        curriculumId,
+        input.phase,
+        code,
+        input.shortName.trim(),
+        input.name.trim(),
+        category,
+        // Nursery marks count toward the Nursery average; an extra at a
+        // national-exam level never counts toward UNEB aggregates.
+        input.phase === "KINDERGARTEN",
+        schoolId,
+      ],
+    );
+    let stageIds = input.stageIds ?? [];
+    if (stageIds.length === 0) {
+      const stages = await db.query<{ id: string }>(
+        `select id from curriculum_stage where curriculum_id = $1 and phase = $2`,
+        [curriculumId, input.phase],
+      );
+      stageIds = stages.rows.map((r) => r.id);
+    }
+    await replaceStages(db, rows[0].id, curriculumId, input.phase, stageIds);
+    if (!own) return null;
+    await db.query("COMMIT");
+    return getSubject(rows[0].id);
+  } catch (err) {
+    if (own) await db.query("ROLLBACK");
+    if (isUniqueViolation(err)) throw new InvalidSubjectError("Your school already has a subject with that short name.");
+    throw err;
+  } finally {
+    if (own) (db as PoolClient).release();
+  }
+}
+
+export async function updateSchoolSubject(
+  schoolId: string,
+  id: string,
+  input: { name: string; shortName: string; stageIds?: string[] },
+): Promise<SubjectRecord | null> {
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const { rows } = await client.query<{ curriculum_id: string; phase: SubjectPhase }>(
+      `update subject set name = $3, short_name = $4, updated_at = now()
+        where id = $1 and school_id = $2
+        returning curriculum_id, phase`,
+      [id, schoolId, input.name.trim(), input.shortName.trim()],
+    );
+    if (!rows[0]) {
+      await client.query("ROLLBACK");
+      return null;
+    }
+    if (input.stageIds && input.stageIds.length > 0) {
+      await replaceStages(client, id, rows[0].curriculum_id, rows[0].phase, input.stageIds);
+    }
+    await client.query("COMMIT");
+    return getSubject(id);
+  } catch (err) {
+    await client.query("ROLLBACK");
+    if (isUniqueViolation(err)) throw new InvalidSubjectError("Your school already has a subject with that short name.");
+    throw err;
+  } finally {
+    client.release();
+  }
+}
+
+export async function deleteSchoolSubject(schoolId: string, id: string): Promise<boolean> {
+  try {
+    const { rowCount } = await pool.query(`delete from subject where id = $1 and school_id = $2`, [id, schoolId]);
+    return (rowCount ?? 0) > 0;
+  } catch (err) {
+    if (typeof err === "object" && err !== null && (err as { code?: string }).code === "23503") {
+      throw new SubjectInUseError();
+    }
+    throw err;
+  }
+}
+
+/** The usual Nursery subjects — a starting point every school then renames,
+ * extends or trims. Created once, the first time a school turns Nursery
+ * marks on; idempotent. */
+const NURSERY_STARTER_SUBJECTS: { name: string; shortName: string; category: SubjectCategory }[] = [
+  { name: "Number Work", shortName: "NUM", category: "special" },
+  { name: "Language Development", shortName: "LANG", category: "language" },
+  { name: "Reading", shortName: "READ", category: "language" },
+  { name: "Writing", shortName: "WRIT", category: "language" },
+  { name: "Social Development", shortName: "SOC", category: "special" },
+  { name: "Health Habits", shortName: "HLTH", category: "special" },
+  { name: "Creative Arts", shortName: "ART", category: "special" },
+];
+
+export async function ensureNurserySubjects(client: PoolClient, schoolId: string): Promise<void> {
+  const { rowCount } = await client.query(
+    `select 1 from subject where school_id = $1 and phase = 'KINDERGARTEN' limit 1`,
+    [schoolId],
+  );
+  if ((rowCount ?? 0) > 0) return;
+  for (const s of NURSERY_STARTER_SUBJECTS) {
+    await createSchoolSubject(schoolId, { phase: "KINDERGARTEN", ...s }, client);
+  }
 }

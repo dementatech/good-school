@@ -49,6 +49,7 @@ export interface SchoolGradingSchemeSelection {
 }
 
 export const APPLIES_TO_LABEL: Record<GradingAppliesTo, string> = {
+  KINDERGARTEN: 'Nursery',
   PRIMARY: 'Primary (PLE)',
   O_LEVEL: 'O-Level',
   A_LEVEL: 'A-Level',
@@ -66,6 +67,9 @@ export const REGIME_LABEL: Record<string, string> = {
   legacy_1_9: 'Legacy (D1–F9)',
   nlsc_a_e: 'NLSC (A–E)',
   ple_1_9: 'PLE (D1–F9, aggregates)',
+  nursery_letters: 'Nursery (A–E)',
+  nursery_words: 'Nursery (descriptive)',
+  nursery_1_9: 'Nursery (D1–F9 style)',
 };
 
 export { submitJson, fetchList } from '@/lib/api/envelope';

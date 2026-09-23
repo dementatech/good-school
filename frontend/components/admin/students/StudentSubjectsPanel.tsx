@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/Button';
 import { Select } from '@/components/ui/Select';
 import { useToast } from '@/components/ui/ToastProvider';
 import { fetchList, submitJson } from '@/lib/api/envelope';
+import { useSchoolLevels } from '@/lib/levels';
 import type { SchoolCombination, SubjectOffering } from '../subjects/types';
 import type { EnrollmentRecord, StudentCombination, StudentSubject } from './types';
 
@@ -384,13 +385,9 @@ export function StudentSubjectsPanel({
     return <p className="text-sm text-text-faint">Enrol the student in a class first.</p>;
   }
   if (enrollment.stagePhase === 'KINDERGARTEN') {
-    return (
-      <p className="text-sm text-text-muted">
-        Kindergarten pupils are assessed across learning areas rather than subjects — see Kindergarten Progress.
-      </p>
-    );
+    return <NurserySubjects enrollment={enrollment} />;
   }
-  if (enrollment.stagePhase === 'PRIMARY') return <PrimarySubjects enrollment={enrollment} />;
+  if (enrollment.stagePhase === 'PRIMARY') return <ClassSubjects enrollment={enrollment} />;
   return enrollment.stagePhase === 'A_LEVEL' ? (
     <ALevelCombination studentUserId={studentUserId} enrollment={enrollment} />
   ) : (
@@ -398,10 +395,26 @@ export function StudentSubjectsPanel({
   );
 }
 
-// Primary has no per-pupil subject choice (primary-schools-extension.md §3):
-// a pupil takes every subject the school offers at their class level. Read
-// only — change it from Subjects, not per pupil.
-function PrimarySubjects({ enrollment }: { enrollment: EnrollmentRecord }) {
+// A Nursery pupil takes the class's subjects when the school gives Nursery
+// marks; on progress ratings there are no subjects at all.
+function NurserySubjects({ enrollment }: { enrollment: EnrollmentRecord }) {
+  const levels = useSchoolLevels();
+  if (!levels) return <p className="text-sm text-text-faint">Loading subjects…</p>;
+  if (levels.nurseryAssessment === 'ratings') {
+    return (
+      <p className="text-sm text-text-muted">
+        Nursery pupils are assessed with progress ratings across learning areas — see Kindergarten Progress.
+      </p>
+    );
+  }
+  return <ClassSubjects enrollment={enrollment} />;
+}
+
+// Primary (and Nursery with marks) has no per-pupil subject choice
+// (primary-schools-extension.md §3): a pupil takes every subject the school
+// offers at their class level. Read only — change it from Subjects.
+function ClassSubjects({ enrollment }: { enrollment: EnrollmentRecord }) {
+  const phase = enrollment.stagePhase;
   const toast = useToast();
   const [subjects, setSubjects] = useState<
     { id: string; name: string; isExaminable: boolean }[] | null
@@ -412,11 +425,11 @@ function PrimarySubjects({ enrollment }: { enrollment: EnrollmentRecord }) {
     void (async () => {
       const [offerings, catalog, stages] = await Promise.all([
         fetchList<SubjectOffering>(
-          `/api/v1/academic/subject-offerings?academicYearId=${enrollment.academicYearId}&phase=PRIMARY`,
+          `/api/v1/academic/subject-offerings?academicYearId=${enrollment.academicYearId}&phase=${phase}`,
           toast.error,
         ),
         fetchList<{ id: string; name: string; isExaminable: boolean; stageIds: string[] }>(
-          '/api/v1/academic/subjects?phase=PRIMARY',
+          `/api/v1/academic/subjects?phase=${phase}`,
           toast.error,
         ),
         fetchList<{ id: string; code: string }>('/api/v1/academic/stages', toast.error),
@@ -434,11 +447,11 @@ function PrimarySubjects({ enrollment }: { enrollment: EnrollmentRecord }) {
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [enrollment.academicYearId, enrollment.stageCode]);
+  }, [enrollment.academicYearId, enrollment.stageCode, phase]);
 
   if (!subjects) return <p className="text-sm text-text-faint">Loading subjects…</p>;
   if (subjects.length === 0) {
-    return <p className="text-sm text-text-faint">No primary subjects are offered for {enrollment.stageName} yet.</p>;
+    return <p className="text-sm text-text-faint">No subjects are offered for {enrollment.stageName} yet.</p>;
   }
   return (
     <div className="space-y-2">
@@ -449,7 +462,7 @@ function PrimarySubjects({ enrollment }: { enrollment: EnrollmentRecord }) {
         {subjects.map((s) => (
           <Badge key={s.id} variant={s.isExaminable ? 'default' : 'muted'}>
             {s.name}
-            {s.isExaminable ? ' · PLE' : ''}
+            {s.isExaminable && phase === 'PRIMARY' ? ' · PLE' : ''}
           </Badge>
         ))}
       </div>

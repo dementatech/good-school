@@ -1,4 +1,5 @@
 import type { FastifyInstance } from "fastify";
+import { getSectionSettings } from "../../academic-structure/index.js";
 import { requireAuth } from "../../auth/index.js";
 import { ok, fail } from "../../../shared/envelope.js";
 import {
@@ -60,7 +61,9 @@ export async function schoolsRoutes(fastify: FastifyInstance) {
     const levels = Object.fromEntries(
       Object.entries({ offersKindergarten, offersPrimary, offersOLevel, offersALevel }).filter(([, on]) => on),
     );
-    return ok({ ...rest, ...levels });
+    // Per-section choices (Nursery assessment style, positions on reports) —
+    // again only for the sections this school runs.
+    return ok({ ...rest, ...levels, sectionSettings: await getSectionSettings(schoolId) });
   });
 
   // ═══ School tenants — super_admin only ═══════════════════════════════════
