@@ -18,9 +18,14 @@ import {
 } from "../domain/curricula.repository.js";
 import {
   approveSubject,
+  createSchoolSubject,
   createSubject,
+  deleteSchoolSubject,
   deleteSubject,
   InvalidSubjectError,
+  SubjectInUseError,
+  updateSchoolSubject,
+  type SchoolSubjectInput,
   listSubjects,
   rejectSubject,
   SubjectNotPendingError,
@@ -73,6 +78,7 @@ import {
 } from "../domain/streams.repository.js";
 import {
   AlwaysOnSubjectError,
+  InvalidMaxMarkError,
   LastReligiousSubjectError,
   listSubjectOfferings,
   removeSubjectOffering,
@@ -81,6 +87,14 @@ import {
   UnknownSubjectError,
   type SubjectOfferingInput,
 } from "../domain/subject-offering.repository.js";
+import {
+  assignNurseryClassTeachers,
+  getSectionSettings,
+  InvalidSectionSettingsError,
+  updateSectionSettings,
+  type AssessmentStyle,
+} from "../domain/section-settings.repository.js";
+import type { SchoolSection } from "../../../shared/levels.js";
 import {
   createSchoolCombination,
   deleteSchoolCombination,
@@ -121,6 +135,9 @@ import {
   streamBodySchema,
   subjectBodySchema,
   subjectOfferingBodySchema,
+  sectionSettingsBodySchema,
+  schoolSubjectBodySchema,
+  schoolSubjectUpdateBodySchema,
   termBodySchema,
 } from "./schemas.js";
 
@@ -610,7 +627,28 @@ export async function academicStructureRoutes(fastify: FastifyInstance) {
       if (!(await stageVisible(request, request.body.curriculumStageId))) {
         return reply.status(400).send(fail("academic_year_or_stage_invalid"));
       }
+      const before = await pool.query<{ class_teacher_id: string | null; phase: string | null }>(
+        `select c.class_teacher_id, cs.phase from classes c join curriculum_stage cs on cs.id = c.curriculum_stage_id
+          where c.id = $1 and c.school_id = $2`,
+        [request.params.id, schoolId],
+      );
       const updated = await updateClass(schoolId, request.params.id, request.body);
+      // Nursery is class-teacher-led: a new class teacher takes over the
+      // class's Nursery subjects (and so its mark sheets) from the old one.
+      const old = before.rows[0];
+      const next = request.body.classTeacherId ?? null;
+      if (updated && old?.phase === "KINDERGARTEN" && next && next !== old.class_teacher_id) {
+        if (old.class_teacher_id) {
+          await pool.query(
+            `update subject_teacher_assignment sta set staff_id = $3
+               from subject s
+              where s.id = sta.subject_id and s.school_id = $1 and s.phase = 'KINDERGARTEN'
+                and sta.class_id = $2 and sta.staff_id = $4 and sta.status = 'active' and sta.is_lead`,
+            [schoolId, request.params.id, next, old.class_teacher_id],
+          );
+        }
+        await assignNurseryClassTeachers(pool, schoolId);
+      }
       return updated ? ok(updated) : reply.status(404).send(fail("not_found"));
     },
   );
@@ -723,6 +761,7 @@ export async function academicStructureRoutes(fastify: FastifyInstance) {
       } catch (err) {
         if (
           err instanceof UnknownSubjectError ||
+          err instanceof InvalidMaxMarkError ||
           err instanceof AlwaysOnSubjectError ||
           err instanceof LastReligiousSubjectError ||
           err instanceof SubjectNotApprovedError
@@ -938,6 +977,97 @@ export async function academicStructureRoutes(fastify: FastifyInstance) {
       if (!schoolId) return;
       const deleted = await deleteSchoolCombination(schoolId, request.params.id);
       return deleted ? ok(null) : reply.status(404).send(fail("not_found"));
+    },
+  );
+
+  // -- Section settings (per school section) ------------------------------
+  // Nursery assessment style (ratings / marks / both) and whether report
+  // cards show positions. Only the caller's own sections are listed.
+  fastify.get("/section-settings", { preHandler: SCHOOL }, async (request, reply) => {
+    const schoolId = schoolOf(request, reply);
+    if (!schoolId) return;
+    return ok(await getSectionSettings(schoolId));
+  });
+
+  fastify.put<{ Body: { section: SchoolSection; assessmentStyle?: AssessmentStyle; showPositions?: boolean } }>(
+    "/section-settings",
+    { preHandler: SCHOOL, schema: { body: sectionSettingsBodySchema } },
+    async (request, reply) => {
+      const schoolId = schoolOf(request, reply);
+      if (!schoolId) return;
+      try {
+        const { section, ...input } = request.body;
+        return ok(await updateSectionSettings(schoolId, section, input));
+      } catch (err) {
+        if (err instanceof InvalidSectionSettingsError) return reply.status(400).send(fail(err.message));
+        throw err;
+      }
+    },
+  );
+
+  // -- A school's own subjects --------------------------------------------
+  // Nursery subjects, and non-examinable extras at other levels: private to
+  // the school, no approval. Offered for the given year straight away.
+  fastify.post<{ Querystring: { academicYearId?: string }; Body: SchoolSubjectInput & { maxMark?: number } }>(
+    "/school-subjects",
+    { preHandler: SCHOOL, schema: { body: schoolSubjectBodySchema } },
+    async (request, reply) => {
+      const schoolId = schoolOf(request, reply);
+      if (!schoolId) return;
+      if (!(await canSeeLevel(request, request.body.phase))) {
+        return reply.status(400).send(fail("Unknown level."));
+      }
+      try {
+        const { maxMark, ...input } = request.body;
+        const subject = await createSchoolSubject(schoolId, input);
+        if (subject && request.query.academicYearId) {
+          await setSubjectOffering(schoolId, request.query.academicYearId, {
+            subjectId: subject.id,
+            isOffered: true,
+            isCompulsory: input.phase === "KINDERGARTEN",
+            maxMark,
+          });
+        }
+        if (input.phase === "KINDERGARTEN") await assignNurseryClassTeachers(pool, schoolId);
+        return reply.status(201).send(ok(subject));
+      } catch (err) {
+        if (err instanceof InvalidSubjectError || err instanceof InvalidMaxMarkError) {
+          return reply.status(400).send(fail(err.message));
+        }
+        throw err;
+      }
+    },
+  );
+
+  fastify.patch<{ Params: { id: string }; Body: { name: string; shortName: string; stageIds?: string[] } }>(
+    "/school-subjects/:id",
+    { preHandler: SCHOOL, schema: { body: schoolSubjectUpdateBodySchema } },
+    async (request, reply) => {
+      const schoolId = schoolOf(request, reply);
+      if (!schoolId) return;
+      try {
+        const subject = await updateSchoolSubject(schoolId, request.params.id, request.body);
+        return subject ? ok(subject) : reply.status(404).send(fail("not_found"));
+      } catch (err) {
+        if (err instanceof InvalidSubjectError) return reply.status(400).send(fail(err.message));
+        throw err;
+      }
+    },
+  );
+
+  fastify.delete<{ Params: { id: string } }>(
+    "/school-subjects/:id",
+    { preHandler: SCHOOL },
+    async (request, reply) => {
+      const schoolId = schoolOf(request, reply);
+      if (!schoolId) return;
+      try {
+        const deleted = await deleteSchoolSubject(schoolId, request.params.id);
+        return deleted ? ok(null) : reply.status(404).send(fail("not_found"));
+      } catch (err) {
+        if (err instanceof SubjectInUseError) return reply.status(409).send(fail(err.message));
+        throw err;
+      }
     },
   );
 }

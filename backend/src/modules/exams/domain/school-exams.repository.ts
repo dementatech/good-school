@@ -322,9 +322,10 @@ export async function publishSchoolExam(schoolId: string, id: string): Promise<P
       subject_id: string;
       subject_variant_id: string | null;
       raw_score: string | null;
+      max_mark: number;
       is_absent: boolean;
     }>(
-      `select id, student_user_id, subject_id, subject_variant_id, raw_score, is_absent
+      `select id, student_user_id, subject_id, subject_variant_id, raw_score, max_mark, is_absent
          from exam_result where school_exam_id = $1`,
       [id],
     );
@@ -396,7 +397,12 @@ export async function publishSchoolExam(schoolId: string, id: string): Promise<P
               }),
               variants,
             )
-          : { rawScore: rows[0].raw_score !== null ? Number(rows[0].raw_score) : null, isAbsent: rows[0].is_absent };
+          : {
+              // Grade on the percentage: a mark out of 50 (say) is graded on
+              // the same bands as one out of 100.
+              rawScore: rows[0].raw_score !== null ? (Number(rows[0].raw_score) * 100) / rows[0].max_mark : null,
+              isAbsent: rows[0].is_absent,
+            };
 
       let grade: string | null = null;
       let gradingSchemeId: string | null = null;

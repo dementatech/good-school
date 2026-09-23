@@ -26,7 +26,9 @@ export interface StudentSubjectResult {
   subjectCode: string;
   hasVariant: boolean;
   variantScores?: StudentVariantScore[];
+  /** The mark as entered, out of maxMark (e.g. 38 of 50). */
   rawScore: number | null;
+  maxMark: number;
   isAbsent: boolean;
   computedGrade: string | null;
   comment: string | null;

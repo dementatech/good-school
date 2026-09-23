@@ -621,7 +621,8 @@ export function DataTable<T>({
                   })}
                   {rowActions && (
                     <td className="px-2 py-2 text-right" onClick={(e) => e.stopPropagation()}>
-                      <DropdownMenu items={rowActions(row)} />
+                      {/* A row with no actions gets no (empty) menu. */}
+                      {rowActions(row).length > 0 && <DropdownMenu items={rowActions(row)} />}
                     </td>
                   )}
                 </tr>
@@ -656,7 +657,7 @@ export function DataTable<T>({
                 </p>
                 {rowActions && (
                   <div className="shrink-0 -mr-1 -mt-1" onClick={(e) => e.stopPropagation()}>
-                    <DropdownMenu items={rowActions(row)} />
+                    {rowActions(row).length > 0 && <DropdownMenu items={rowActions(row)} />}
                   </div>
                 )}
               </div>

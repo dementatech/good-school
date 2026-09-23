@@ -1,4 +1,5 @@
-import type { SchoolLevel } from "../../../shared/levels.js";
+import type { SchoolLevel, SchoolSection } from "../../../shared/levels.js";
+import { showPositionsFor } from "../../academic-structure/index.js";
 import type { Pool, PoolClient } from "pg";
 import { pool } from "../../../shared/db/index.js";
 
@@ -75,6 +76,8 @@ export interface MarkSheet {
     name: string;
     hasVariant: boolean;
     variants: SubjectVariantSummary[];
+    /** Marks are entered out of this (100, 50, ...). */
+    maxMark: number;
   };
   class: { id: string; name: string };
   stream: { id: string; name: string } | null;
@@ -90,7 +93,7 @@ export interface MarkEntryInput {
   studentUserId: string;
   /** Required when the subject has variants — which paper this entry is for. */
   variantId?: string | null;
-  /** A 0–100 number to record a mark, or null to clear it. Ignored when isAbsent. */
+  /** A mark from 0 to the subject's full mark (maxMark), or null to clear it. Ignored when isAbsent. */
   rawScore?: number | null;
   isAbsent?: boolean;
 }
@@ -166,7 +169,13 @@ export interface ReportCardStudentSubject {
   /** Present only when hasVariant — the individual papers behind rawScore's
    * weighted merge, e.g. Theory/Practical. */
   variantScores?: { name: string; rawScore: number | null; isAbsent: boolean }[];
+  /** The subject's score as a PERCENTAGE (0–100) — what grading, averages
+   * and ranking use. Equals the entered mark when the subject is out of 100. */
   rawScore: number | null;
+  /** The mark as entered, out of `maxMark` (e.g. 38 of 50). Null for a
+   * multi-paper subject (its papers merge as percentages) or no mark yet. */
+  mark: number | null;
+  maxMark: number;
   isAbsent: boolean;
   computedGrade: string | null;
   /** Primary only: counts toward the PLE aggregate (English, Maths, Science,
@@ -222,7 +231,10 @@ export interface ReportCardStudent {
 }
 
 export interface ExamReportCard {
-  exam: { id: string; name: string; termName: string; publishedAt: string | null };
+  exam: { id: string; name: string; termId: string; termName: string; publishedAt: string | null };
+  /** Whether printed report cards show each pupil's position — the school's
+   * choice per section (Nursery defaults to off). */
+  showPositions: boolean;
   class: { id: string; name: string; phase: SchoolLevel };
   stream: { id: string; name: string } | null;
   subjects: ReportCardSubject[];
@@ -291,8 +303,8 @@ export class ExamPublishedError extends Error {
 }
 
 export class InvalidScoreError extends Error {
-  constructor() {
-    super("Scores must be numbers between 0 and 100.");
+  constructor(maxMark = 100) {
+    super(`Marks must be numbers between 0 and ${maxMark}.`);
     this.name = "InvalidScoreError";
   }
 }
@@ -377,7 +389,17 @@ interface SlotRef {
 }
 
 interface ResolvedSlot {
-  subject: { id: string; code: string; name: string; hasVariant: boolean; variants: SubjectVariantSummary[] };
+  subject: {
+    id: string;
+    code: string;
+    name: string;
+    hasVariant: boolean;
+    variants: SubjectVariantSummary[];
+    /** What this subject is marked out of at this school this year (from
+     * subject_offering; 100 when unset, and always 100 for a multi-paper
+     * subject, whose papers are merged as percentages). */
+    maxMark: number;
+  };
   klass: { id: string; name: string };
   stream: { id: string; name: string } | null;
 }
@@ -396,8 +418,13 @@ async function resolveSlot(exam: ExamContext, slot: SlotRef): Promise<ResolvedSl
     class_name: string;
     stream_id: string | null;
     stream_name: string | null;
+    max_mark: number;
   }>(
     `select sta.subject_id, sub.code as subject_code, sub.name as subject_name, sub.has_variant,
+            case when sub.has_variant then 100 else coalesce(
+              (select o.max_mark from subject_offering o
+                where o.school_id = sta.school_id and o.subject_id = sta.subject_id
+                  and o.academic_year_id = sta.academic_year_id), 100) end as max_mark,
             (select coalesce(json_agg(json_build_object(
                      'id', sv.id, 'name', sv.name, 'code', sv.code,
                      'contributionPercent', sv.contribution_percent
@@ -425,6 +452,7 @@ async function resolveSlot(exam: ExamContext, slot: SlotRef): Promise<ResolvedSl
       name: r.subject_name,
       hasVariant: r.has_variant,
       variants: r.variants,
+      maxMark: r.max_mark,
     },
     klass: { id: r.class_id, name: r.class_name },
     stream: r.stream_id ? { id: r.stream_id, name: r.stream_name ?? "" } : null,
@@ -639,12 +667,15 @@ export async function getMarkSheet(
   };
 }
 
-function normaliseScore(entry: MarkEntryInput): { isAbsent: boolean; rawScore: number | null } | null {
+function normaliseScore(
+  entry: MarkEntryInput,
+  maxMark: number,
+): { isAbsent: boolean; rawScore: number | null } | null {
   if (entry.isAbsent) return { isAbsent: true, rawScore: null };
   const raw = entry.rawScore;
   if (raw === null || raw === undefined) return null; // clear the mark
-  if (typeof raw !== "number" || !Number.isFinite(raw) || raw < 0 || raw > 100) {
-    throw new InvalidScoreError();
+  if (typeof raw !== "number" || !Number.isFinite(raw) || raw < 0 || raw > maxMark) {
+    throw new InvalidScoreError(maxMark);
   }
   return { isAbsent: false, rawScore: Math.round(raw * 100) / 100 };
 }
@@ -677,7 +708,7 @@ export async function saveMarks(
       const variantId = hasVariant ? (entry.variantId ?? null) : null;
       if (hasVariant && (!variantId || !validVariantIds.has(variantId))) continue;
 
-      const value = normaliseScore(entry);
+      const value = normaliseScore(entry, resolved.subject.maxMark);
       if (value === null) {
         await client.query(
           `delete from exam_result
@@ -689,15 +720,26 @@ export async function saveMarks(
       }
       await client.query(
         `insert into exam_result
-           (school_exam_id, student_user_id, subject_id, subject_variant_id, raw_score, is_absent, entered_by)
-         values ($1, $2, $3, $4, $5, $6, $7)
+           (school_exam_id, student_user_id, subject_id, subject_variant_id, raw_score, is_absent, entered_by,
+            max_mark)
+         values ($1, $2, $3, $4, $5, $6, $7, $8)
          on conflict (school_exam_id, student_user_id, subject_id, coalesce(subject_variant_id, '00000000-0000-0000-0000-000000000000'))
          do update
            set raw_score = excluded.raw_score,
+               max_mark = excluded.max_mark,
                is_absent = excluded.is_absent,
                entered_by = excluded.entered_by,
                updated_at = now()`,
-        [exam.id, entry.studentUserId, slot.subjectId, variantId, value.rawScore, value.isAbsent, actor.userId],
+        [
+          exam.id,
+          entry.studentUserId,
+          slot.subjectId,
+          variantId,
+          value.rawScore,
+          value.isAbsent,
+          actor.userId,
+          resolved.subject.maxMark,
+        ],
       );
     }
     await client.query("commit");
@@ -971,7 +1013,10 @@ export interface StudentSubjectResult {
   subjectCode: string;
   hasVariant: boolean;
   variantScores?: { variantId: string; name: string; rawScore: number | null; isAbsent: boolean }[];
+  /** The mark as entered, out of `maxMark` (a merged percentage for a
+   * multi-paper subject, whose maxMark is then 100). */
   rawScore: number | null;
+  maxMark: number;
   isAbsent: boolean;
   computedGrade: string | null;
   comment: string | null;
@@ -1016,6 +1061,7 @@ export async function getStudentExamResult(
     variant_name: string | null;
     variant_contribution_percent: string | null;
     raw_score: string | null;
+    max_mark: number;
     is_absent: boolean;
     computed_grade: string | null;
     grading_scheme_id: string | null;
@@ -1023,7 +1069,7 @@ export async function getStudentExamResult(
   }>(
     `select er.subject_id, sub.name as subject_name, sub.code as subject_code, sub.has_variant,
             er.subject_variant_id, sv.name as variant_name, sv.contribution_percent as variant_contribution_percent,
-            er.raw_score, er.is_absent, er.computed_grade, er.grading_scheme_id,
+            er.raw_score, er.max_mark, er.is_absent, er.computed_grade, er.grading_scheme_id,
             gb.comment
        from exam_result er
        join subject sub on sub.id = er.subject_id
@@ -1055,6 +1101,7 @@ export async function getStudentExamResult(
         subjectCode: first.subject_code,
         hasVariant: false,
         rawScore: first.raw_score !== null ? Number(first.raw_score) : null,
+        maxMark: first.max_mark,
         isAbsent: first.is_absent,
         computedGrade,
         comment,
@@ -1084,6 +1131,7 @@ export async function getStudentExamResult(
       hasVariant: true,
       variantScores,
       rawScore: merged.rawScore,
+      maxMark: 100,
       isAbsent: merged.isAbsent,
       computedGrade,
       comment,
@@ -1180,13 +1228,23 @@ export async function getExamReportCard(
 
   const isALevel = klass.stage_phase === "A_LEVEL";
   const isPrimary = klass.stage_phase === "PRIMARY";
-  const examOut = { id: exam.id, name: exam.name, termName: exam.termName, publishedAt: exam.publishedAt };
+  const examOut = {
+    id: exam.id,
+    name: exam.name,
+    termId: exam.termId,
+    termName: exam.termName,
+    publishedAt: exam.publishedAt,
+  };
+  const section: SchoolSection =
+    klass.stage_phase === "KINDERGARTEN" ? "KINDERGARTEN" : klass.stage_phase === "PRIMARY" ? "PRIMARY" : "SECONDARY";
+  const showPositions = await showPositionsFor(schoolId, section);
   const classOut = { id: klass.id, name: klass.class_name, phase: klass.stage_phase };
   const streamOut = klass.stream_id ? { id: klass.stream_id, name: klass.stream_name ?? "" } : null;
 
   if (rosterRows.length === 0) {
     return {
       exam: examOut,
+      showPositions,
       class: classOut,
       stream: streamOut,
       subjects: [],
@@ -1211,6 +1269,7 @@ export async function getExamReportCard(
     subject_category: string;
     subject_is_examinable: boolean;
     raw_score: string | null;
+    max_mark: number;
     is_absent: boolean;
     computed_grade: string | null;
     subject_variant_id: string | null;
@@ -1219,7 +1278,7 @@ export async function getExamReportCard(
   }>(
     `select er.student_user_id, er.subject_id, sub.code as subject_code, sub.name as subject_name,
             sub.category as subject_category, sub.is_examinable as subject_is_examinable,
-            er.raw_score, er.is_absent, er.computed_grade,
+            er.raw_score, er.max_mark, er.is_absent, er.computed_grade,
             er.subject_variant_id, sv.name as variant_name, sv.contribution_percent
        from exam_result er
        join subject sub on sub.id = er.subject_id
@@ -1244,7 +1303,10 @@ export async function getExamReportCard(
     isExaminable: boolean;
     hasVariant: boolean;
     variantScores: { name: string; rawScore: number | null; isAbsent: boolean }[];
+    /** Percentage — see ReportCardStudentSubject.rawScore. */
     rawScore: number | null;
+    mark: number | null;
+    maxMark: number;
     isAbsent: boolean;
     computedGrade: string | null;
   }
@@ -1261,6 +1323,8 @@ export async function getExamReportCard(
     const first = group[0];
     const hasVariant = group.some((g) => g.subject_variant_id);
     let rawScore: number | null;
+    let mark: number | null = null;
+    let maxMark = 100;
     let isAbsent: boolean;
     let variantScores: MergedSubjectScore["variantScores"] = [];
     if (hasVariant) {
@@ -1285,7 +1349,9 @@ export async function getExamReportCard(
       rawScore = merged.rawScore;
       isAbsent = merged.isAbsent;
     } else {
-      rawScore = first.raw_score !== null ? Number(first.raw_score) : null;
+      mark = first.raw_score !== null ? Number(first.raw_score) : null;
+      maxMark = first.max_mark;
+      rawScore = mark !== null ? Math.round(((mark * 100) / maxMark) * 100) / 100 : null;
       isAbsent = first.is_absent;
     }
     const computedGrade = group.find((g) => g.computed_grade !== null)?.computed_grade ?? null;
@@ -1298,6 +1364,8 @@ export async function getExamReportCard(
       hasVariant,
       variantScores,
       rawScore,
+      mark,
+      maxMark,
       isAbsent,
       computedGrade,
     });
@@ -1402,6 +1470,8 @@ export async function getExamReportCard(
           hasVariant: s.hasVariant,
           variantScores: s.hasVariant ? s.variantScores : undefined,
           rawScore: s.rawScore,
+          mark: s.mark,
+          maxMark: s.maxMark,
           isAbsent: s.isAbsent,
           computedGrade: s.computedGrade,
           isExaminable: s.isExaminable,
@@ -1563,6 +1633,7 @@ export async function getExamReportCard(
 
   return {
     exam: examOut,
+    showPositions,
     class: classOut,
     stream: streamOut,
     subjects,

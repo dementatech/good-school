@@ -16,13 +16,21 @@ import {
   type GradingAppliesTo,
   type SchoolGradingSchemeSelection,
 } from '@/components/admin/grading/types';
-import { offersLevel, useSchoolLevels } from '@/lib/levels';
+import {
+  SECTION_LABEL,
+  invalidateSchoolLevels,
+  subjectPhasesOf,
+  useSchoolLevels,
+  useSchoolSections,
+} from '@/lib/levels';
+import { submitJson } from '@/lib/api/envelope';
 
 // One card per phase/track a school can independently pick a grade system
 // for. A-Level splits into Principal and Subsidiary because the two are
 // graded on genuinely different scales (A-E worth points vs. a 2-band
 // Fail/Pass) — see grading-schemes.repository.ts.
 const CARDS: { appliesTo: GradingAppliesTo; roleScope: GradeRoleScope; title: string }[] = [
+  { appliesTo: 'KINDERGARTEN', roleScope: 'any', title: 'Nursery' },
   { appliesTo: 'PRIMARY', roleScope: 'any', title: 'Primary (PLE)' },
   { appliesTo: 'O_LEVEL', roleScope: 'any', title: 'O-Level' },
   { appliesTo: 'A_LEVEL', roleScope: 'principal', title: 'A-Level — Principal subjects' },
@@ -38,7 +46,19 @@ export default function SchoolAdminGradingSchemesPage() {
   const [editModal, setEditModal] = useState<(typeof CARDS)[number] | null>(null);
   const levels = useSchoolLevels();
   // Kindergarten has no grading — only the levels with subjects get a card.
-  const cards = CARDS.filter((c) => levels && offersLevel(levels, c.appliesTo));
+  const cards = CARDS.filter((c) => subjectPhasesOf(levels).includes(c.appliesTo));
+  const { active: activeSection } = useSchoolSections();
+
+  // Whether report cards print positions — the school's choice per section.
+  async function setShowPositions(showPositions: boolean) {
+    const res = await submitJson('/api/v1/academic/section-settings', 'PUT', { section: activeSection, showPositions });
+    if (!res.ok) {
+      toast.error(res.error!);
+      return;
+    }
+    invalidateSchoolLevels();
+    window.location.reload();
+  }
 
   const load = useCallback(async () => {
     setSelections(await fetchList<SchoolGradingSchemeSelection>('/api/v1/academic/school-grading-schemes', toast.error));
@@ -75,10 +95,24 @@ export default function SchoolAdminGradingSchemesPage() {
             Pick a published scheme, then adjust its ranges and comments to your liking.
             {levels.offersALevel &&
               ' A-Level Subsidiary grading is fixed (a uniform UACE rule) and can only be switched between published options.'}
-            {levels.offersKindergarten && ' Nursery classes aren’t graded — they use developmental ratings instead.'}
+            {levels.offersKindergarten &&
+              levels.nurseryAssessment === 'both' &&
+              ' Nursery report cards also carry the progress ratings.'}
           </p>
         )}
       </div>
+
+      {activeSection && (
+        <label className="flex items-center gap-2 text-sm text-[#12333F]">
+          <input
+            type="checkbox"
+            checked={levels?.showPositions[activeSection] ?? activeSection !== 'KINDERGARTEN'}
+            onChange={(e) => void setShowPositions(e.target.checked)}
+            className="rounded border-[#E5E5E5]"
+          />
+          Show each pupil&apos;s position (class ranking) on {SECTION_LABEL[activeSection]} report cards
+        </label>
+      )}
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
         {cards.map((card) => {

@@ -18,6 +18,9 @@ export interface CatalogSubject {
   isActive: boolean;
   status: SubjectApprovalStatus;
   proposedBySchoolId: string | null;
+  /** Set when this is the school's OWN subject (every Nursery subject, and
+   * non-examinable extras) — editable and deletable by the school. */
+  schoolId: string | null;
   rejectionReason: string | null;
   isGeneralPaper: boolean;
 }
@@ -35,6 +38,9 @@ export interface SubjectOffering {
   subjectPhase: SubjectPhase;
   isOffered: boolean;
   isCompulsory: boolean;
+  /** What the subject is marked out of here (100, 50, ...). */
+  maxMark: number;
+  subjectIsSchoolOwned: boolean;
 }
 
 export interface CatalogCombination {

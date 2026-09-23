@@ -8,11 +8,15 @@ import { useEffect, useState } from 'react';
  */
 export type SchoolLevel = 'KINDERGARTEN' | 'PRIMARY' | 'O_LEVEL' | 'A_LEVEL';
 
-/** Levels with a subject catalog — Kindergarten uses learning areas instead. */
-export type SubjectPhase = Exclude<SchoolLevel, 'KINDERGARTEN'>;
+/** Levels that can have subjects. Nursery has them only when the school
+ * assesses its Nursery with marks (see `nurseryAssessment`). */
+export type SubjectPhase = SchoolLevel;
 
 export const SCHOOL_LEVELS: SchoolLevel[] = ['KINDERGARTEN', 'PRIMARY', 'O_LEVEL', 'A_LEVEL'];
-export const SUBJECT_PHASES: SubjectPhase[] = ['PRIMARY', 'O_LEVEL', 'A_LEVEL'];
+export const SUBJECT_PHASES: SubjectPhase[] = ['KINDERGARTEN', 'PRIMARY', 'O_LEVEL', 'A_LEVEL'];
+
+/** How a school assesses its Nursery: progress ratings (default), marks, or both. */
+export type NurseryAssessment = 'ratings' | 'marks' | 'both';
 
 export const LEVEL_LABEL: Record<SchoolLevel, string> = {
   KINDERGARTEN: 'Kindergarten',
@@ -39,6 +43,22 @@ export interface SchoolLevelFlags {
   offersPrimary: boolean;
   offersOLevel: boolean;
   offersALevel: boolean;
+  nurseryAssessment: NurseryAssessment;
+  /** Per section: do report cards show positions? */
+  showPositions: Partial<Record<'KINDERGARTEN' | 'PRIMARY' | 'SECONDARY', boolean>>;
+}
+
+/** The levels that have subjects (and so exams, grading, report cards). */
+export function subjectPhasesOf(flags: SchoolLevelFlags | null): SubjectPhase[] {
+  if (!flags) return [];
+  return SUBJECT_PHASES.filter(
+    (p) => offersLevel(flags, p) && (p !== 'KINDERGARTEN' || flags.nurseryAssessment !== 'ratings'),
+  );
+}
+
+/** Whether the Nursery's progress ratings (Kindergarten Progress) are in use. */
+export function usesNurseryRatings(flags: SchoolLevelFlags | null): boolean {
+  return !!flags?.offersKindergarten && flags.nurseryAssessment !== 'marks';
 }
 
 export function levelsOffered(flags: SchoolLevelFlags): SchoolLevel[] {
@@ -71,11 +91,16 @@ function fetchLevels(): Promise<SchoolLevelFlags | null> {
         // /schools/me only sends the levels a school runs — an absent flag
         // means "not offered". A response with no level at all isn't a school.
         if (!s || !(s.offersKindergarten || s.offersPrimary || s.offersOLevel || s.offersALevel)) return null;
+        const settings: { section: string; assessmentStyle: string | null; showPositions: boolean }[] =
+          s.sectionSettings ?? [];
+        const nursery = settings.find((x) => x.section === 'KINDERGARTEN')?.assessmentStyle;
         return {
           offersKindergarten: !!s.offersKindergarten,
           offersPrimary: !!s.offersPrimary,
           offersOLevel: !!s.offersOLevel,
           offersALevel: !!s.offersALevel,
+          nurseryAssessment: (nursery === 'marks' || nursery === 'both' ? nursery : 'ratings') as NurseryAssessment,
+          showPositions: Object.fromEntries(settings.map((x) => [x.section, x.showPositions])),
         };
       })
       .catch(() => {
@@ -140,6 +165,7 @@ export function switchSection(section: SchoolSection): void {
 function scopeToSection(flags: SchoolLevelFlags, section: SchoolSection | null): SchoolLevelFlags {
   const keep = (l: SchoolLevel) => !!section && SECTION_LEVELS[section].includes(l) && offersLevel(flags, l);
   return {
+    ...flags,
     offersKindergarten: keep('KINDERGARTEN'),
     offersPrimary: keep('PRIMARY'),
     offersOLevel: keep('O_LEVEL'),

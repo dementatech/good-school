@@ -60,7 +60,8 @@ export const saveMarksBodySchema = {
           studentUserId: { type: "string", minLength: 1 },
           // Required by the repo when the subject has variants; ignored otherwise.
           variantId: { type: ["string", "null"] },
-          rawScore: { type: ["number", "null"], minimum: 0, maximum: 100 },
+          // Upper bound is the subject's full mark, checked in saveMarks (1–999).
+          rawScore: { type: ["number", "null"], minimum: 0, maximum: 999 },
           isAbsent: { type: "boolean" },
         },
         additionalProperties: false,
