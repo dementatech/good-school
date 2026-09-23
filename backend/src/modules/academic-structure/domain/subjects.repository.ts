@@ -742,14 +742,28 @@ export async function updateSchoolSubject(
 }
 
 export async function deleteSchoolSubject(schoolId: string, id: string): Promise<boolean> {
+  const client = await pool.connect();
   try {
-    const { rowCount } = await pool.query(`delete from subject where id = $1 and school_id = $2`, [id, schoolId]);
+    await client.query("BEGIN");
+    // Who teaches it goes with the subject (Nursery subjects get their class
+    // teachers assigned automatically, so almost every one has some). Recorded
+    // marks or pupil registrations still block the delete, below.
+    await client.query(
+      `delete from subject_teacher_assignment sta using subject s
+        where s.id = sta.subject_id and s.id = $1 and s.school_id = $2`,
+      [id, schoolId],
+    );
+    const { rowCount } = await client.query(`delete from subject where id = $1 and school_id = $2`, [id, schoolId]);
+    await client.query("COMMIT");
     return (rowCount ?? 0) > 0;
   } catch (err) {
+    await client.query("ROLLBACK");
     if (typeof err === "object" && err !== null && (err as { code?: string }).code === "23503") {
       throw new SubjectInUseError();
     }
     throw err;
+  } finally {
+    client.release();
   }
 }
 
