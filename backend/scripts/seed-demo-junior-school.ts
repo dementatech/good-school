@@ -3,6 +3,7 @@ import type { PoolClient } from "pg";
 import { hashPassword } from "../src/modules/auth/index.js";
 import { pool } from "../src/shared/db/index.js";
 import { nextSystemId } from "../src/shared/system-id.js";
+import { standardDay, type PeriodInput } from "../src/modules/timetable/domain/timetable.repository.js";
 
 // Demo seed for a Kindergarten + Primary school ("Kampala Junior School"):
 // Baby/Middle/Top Class and P1–P7 with pupils, the primary subject offering
@@ -427,6 +428,72 @@ async function main() {
       }
     }
 
+    console.log("8/8 Term 3 timetables (Nursery and Primary)...");
+    // The standard school day per section (same as the app's "Start from a
+    // standard day"), then a full week per class — Primary is class-teacher
+    // led, so every lesson is taught by the class's own teacher (no clashes).
+    const days = [1, 2, 3, 4, 5];
+    const dayPlans: Record<"KINDERGARTEN" | "PRIMARY", PeriodInput[]> = {
+      KINDERGARTEN: standardDay("KINDERGARTEN"),
+      PRIMARY: standardDay("PRIMARY"),
+    };
+    const periodIds: Record<string, string[]> = {};
+    for (const section of ["KINDERGARTEN", "PRIMARY"] as const) {
+      const existing = await client.query<{ id: string; kind: string }>(
+        `select id, kind from timetable_period where school_id = $1 and section = $2 order by start_time`,
+        [schoolId, section],
+      );
+      if (existing.rowCount === 0) {
+        for (const [i, p] of dayPlans[section].entries()) {
+          await client.query(
+            `insert into timetable_period (school_id, section, label, start_time, end_time, kind, sort_order)
+             values ($1, $2, $3, $4, $5, $6, $7)`,
+            [schoolId, section, p.label, p.startTime, p.endTime, p.kind, i],
+          );
+        }
+      }
+      const rows = await client.query<{ id: string }>(
+        `select id from timetable_period where school_id = $1 and section = $2 and kind = 'lesson' order by start_time`,
+        [schoolId, section],
+      );
+      periodIds[section] = rows.rows.map((r) => r.id);
+    }
+    const nurseryActivities = [
+      "Language & News",
+      "Number Games",
+      "Story Time",
+      "Writing Patterns",
+      "Music & Movement",
+      "Our Environment",
+      "Art & Craft",
+    ];
+    let timetabled = 0;
+    for (const [i, code] of STAGE_ORDER.entries()) {
+      const cls = classId[code];
+      const already = await client.query(`select 1 from timetable_slot where class_id = $1 and term_id = $2 limit 1`, [
+        cls,
+        termId["Term 3"],
+      ]);
+      if (already.rowCount) continue;
+      const isNursery = KINDERGARTEN_STAGES.has(code);
+      const periods = periodIds[isNursery ? "KINDERGARTEN" : "PRIMARY"];
+      const classSubjects = subjects.filter((s) => s.stage_codes.includes(code));
+      for (const day of days) {
+        for (const [pi, periodId] of periods.entries()) {
+          const k = (day - 1) * periods.length + pi;
+          const subjectId = isNursery ? null : classSubjects[k % classSubjects.length].id;
+          const activity = isNursery ? nurseryActivities[(k + i) % nurseryActivities.length] : null;
+          await client.query(
+            `insert into timetable_slot (school_id, term_id, class_id, day_of_week, period_id, subject_id, activity, staff_id)
+             values ($1, $2, $3, $4, $5, $6, $7, $8)
+             on conflict do nothing`,
+            [schoolId, termId["Term 3"], cls, day, periodId, subjectId, activity, teacherIds[i]],
+          );
+          timetabled++;
+        }
+      }
+    }
+
     await client.query("COMMIT");
 
     const { rows: adminRow } = await client.query<{ system_id: string }>(`select system_id from users where id = $1`, [
@@ -437,6 +504,7 @@ async function main() {
     console.log(`  School admin login: ${ADMIN_EMAIL} or ${adminRow[0].system_id} / ${PASSWORD}`);
     console.log(`  Teachers: firstname.lastname@${EMAIL_DOMAIN} / ${PASSWORD} (e.g. harriet.nabukenya@${EMAIL_DOMAIN} — Baby Class)`);
     console.log(`  New pupils: ${newPupils}; exam marks inserted: ${resultCount}; assessments inserted: ${assessmentCount}`);
+    console.log(`  Timetabled lessons added: ${timetabled}`);
   } catch (err) {
     await client.query("ROLLBACK");
     throw err;
