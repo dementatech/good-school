@@ -1,5 +1,6 @@
 import type { PoolClient } from "pg";
 import { pool } from "../../../shared/db/index.js";
+import { levelsForSchool } from "../../../shared/levels.js";
 
 // Prior national-exam performance, captured at admission and editable after.
 // Summary shape only (aggregate/points + division/result + year + candidate
@@ -101,6 +102,21 @@ function mapRow(row: PriorExamRow): PriorExamRecord {
   };
 }
 
+// PLE results matter to a secondary school admitting S1; UCE to one
+// admitting S5. A Nursery or Primary school has neither.
+export class PriorExamNotApplicableError extends Error {
+  constructor() {
+    super("That exam result doesn't apply at this school.");
+    this.name = "PriorExamNotApplicableError";
+  }
+}
+
+async function assertExamApplies(schoolId: string, examType: PriorExamType): Promise<void> {
+  const levels = await levelsForSchool(schoolId);
+  const ok = examType === "UCE" ? levels.includes("A_LEVEL") : levels.includes("O_LEVEL") || levels.includes("A_LEVEL");
+  if (!ok) throw new PriorExamNotApplicableError();
+}
+
 export class DuplicatePriorExamError extends Error {
   constructor() {
     super("A result for that exam and year is already on file — edit it instead of adding a second.");
@@ -128,11 +144,11 @@ export function isBelowCredit(grade: string): boolean {
   return !CREDIT_OR_BETTER.has(grade.trim().toUpperCase());
 }
 
-export async function listPriorExams(studentUserId: string): Promise<PriorExamRecord[]> {
+export async function listPriorExams(schoolId: string, studentUserId: string): Promise<PriorExamRecord[]> {
   const { rows } = await pool.query<PriorExamRow>(
-    `${SELECT_PRIOR_EXAM} where pe.student_user_id = $1
+    `${SELECT_PRIOR_EXAM} where pe.school_id = $1 and pe.student_user_id = $2
      group by pe.id order by pe.exam_year desc, pe.created_at desc`,
-    [studentUserId],
+    [schoolId, studentUserId],
   );
   return rows.map(mapRow);
 }
@@ -173,6 +189,7 @@ export async function recordPriorExam(
   recordedBy: string | null,
   enrollmentId: string | null = null,
 ): Promise<PriorExamRecord> {
+  await assertExamApplies(schoolId, input.examType);
   let inserted;
   try {
     inserted = await client.query<{ id: string }>(
@@ -212,6 +229,7 @@ export async function updatePriorExam(
   input: PriorExamInput,
   recordedBy: string | null,
 ): Promise<PriorExamRecord | null> {
+  await assertExamApplies(schoolId, input.examType);
   const client = await pool.connect();
   try {
     await client.query("BEGIN");

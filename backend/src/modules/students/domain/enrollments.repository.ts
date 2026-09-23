@@ -113,6 +113,15 @@ export class UnknownReferenceError extends Error {
   }
 }
 
+// Re-admission after UCE only exists at Senior 5 — never offered to, or
+// accepted for, any other class (a Primary school never hears of it).
+export class InvalidEntryTypeError extends Error {
+  constructor() {
+    super("Re-admission (S4→S5) only applies to Senior 5.");
+    this.name = "InvalidEntryTypeError";
+  }
+}
+
 export class ActiveEnrollmentExistsError extends Error {
   constructor() {
     super("Student already has an active enrollment at this school");
@@ -186,6 +195,13 @@ export async function createEnrollment(
   input: EnrollmentInput,
 ): Promise<EnrollmentRecord> {
   await assertEnrollmentTargetBelongsToSchool(client, schoolId, input);
+  if (input.entryType === "re_admission_s5") {
+    const stage = await client.query<{ code: string }>(
+      `select cs.code from classes c join curriculum_stage cs on cs.id = c.curriculum_stage_id where c.id = $1`,
+      [input.classId],
+    );
+    if (stage.rows[0]?.code !== "S5") throw new InvalidEntryTypeError();
+  }
 
   const active = await client.query(
     `select 1 from student_enrollment where school_id = $1 and student_user_id = $2 and status = 'active'`,

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Modal } from '@/components/ui/Modal';
 import { Input } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
@@ -15,7 +15,7 @@ import {
   type CombinationChoice,
 } from './StudentSubjectsPanel';
 import {
-  ENTRY_TYPES,
+  entryTypesFor,
   ENTRY_TYPE_LABEL,
   GENDERS,
   GUARDIAN_ROLES,
@@ -453,7 +453,7 @@ function AdmissionWizard({
   const branch = branchFor(selectedClass);
 
   // Steps: identity, enrollment, [branch], guardians, review.
-  const steps = useMemo(() => {
+  const steps = (() => {
     const s: { key: string; label: string }[] = [
       { key: 'identity', label: 'Identity' },
       { key: 'enrollment', label: 'Enrollment' },
@@ -465,7 +465,7 @@ function AdmissionWizard({
     s.push({ key: 'guardians', label: 'Guardians' });
     s.push({ key: 'review', label: 'Review' });
     return s;
-  }, [branch]);
+  })();
 
   const clampedStep = Math.min(step, steps.length - 1);
   const currentKey = steps[clampedStep].key;
@@ -610,14 +610,18 @@ function AdmissionWizard({
               label="Entry type"
               value={entryType}
               onChange={(e) => setEntryType(e.target.value as EntryType)}
-              options={ENTRY_TYPES.map((t) => ({ value: t, label: ENTRY_TYPE_LABEL[t] }))}
+              options={entryTypesFor(selectedClass?.stageCode).map((t) => ({ value: t, label: ENTRY_TYPE_LABEL[t] }))}
             />
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <Select
               label="Class *"
               value={classId}
-              onChange={(e) => setClassId(e.target.value)}
+              onChange={(e) => {
+                setClassId(e.target.value);
+                const code = classes.find((c) => c.id === e.target.value)?.stageCode;
+                if (!entryTypesFor(code).includes(entryType)) setEntryType('new_admission');
+              }}
               options={[
                 { value: '', label: classes.length ? 'Select a class…' : 'No classes set up for this year yet' },
                 ...classes.map((c) => ({ value: c.id, label: c.stageName })),

@@ -456,7 +456,7 @@ function ClassSubjects({ enrollment }: { enrollment: EnrollmentRecord }) {
   return (
     <div className="space-y-2">
       <p className="text-xs text-text-muted">
-        Every {enrollment.stageName} pupil takes the class&apos;s full subject set.
+        {`Every ${enrollment.stageName} pupil takes the class's full subject set.`}
       </p>
       <div className="flex flex-wrap gap-1.5">
         {subjects.map((s) => (

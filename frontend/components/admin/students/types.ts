@@ -120,6 +120,11 @@ export const ENTRY_TYPE_LABEL: Record<EntryType, string> = {
   repeat: 'Repeat',
   re_admission_s5: 'Re-admission (S4→S5)',
 };
+/** The entry types that apply to a class — re-admission after UCE exists
+ * only at Senior 5, so no other class (and no Nursery/Primary school) sees it. */
+export function entryTypesFor(stageCode: string | null | undefined): EntryType[] {
+  return ENTRY_TYPES.filter((t) => t !== 're_admission_s5' || stageCode === 'S5');
+}
 export const EXIT_TYPES: readonly ExitType[] = ['transfer', 'withdrawal', 'completion', 'no_show'];
 export const EXIT_TYPE_LABEL: Record<ExitType, string> = {
   transfer: 'Transferred to another school',
@@ -205,6 +210,14 @@ export const PRIOR_EXAM_TYPE_LABEL: Record<PriorExamType, string> = {
   PLE: 'PLE (Primary Leaving Exam)',
   UCE: 'UCE (O-Level)',
 };
+
+/** The national exams a student at this level sat before joining it: PLE
+ * before Senior 1, UCE too before Senior 5. Nursery and Primary: none. */
+export function priorExamTypesFor(phase: SchoolLevel | null | undefined): PriorExamType[] {
+  if (phase === 'A_LEVEL') return ['PLE', 'UCE'];
+  if (phase === 'O_LEVEL') return ['PLE'];
+  return [];
+}
 
 // PLE aggregate → division (legacy 1–9 per-subject scale, 4 subjects, 4–36).
 // docs/design/uganda-secondary-school-foundations.md §4.1.

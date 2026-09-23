@@ -519,7 +519,7 @@ export {
   matchOrCreateGuardian,
   InvalidGuardianInputError,
 } from "./guardians.repository.js";
-export { UnknownReferenceError, ActiveEnrollmentExistsError } from "./enrollments.repository.js";
+export { UnknownReferenceError, ActiveEnrollmentExistsError, InvalidEntryTypeError } from "./enrollments.repository.js";
 
 export type { StudentSubjectRecord } from "./student-subjects.repository.js";
 export {
@@ -555,4 +555,5 @@ export {
   updatePriorExam,
   deletePriorExam,
   DuplicatePriorExamError,
+  PriorExamNotApplicableError,
 } from "./prior-exams.repository.js";
