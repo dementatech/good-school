@@ -1,6 +1,7 @@
 import type { PoolClient } from "pg";
 import { pool } from "../../../shared/db/index.js";
 import { nextSequentialCode } from "./sequential-code.js";
+import { LEVEL_LABEL, LEVEL_STAGE_RANGE, type SubjectPhase } from "../../../shared/levels.js";
 
 // The subject catalog, per curriculum. `stageIds` is which curriculum stages
 // offer the subject (Physics: S3–S6). Per-student subject registration is a
@@ -16,8 +17,8 @@ export type SubjectCategory =
   | "religion"
   | "special";
 
-/** Which secondary phase a subject belongs to — matches `curriculum_stage.phase`. */
-export type SubjectPhase = "O_LEVEL" | "A_LEVEL";
+/** Which level a subject belongs to — matches `curriculum_stage.phase`. */
+export type { SubjectPhase };
 
 /** A school-proposed subject starts `pending` and isn't usable (offerable, or
  * addable to a combination) until a super_admin approves it. A platform-added
@@ -214,15 +215,27 @@ export const O_LEVEL_CATEGORIES: SubjectCategory[] = ["core", "religion", "vocat
  * subject-selection-module.md §3.1. */
 export const A_LEVEL_CATEGORIES: SubjectCategory[] = ["science", "art", "subsidiary"];
 
+/** Primary: the four PLE subjects are 'core'; Literacy and the local
+ * languages are 'language'; RE is 'religion'; PE/Creative Arts are
+ * 'special'. See docs/design/primary-schools-extension.md §2–3. */
+export const PRIMARY_CATEGORIES: SubjectCategory[] = ["core", "language", "religion", "special"];
+
+export const CATEGORIES_BY_PHASE: Record<SubjectPhase, SubjectCategory[]> = {
+  PRIMARY: PRIMARY_CATEGORIES,
+  O_LEVEL: O_LEVEL_CATEGORIES,
+  A_LEVEL: A_LEVEL_CATEGORIES,
+};
+
 function defaultCategoryForPhase(phase: SubjectPhase): SubjectCategory {
-  return phase === "O_LEVEL" ? "core" : "science";
+  return phase === "A_LEVEL" ? "science" : "core";
 }
 
 function assertCategoryValidForPhase(phase: SubjectPhase, category: SubjectCategory): void {
-  const allowed = phase === "O_LEVEL" ? O_LEVEL_CATEGORIES : A_LEVEL_CATEGORIES;
+  const allowed = CATEGORIES_BY_PHASE[phase];
   if (!allowed.includes(category)) {
-    const label = phase === "O_LEVEL" ? "An O-Level" : "An A-Level";
-    throw new InvalidSubjectError(`${label} subject's category must be one of: ${allowed.join(", ")}.`);
+    throw new InvalidSubjectError(
+      `A ${LEVEL_LABEL[phase]} subject's category must be one of: ${allowed.join(", ")}.`,
+    );
   }
 }
 
@@ -245,10 +258,8 @@ async function replaceStages(
     [curriculumId, phase, unique],
   );
   if (valid.rowCount !== unique.length) {
-    const label = phase === "A_LEVEL" ? "an A-Level" : "an O-Level";
-    const range = phase === "A_LEVEL" ? "Senior 5–6" : "Senior 1–4";
     throw new InvalidSubjectError(
-      `Every stage for ${label} subject must be ${range} stage of this curriculum.`,
+      `Every stage for a ${LEVEL_LABEL[phase]} subject must be a ${LEVEL_STAGE_RANGE[phase]} stage of this curriculum.`,
     );
   }
 

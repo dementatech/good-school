@@ -12,7 +12,7 @@ import type { SchoolClass, Stream } from '@/components/admin/students/types';
 import type { StaffCandidate, Staff, SubjectTeacherAssignment } from '@/components/admin/staff/types';
 import type { CatalogSubject, SubjectPhase } from '@/components/admin/subjects/types';
 
-const PHASE_LABEL: Record<SubjectPhase, string> = { O_LEVEL: 'O-Level', A_LEVEL: 'A-Level' };
+const PHASE_LABEL: Record<SubjectPhase, string> = { PRIMARY: 'Primary', O_LEVEL: 'O-Level', A_LEVEL: 'A-Level' };
 
 // The allocation half of docs/design/teachers-module.md §4 — "who teaches
 // this" lives right next to "is this subject offered", the same screen, not

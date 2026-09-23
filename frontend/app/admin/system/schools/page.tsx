@@ -139,7 +139,11 @@ export default function SystemSchoolsPage() {
         <span className="flex flex-wrap items-center gap-1.5">
           <SchoolLogo logoUrl={s.logoUrl} name={s.name} />
           <span className="font-medium">{s.name}</span>
-          {s.emisCode && <Badge variant="muted">EMIS {s.emisCode}</Badge>}
+          {Object.values(s.emisCodes).map((code) => (
+            <Badge key={code} variant="muted">
+              EMIS {code}
+            </Badge>
+          ))}
           {s.curricula.map((c) => (
             <span key={c.curriculumId} className="text-xs text-text-faint">
               {c.code}
@@ -148,6 +152,19 @@ export default function SystemSchoolsPage() {
           ))}
         </span>
       ),
+    },
+    {
+      key: 'levels',
+      header: 'Levels',
+      value: (s) =>
+        [
+          s.offersKindergarten && 'Nursery',
+          s.offersPrimary && 'Primary',
+          s.offersOLevel && 'O-Level',
+          s.offersALevel && 'A-Level',
+        ]
+          .filter(Boolean)
+          .join(', '),
     },
     { key: 'district', header: 'District', value: (s) => s.district ?? '', hideOnMobile: true },
     {

@@ -21,7 +21,8 @@ export interface School {
   name: string;
   legalName: string | null;
   slug: string | null;
-  emisCode: string | null;
+  /** EMIS number per section — each section is its own EMIS institution. */
+  emisCodes: Partial<Record<'KINDERGARTEN' | 'PRIMARY' | 'SECONDARY', string>>;
   unebCentreNumber: string | null;
   ownershipType: OwnershipType | null;
   registrationStatus: RegistrationStatus | null;
@@ -37,6 +38,8 @@ export interface School {
   website: string | null;
   schoolType: SchoolType | null;
   genderComposition: GenderComposition | null;
+  offersKindergarten: boolean;
+  offersPrimary: boolean;
   offersOLevel: boolean;
   offersALevel: boolean;
   logoUrl: string | null;

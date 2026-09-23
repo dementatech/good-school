@@ -16,7 +16,13 @@ import { SubjectFormModal } from '@/components/admin/curriculum/SubjectFormModal
 import { AlertTriangle, UserCog } from 'lucide-react';
 import type { AllocationGap } from '@/components/admin/staff/types';
 import type { Phase, Stage } from '@/components/admin/curriculum/types';
-import { A_LEVEL_CATEGORIES, O_LEVEL_CATEGORIES } from '@/components/admin/curriculum/types';
+import {
+  A_LEVEL_CATEGORIES,
+  O_LEVEL_CATEGORIES,
+  PHASE_LABEL,
+  PRIMARY_CATEGORIES,
+} from '@/components/admin/curriculum/types';
+import { SUBJECT_PHASES, offersLevel, useSchoolLevels } from '@/lib/levels';
 import {
   CATEGORY_LABEL,
   STATUS_LABEL,
@@ -27,17 +33,18 @@ import {
   type SubjectOffering,
 } from '@/components/admin/subjects/types';
 
-// A school can never propose 'core' (O-Level) — that's platform-only. There's
+// A school can never propose 'core' (Primary/O-Level) — that's platform-only. There's
 // no A-Level equivalent to exclude: General Paper is protected by the
 // `isGeneralPaper` flag (never settable through this form), not by category —
 // a school can freely propose a Science, Art, or ordinary Subsidiary subject.
 // See backend routes.ts POST /subjects.
 const PROPOSABLE_CATEGORIES: Record<Phase, typeof O_LEVEL_CATEGORIES> = {
+  PRIMARY: PRIMARY_CATEGORIES.filter((c) => c !== 'core'),
   O_LEVEL: O_LEVEL_CATEGORIES.filter((c) => c !== 'core'),
   A_LEVEL: A_LEVEL_CATEGORIES,
 };
 
-// A school's O-Level offering, one row per catalog subject (super_admin's
+// A school's offering for one level, one row per catalog subject (super_admin's
 // "constants") whether or not the school has toggled it on yet — a subject
 // with no `subject_offering` row is simply "not offered, not compulsory".
 interface OfferingRow {
@@ -45,7 +52,7 @@ interface OfferingRow {
   code: string;
   name: string;
   category: string;
-  phase: 'O_LEVEL' | 'A_LEVEL';
+  phase: Phase;
   isOffered: boolean;
   isCompulsory: boolean;
 }
@@ -65,9 +72,13 @@ export default function SchoolAdminSubjectsPage() {
   const [teacherModal, setTeacherModal] = useState<{
     subjectId: string;
     subjectName: string;
-    subjectPhase: 'O_LEVEL' | 'A_LEVEL';
+    subjectPhase: Phase;
   } | null>(null);
   const [proposeModal, setProposeModal] = useState<{ phase: Phase } | null>(null);
+  const levels = useSchoolLevels();
+  // Only this school's own levels — nothing at all until they're known.
+  const phasesShown = SUBJECT_PHASES.filter((p) => levels && offersLevel(levels, p));
+  const showsALevel = phasesShown.includes('A_LEVEL');
 
   const currentYear = years.find((y) => y.isCurrent) ?? years[0];
   const effectiveYearId = yearId || currentYear?.id || '';
@@ -139,7 +150,7 @@ export default function SchoolAdminSubjectsPage() {
 
   const offeringByCode = new Map(offerings.map((o) => [o.subjectId, o]));
 
-  function subjectRows(phase: 'O_LEVEL' | 'A_LEVEL'): OfferingRow[] {
+  function subjectRows(phase: Phase): OfferingRow[] {
     return catalogSubjects
       .filter((s) => s.phase === phase && s.isActive && s.status === 'approved')
       .map((s) => {
@@ -279,10 +290,12 @@ export default function SchoolAdminSubjectsPage() {
     <div className="space-y-8">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-primary-900 mb-1">Subjects & Combinations</h1>
+          <h1 className="text-2xl font-bold text-primary-900 mb-1">
+            {showsALevel ? 'Subjects & Combinations' : 'Subjects'}
+          </h1>
           <p className="text-sm text-text-muted">
-            Pick which subjects and A-Level combinations your school runs — the catalog itself is
-            set platform-wide.
+            Pick which subjects{showsALevel ? ' and A-Level combinations' : ''} your school runs — the
+            catalog itself is set platform-wide.
           </p>
         </div>
         {years.length > 1 && (
@@ -312,43 +325,39 @@ export default function SchoolAdminSubjectsPage() {
             </div>
           )}
 
-          <div className="space-y-2">
-            <h2 className="text-sm font-bold text-primary-900">O-Level subjects</h2>
-            <DataTable
-              rows={subjectRows('O_LEVEL')}
-              columns={subjectColumns}
-              rowKey={(r) => r.subjectId}
-              initialSort={{ key: 'name', direction: 'asc' }}
-              searchPlaceholder="Search subjects…"
-              emptyMessage="No O-Level subjects in the catalog yet — a super-admin sets those up."
-              exportFileName="o-level-subjects"
-              actions={
-                <Button variant="outline" onClick={() => setProposeModal({ phase: 'O_LEVEL' })} disabled={!curriculumId}>
-                  <Plus className="w-4 h-4 mr-1.5" aria-hidden />
-                  Propose a subject
-                </Button>
-              }
-            />
-          </div>
+          {phasesShown.map((phase) => (
+            <div key={phase} className="space-y-2">
+              <h2 className="text-sm font-bold text-primary-900">{PHASE_LABEL[phase]} subjects</h2>
+              {phase === 'PRIMARY' && (
+                <p className="text-xs text-text-muted">
+                  English, Mathematics, Integrated Science and Social Studies are examined at PLE and make up
+                  each pupil&apos;s aggregate; the other subjects are taught and reported but not aggregated.
+                </p>
+              )}
+              <DataTable
+                rows={subjectRows(phase)}
+                columns={subjectColumns}
+                rowKey={(r) => r.subjectId}
+                initialSort={{ key: 'name', direction: 'asc' }}
+                searchPlaceholder="Search subjects…"
+                emptyMessage={`No ${PHASE_LABEL[phase]} subjects in the catalog yet — a super-admin sets those up.`}
+                exportFileName={`${phase.toLowerCase().replace('_', '-')}-subjects`}
+                actions={
+                  <Button variant="outline" onClick={() => setProposeModal({ phase })} disabled={!curriculumId}>
+                    <Plus className="w-4 h-4 mr-1.5" aria-hidden />
+                    Propose a subject
+                  </Button>
+                }
+              />
+            </div>
+          ))}
 
-          <div className="space-y-2">
-            <h2 className="text-sm font-bold text-primary-900">A-Level subjects</h2>
-            <DataTable
-              rows={subjectRows('A_LEVEL')}
-              columns={subjectColumns}
-              rowKey={(r) => r.subjectId}
-              initialSort={{ key: 'name', direction: 'asc' }}
-              searchPlaceholder="Search subjects…"
-              emptyMessage="No A-Level subjects in the catalog yet — a super-admin sets those up."
-              exportFileName="a-level-subjects"
-              actions={
-                <Button variant="outline" onClick={() => setProposeModal({ phase: 'A_LEVEL' })} disabled={!curriculumId}>
-                  <Plus className="w-4 h-4 mr-1.5" aria-hidden />
-                  Propose a subject
-                </Button>
-              }
-            />
-          </div>
+          {levels?.offersKindergarten && (
+            <p className="rounded-xl border border-border bg-bg-card p-3 text-sm text-text-muted">
+              Kindergarten (Baby, Middle and Top Class) is taught through learning areas rather than subjects —
+              manage them under <strong>Kindergarten Progress</strong>.
+            </p>
+          )}
 
           {proposedSubjects.length > 0 && (
             <div className="space-y-2">
@@ -390,25 +399,27 @@ export default function SchoolAdminSubjectsPage() {
             </div>
           )}
 
-          <div className="space-y-2">
-            <h2 className="text-sm font-bold text-primary-900">A-Level combinations</h2>
-            <DataTable
-              rows={combinations}
-              columns={combinationColumns}
-              rowActions={combinationActions}
-              rowKey={(c) => c.id}
-              initialSort={{ key: 'name', direction: 'asc' }}
-              searchPlaceholder="Search combinations…"
-              emptyMessage="No combinations yet — add one from the national catalog, or define a custom one."
-              exportFileName="combinations"
-              actions={
-                <Button onClick={() => setComboModal({})}>
-                  <Plus className="w-4 h-4 mr-1.5" aria-hidden />
-                  Add combination
-                </Button>
-              }
-            />
-          </div>
+          {showsALevel && (
+            <div className="space-y-2">
+              <h2 className="text-sm font-bold text-primary-900">A-Level combinations</h2>
+              <DataTable
+                rows={combinations}
+                columns={combinationColumns}
+                rowActions={combinationActions}
+                rowKey={(c) => c.id}
+                initialSort={{ key: 'name', direction: 'asc' }}
+                searchPlaceholder="Search combinations…"
+                emptyMessage="No combinations yet — add one from the national catalog, or define a custom one."
+                exportFileName="combinations"
+                actions={
+                  <Button onClick={() => setComboModal({})}>
+                    <Plus className="w-4 h-4 mr-1.5" aria-hidden />
+                    Add combination
+                  </Button>
+                }
+              />
+            </div>
+          )}
         </>
       )}
 

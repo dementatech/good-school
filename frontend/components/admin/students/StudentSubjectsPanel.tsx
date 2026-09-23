@@ -383,9 +383,76 @@ export function StudentSubjectsPanel({
   if (!enrollment) {
     return <p className="text-sm text-text-faint">Enrol the student in a class first.</p>;
   }
+  if (enrollment.stagePhase === 'KINDERGARTEN') {
+    return (
+      <p className="text-sm text-text-muted">
+        Kindergarten pupils are assessed across learning areas rather than subjects — see Kindergarten Progress.
+      </p>
+    );
+  }
+  if (enrollment.stagePhase === 'PRIMARY') return <PrimarySubjects enrollment={enrollment} />;
   return enrollment.stagePhase === 'A_LEVEL' ? (
     <ALevelCombination studentUserId={studentUserId} enrollment={enrollment} />
   ) : (
     <OLevelSubjects studentUserId={studentUserId} enrollment={enrollment} />
+  );
+}
+
+// Primary has no per-pupil subject choice (primary-schools-extension.md §3):
+// a pupil takes every subject the school offers at their class level. Read
+// only — change it from Subjects, not per pupil.
+function PrimarySubjects({ enrollment }: { enrollment: EnrollmentRecord }) {
+  const toast = useToast();
+  const [subjects, setSubjects] = useState<
+    { id: string; name: string; isExaminable: boolean }[] | null
+  >(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      const [offerings, catalog, stages] = await Promise.all([
+        fetchList<SubjectOffering>(
+          `/api/v1/academic/subject-offerings?academicYearId=${enrollment.academicYearId}&phase=PRIMARY`,
+          toast.error,
+        ),
+        fetchList<{ id: string; name: string; isExaminable: boolean; stageIds: string[] }>(
+          '/api/v1/academic/subjects?phase=PRIMARY',
+          toast.error,
+        ),
+        fetchList<{ id: string; code: string }>('/api/v1/academic/stages', toast.error),
+      ]);
+      if (cancelled) return;
+      const stageId = stages.find((st) => st.code === enrollment.stageCode)?.id;
+      const offered = new Set(offerings.filter((o) => o.isOffered).map((o) => o.subjectId));
+      setSubjects(
+        catalog
+          .filter((c) => offered.has(c.id) && (!stageId || c.stageIds.includes(stageId)))
+          .sort((a, b) => Number(b.isExaminable) - Number(a.isExaminable) || a.name.localeCompare(b.name)),
+      );
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [enrollment.academicYearId, enrollment.stageCode]);
+
+  if (!subjects) return <p className="text-sm text-text-faint">Loading subjects…</p>;
+  if (subjects.length === 0) {
+    return <p className="text-sm text-text-faint">No primary subjects are offered for {enrollment.stageName} yet.</p>;
+  }
+  return (
+    <div className="space-y-2">
+      <p className="text-xs text-text-muted">
+        Every {enrollment.stageName} pupil takes the class&apos;s full subject set.
+      </p>
+      <div className="flex flex-wrap gap-1.5">
+        {subjects.map((s) => (
+          <Badge key={s.id} variant={s.isExaminable ? 'default' : 'muted'}>
+            {s.name}
+            {s.isExaminable ? ' · PLE' : ''}
+          </Badge>
+        ))}
+      </div>
+    </div>
   );
 }

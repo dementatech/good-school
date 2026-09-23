@@ -1,3 +1,4 @@
+import type { SchoolLevel } from "../../../shared/levels.js";
 import type { PoolClient } from "pg";
 import { pool } from "../../../shared/db/index.js";
 
@@ -28,7 +29,7 @@ export interface EnrollmentRecord {
   classId: string;
   stageCode: string;
   stageName: string;
-  stagePhase: "O_LEVEL" | "A_LEVEL";
+  stagePhase: SchoolLevel;
   streamId: string | null;
   streamName: string | null;
   entryDate: string;
@@ -57,7 +58,7 @@ interface EnrollmentRow {
   class_id: string;
   stage_code: string;
   stage_name: string;
-  stage_phase: "O_LEVEL" | "A_LEVEL";
+  stage_phase: SchoolLevel;
   stream_id: string | null;
   stream_name: string | null;
   entry_date: string;

@@ -14,6 +14,7 @@ import {
   listUserIdsForSchool,
   setOnboardingStatus,
   setSchoolLogo,
+  InvalidSchoolLevelsError,
   UniqueViolationError,
   UnsupportedFileTypeError,
   updateSchool,
@@ -52,7 +53,14 @@ export async function schoolsRoutes(fastify: FastifyInstance) {
     const schoolId = request.authUser?.school_id;
     if (!schoolId) return reply.status(404).send(fail("no_school"));
     const school = await getSchool(schoolId);
-    return school ? ok(school) : reply.status(404).send(fail("not_found"));
+    if (!school) return reply.status(404).send(fail("not_found"));
+    // A school only ever learns about the levels it runs — a level it doesn't
+    // offer isn't sent at all, not even as false.
+    const { offersKindergarten, offersPrimary, offersOLevel, offersALevel, ...rest } = school;
+    const levels = Object.fromEntries(
+      Object.entries({ offersKindergarten, offersPrimary, offersOLevel, offersALevel }).filter(([, on]) => on),
+    );
+    return ok({ ...rest, ...levels });
   });
 
   // ═══ School tenants — super_admin only ═══════════════════════════════════
@@ -72,6 +80,7 @@ export async function schoolsRoutes(fastify: FastifyInstance) {
         return reply.status(201).send(ok(await createSchool(request.body)));
       } catch (err) {
         if (err instanceof UniqueViolationError) return reply.status(409).send(fail(err.message));
+        if (err instanceof InvalidSchoolLevelsError) return reply.status(400).send(fail(err.message));
         throw err;
       }
     },
@@ -86,6 +95,7 @@ export async function schoolsRoutes(fastify: FastifyInstance) {
         return updated ? ok(updated) : reply.status(404).send(fail("not_found"));
       } catch (err) {
         if (err instanceof UniqueViolationError) return reply.status(409).send(fail(err.message));
+        if (err instanceof InvalidSchoolLevelsError) return reply.status(400).send(fail(err.message));
         throw err;
       }
     },

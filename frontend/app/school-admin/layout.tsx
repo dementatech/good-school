@@ -11,6 +11,7 @@ import { AccountMenu } from '@/components/ui/AccountMenu';
 import { TopbarSearch } from '@/components/ui/TopbarSearch';
 import { MobileNavDrawer } from '@/components/ui/MobileNavDrawer';
 import { PortalSidebar } from '@/components/ui/PortalSidebar';
+import { SectionSwitcher } from '@/components/ui/SectionSwitcher';
 import { useUnreadMessageCount } from '@/lib/communications/useUnreadMessageCount';
 import {
   LayoutDashboard,
@@ -30,8 +31,10 @@ import {
   Award,
   FileBarChart2,
   MessageSquare,
+  Baby,
 } from 'lucide-react';
 import type { Role } from '@/lib/auth/session';
+import { useSchoolLevels } from '@/lib/levels';
 
 const SCHOOL_ADMIN_ROLES: Role[] = ['school_admin'];
 
@@ -52,6 +55,7 @@ const NAV_BASE = [
   { href: '/school-admin/communications', label: 'Communication', icon: MessageSquare },
   { href: '/school-admin/organisation-studio', label: 'Organisation Studio', icon: Network },
   { href: '/school-admin/students', label: 'Students', icon: GraduationCap },
+  { href: '/school-admin/kindergarten', label: 'Kindergarten Progress', icon: Baby },
   {
     label: 'Exams',
     icon: ClipboardList,
@@ -72,13 +76,34 @@ function SchoolAdminShell({ children }: { children: React.ReactNode }) {
   const { user, logout } = useAuth();
   const router = useRouter();
   const unreadMessages = useUnreadMessageCount();
-  const NAV = React.useMemo(
-    () =>
-      NAV_BASE.map((item) =>
-        item.href === '/school-admin/communications' ? { ...item, badge: unreadMessages } : item,
-      ),
-    [unreadMessages],
-  );
+  const levels = useSchoolLevels();
+  const NAV = React.useMemo(() => {
+    // Hide pages for levels this school doesn't run — and every level-specific
+    // page until its levels are known, so nothing flashes up for the wrong school.
+    // A Nursery-only school has no subjects, exams or grading at all.
+    const hasSubjects = !!levels && (levels.offersPrimary || levels.offersOLevel || levels.offersALevel);
+    const hidden = new Set<string>([
+      ...(levels?.offersKindergarten ? [] : ['/school-admin/kindergarten']),
+      ...(levels?.offersOLevel ? [] : ['/school-admin/subjects/options']),
+      ...(levels?.offersALevel ? [] : ['/school-admin/subjects/combinations']),
+      ...(hasSubjects
+        ? []
+        : [
+            '/school-admin/subjects',
+            '/school-admin/exams',
+            '/school-admin/report-card-studio',
+            '/school-admin/grading-schemes',
+          ]),
+    ]);
+    return NAV_BASE.filter((item) => !item.href || !hidden.has(item.href))
+      .map((item) => {
+        if ('children' in item && item.children) {
+          return { ...item, children: item.children.filter((c) => !hidden.has(c.href)) };
+        }
+        return item.href === '/school-admin/communications' ? { ...item, badge: unreadMessages } : item;
+      })
+      .filter((item) => !('children' in item && item.children) || item.children.length > 0);
+  }, [unreadMessages, levels]);
 
   return (
     <div className="min-h-screen print:min-h-0 bg-bg-canvas print:bg-white flex">
@@ -93,7 +118,10 @@ function SchoolAdminShell({ children }: { children: React.ReactNode }) {
 
       <div className="flex-1 min-w-0 flex flex-col">
         <div className="hidden md:flex print:!hidden items-center justify-between gap-4 px-8 py-2 border-b border-border bg-bg-card">
-          <TopbarSearch items={NAV} />
+          <div className="flex items-center gap-4 min-w-0">
+            <TopbarSearch items={NAV} />
+            <SectionSwitcher />
+          </div>
           <div className="flex items-center gap-2 shrink-0">
             <NotificationBell />
             <AccountMenu onSignOut={() => { logout(); router.push('/auth'); }} />
@@ -117,6 +145,9 @@ function SchoolAdminShell({ children }: { children: React.ReactNode }) {
             <p className="text-sm font-semibold text-primary-900 truncate">{user?.school || 'Good School'}</p>
           </div>
           <NotificationBell />
+        </div>
+        <div className="md:hidden print:!hidden flex justify-center px-4 py-2 border-b border-border bg-bg-card empty:hidden">
+          <SectionSwitcher compact />
         </div>
         <main className="flex-1 p-3 sm:p-6 md:p-8 print:p-0"><FeatureGate>{children}</FeatureGate></main>
       </div>

@@ -8,6 +8,8 @@ import { Badge } from '@/components/ui/Badge';
 import { useToast } from '@/components/ui/ToastProvider';
 import { Loader } from '@/components/ui/loader';
 import { Layers, Plus, Trash2 } from 'lucide-react';
+import { fetchList } from '@/lib/api/envelope';
+import { LEVEL_LABEL, SCHOOL_LEVELS, offersLevel, useSchoolLevels, type SchoolLevel } from '@/lib/levels';
 
 interface Curriculum {
   id: string;
@@ -31,8 +33,16 @@ interface SchoolClass {
   curriculumStageId: string;
   stageCode: string;
   stageName: string;
+  stagePhase: SchoolLevel;
   hasStreams: boolean;
+  classTeacherId: string | null;
   isActive: boolean;
+}
+interface Teacher {
+  userId: string;
+  firstName: string;
+  lastName: string;
+  activeAssignment: unknown;
 }
 interface Stream {
   id: string;
@@ -52,6 +62,8 @@ export default function SchoolAdminClassesPage() {
   const [classes, setClasses] = useState<SchoolClass[]>([]);
   const [streams, setStreams] = useState<Stream[]>([]);
   const [newStream, setNewStream] = useState<Record<string, { name: string; capacity: string }>>({});
+  const [teachers, setTeachers] = useState<Teacher[]>([]);
+  const levels = useSchoolLevels();
 
   const currentYear = years.find((y) => y.isCurrent) ?? years[0];
   const effectiveYearId = yearId || currentYear?.id || '';
@@ -74,6 +86,9 @@ export default function SchoolAdminClassesPage() {
           fetch('/api/v1/academic/curricula').then((r) => r.json()),
           fetch('/api/v1/academic/school-curricula').then((r) => r.json()),
         ]);
+        void fetchList<Teacher>('/api/v1/staff', toast.error).then((list) =>
+          setTeachers(list.filter((t) => t.activeAssignment)),
+        );
         if (yearsRes.success) setYears(yearsRes.data);
         if (curRes.success) setCurricula(curRes.data);
         if (scRes.success) setSchoolCurricula(scRes.data);
@@ -138,6 +153,29 @@ export default function SchoolAdminClassesPage() {
     }
   }
 
+  // Kindergarten progress (and each class's report remarks) is written by
+  // this person — see the early-years module.
+  async function setClassTeacher(cls: SchoolClass, classTeacherId: string | null) {
+    const res = await fetch(`/api/v1/academic/classes/${cls.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        academicYearId: effectiveYearId,
+        curriculumStageId: cls.curriculumStageId,
+        hasStreams: cls.hasStreams,
+        classTeacherId,
+        isActive: cls.isActive,
+      }),
+    });
+    const data = await res.json();
+    if (data.success) {
+      toast.success(`Class teacher updated for ${cls.stageName}.`);
+      await loadStructure();
+    } else {
+      toast.error(data.error ?? 'Could not update the class teacher.');
+    }
+  }
+
   async function removeClass(cls: SchoolClass) {
     if (!confirm(`Remove ${cls.stageName} for this year? Its streams go too.`)) return;
     const res = await fetch(`/api/v1/academic/classes/${cls.id}`, { method: 'DELETE' });
@@ -178,7 +216,15 @@ export default function SchoolAdminClassesPage() {
   }
 
   const openStageIds = new Set(classes.map((c) => c.curriculumStageId));
-  const unopenedStages = stages.filter((s) => !openStageIds.has(s.id));
+  // Only the levels this school runs (all of them until its flags load).
+  const unopenedStages = stages.filter(
+    (s) => !openStageIds.has(s.id) && !!levels && (!s.phase || offersLevel(levels, s.phase as SchoolLevel)),
+  );
+  const unopenedByLevel = SCHOOL_LEVELS.map((level) => ({
+    level,
+    stages: unopenedStages.filter((s) => s.phase === level),
+  })).filter((g) => g.stages.length > 0);
+  const otherUnopened = unopenedStages.filter((s) => !SCHOOL_LEVELS.includes(s.phase as SchoolLevel));
 
   if (loading) {
     return (
@@ -193,8 +239,9 @@ export default function SchoolAdminClassesPage() {
       <div>
         <h1 className="text-2xl font-bold text-primary-900 mb-1">Classes &amp; Streams</h1>
         <p className="text-sm text-text-muted">
-          The Senior classes your school runs this year, and the streams (East/West, Blue/Red)
-          within each. Learners are enrolled into a stream.
+          {levels && (levels.offersKindergarten || levels.offersPrimary)
+            ? 'The classes your school runs this year, and the streams (Red/Blue, East/West) within each. Pupils are enrolled into a stream.'
+            : 'The Senior classes your school runs this year, and the streams (East/West, Blue/Red) within each. Learners are enrolled into a stream.'}
         </p>
       </div>
 
@@ -243,13 +290,26 @@ export default function SchoolAdminClassesPage() {
           {unopenedStages.length > 0 && schoolCurricula.length > 0 && (
             <Card>
               <p className="text-sm font-medium text-primary-900 mb-2">Open a class for this year</p>
-              <div className="flex flex-wrap gap-2">
-                {unopenedStages.map((s) => (
-                  <Button key={s.id} variant="outline" onClick={() => void openClass(s)}>
-                    <Plus className="w-4 h-4 mr-1.5" aria-hidden />
-                    {s.name}
-                  </Button>
-                ))}
+              <div className="space-y-3">
+                {[...unopenedByLevel, ...(otherUnopened.length ? [{ level: null, stages: otherUnopened }] : [])].map(
+                  (group) => (
+                    <div key={group.level ?? 'other'}>
+                      {unopenedByLevel.length > 1 && (
+                        <p className="text-xs font-medium text-text-muted mb-1.5">
+                          {group.level ? LEVEL_LABEL[group.level] : 'Other'}
+                        </p>
+                      )}
+                      <div className="flex flex-wrap gap-2">
+                        {group.stages.map((s) => (
+                          <Button key={s.id} variant="outline" onClick={() => void openClass(s)}>
+                            <Plus className="w-4 h-4 mr-1.5" aria-hidden />
+                            {s.name}
+                          </Button>
+                        ))}
+                      </div>
+                    </div>
+                  ),
+                )}
               </div>
             </Card>
           )}
@@ -270,6 +330,21 @@ export default function SchoolAdminClassesPage() {
                           <span className="font-medium text-[#12333F]">{cls.stageName}</span>
                           <Badge variant="muted">{cls.stageCode}</Badge>
                         </div>
+                        <label className="ml-auto flex items-center gap-2 text-xs text-text-muted">
+                          Class teacher
+                          <select
+                            value={cls.classTeacherId ?? ''}
+                            onChange={(e) => void setClassTeacher(cls, e.target.value || null)}
+                            className="border border-border rounded-lg px-2 py-1 text-xs text-[#12333F] max-w-[12rem]"
+                          >
+                            <option value="">Not assigned</option>
+                            {teachers.map((t) => (
+                              <option key={t.userId} value={t.userId}>
+                                {t.firstName} {t.lastName}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
                         <button
                           type="button"
                           onClick={() => void removeClass(cls)}

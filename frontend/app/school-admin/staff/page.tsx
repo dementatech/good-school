@@ -11,6 +11,7 @@ import { CredentialsCard } from '@/components/admin/CredentialsCard';
 import { useToast } from '@/components/ui/ToastProvider';
 import { Loader } from '@/components/ui/loader';
 import { fetchList, submitJson } from '@/lib/api/envelope';
+import { useSchoolLevels } from '@/lib/levels';
 import { Eye, KeyRound, Pencil, Plus, RotateCcw, UserX } from 'lucide-react';
 import { StaffFormModal } from '@/components/admin/staff/StaffFormModal';
 import { StaffDetailModal } from '@/components/admin/staff/StaffDetailModal';
@@ -64,6 +65,7 @@ function ResetPasswordModal({ staff, onClose }: { staff: Staff; onClose: () => v
 }
 
 export default function SchoolAdminStaffPage() {
+  const levels = useSchoolLevels();
   const toast = useToast();
   const [staff, setStaff] = useState<Staff[]>([]);
   const [loading, setLoading] = useState(true);
@@ -183,7 +185,8 @@ export default function SchoolAdminStaffPage() {
         <h1 className="text-2xl font-bold text-primary-900 mb-1">Staff</h1>
         <p className="text-sm text-text-muted">
           Hiring a staff member captures their identity and their role at this school for this year,
-          in one step. Assign them to teach a subject from the Subjects & Combinations page.
+          in one step. Assign them to teach a subject from the{' '}
+          {levels?.offersALevel ? 'Subjects & Combinations' : 'Subjects'} page.
         </p>
       </div>
 

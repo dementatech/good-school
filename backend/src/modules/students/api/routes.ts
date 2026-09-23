@@ -1,6 +1,7 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { requireAuth } from "../../auth/index.js";
 import { ok, fail } from "../../../shared/envelope.js";
+import { SECTION_COOKIE, visibleLevelsFor, type SchoolLevel } from "../../../shared/levels.js";
 import {
   ActiveCombinationExistsError,
   ActiveEnrollmentExistsError,
@@ -93,7 +94,17 @@ export async function studentsRoutes(fastify: FastifyInstance) {
   fastify.get("/", { preHandler: ADMIN }, async (request, reply) => {
     const schoolId = schoolOf(request, reply);
     if (!schoolId) return;
-    return ok(await listStudents(schoolId));
+    // Only the pupils of the section being worked in. A pupil not yet placed
+    // in any class shows in every section, so they can still be enrolled.
+    const students = await listStudents(schoolId);
+    const levels = await visibleLevelsFor(request.authUser!, request.cookies[SECTION_COOKIE]);
+    return ok(
+      levels
+        ? students.filter(
+            (st) => !st.activeEnrollment || levels.includes(st.activeEnrollment.stagePhase as SchoolLevel),
+          )
+        : students,
+    );
   });
 
   fastify.get<{ Params: { id: string } }>("/:id", { preHandler: ADMIN }, async (request, reply) => {

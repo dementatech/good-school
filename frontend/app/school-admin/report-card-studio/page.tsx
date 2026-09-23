@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import type { SchoolLevel } from '@/lib/levels';
 import { useRouter } from 'next/navigation';
 import { arc as d3arc, max, pie as d3pie, scaleBand, scaleLinear } from 'd3';
 import { Card } from '@/components/ui/Card';
@@ -28,7 +29,7 @@ interface SchoolClass {
   id: string;
   stageCode: string;
   stageName: string;
-  stagePhase: 'O_LEVEL' | 'A_LEVEL';
+  stagePhase: SchoolLevel;
   hasStreams: boolean;
 }
 interface Stream {
@@ -60,6 +61,10 @@ interface ReportCardStudentSubject {
   rawScore: number | null;
   isAbsent: boolean;
   computedGrade: string | null;
+  isExaminable: boolean;
+  points: number | null;
+  /** Primary: live band grade for an unpublished exam. */
+  bandGrade: string | null;
 }
 interface ReportCardStudent {
   studentUserId: string;
@@ -76,16 +81,20 @@ interface ReportCardStudent {
   subsidiaryAverage: number | null;
   subsidiaryGrade: string | null;
   subsidiaryComment: string | null;
+  /** Primary: PLE aggregate (lower is better) and its division. */
+  aggregate: number | null;
+  division: string | null;
   rank: number | null;
   subjects: ReportCardStudentSubject[];
 }
 interface ExamReportCard {
   exam: { id: string; name: string; termName: string; publishedAt: string | null };
-  class: { id: string; name: string; phase: 'O_LEVEL' | 'A_LEVEL' };
+  class: { id: string; name: string; phase: SchoolLevel };
   stream: { id: string; name: string } | null;
   subjects: ReportCardSubject[];
   gradeDistribution: { grade: string; count: number }[];
   subsidiaryGradeDistribution: { grade: string; count: number }[];
+  divisionDistribution: { division: string; count: number }[];
   streamAverages: { streamId: string; streamName: string; average: number }[];
   students: ReportCardStudent[];
   topPerformers: ReportCardStudent[];
@@ -568,7 +577,8 @@ function GradeGaugeCard({ grade, percent, count }: { grade: string; percent: num
       </svg>
       <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-text-secondary">
         <span className="inline-block w-2 h-2 rounded-full" style={{ background: color }} />
-        Grade {grade}
+        {/* A grade letter reads "Grade B"; a PLE division label ("Division 1") stands alone. */}
+        {grade.length <= 4 ? `Grade ${grade}` : grade}
       </span>
     </div>
   );
@@ -598,6 +608,11 @@ function PerformerList({
   className: string;
   isALevel: boolean;
 }) {
+  // Primary: a pupil's standing is their PLE aggregate, not a percentage.
+  const valueOf = (p: ReportCardStudent): string =>
+    p.aggregate !== null && tone === 'success'
+      ? `Agg ${p.aggregate}`
+      : `${round(standing(p, isALevel).average!)}%`;
   const badgeCls = tone === 'success' ? 'bg-success-bg text-success' : 'bg-error-bg text-error';
   const valueCls = tone === 'success' ? 'text-success' : 'text-error';
   return (
@@ -620,9 +635,7 @@ function PerformerList({
                   {className}{p.streamName ? ` ${p.streamName}` : ''}
                 </span>
               </span>
-              <span className={`text-sm font-extrabold tabular-nums ${valueCls}`}>
-                {round(standing(p, isALevel).average!)}%
-              </span>
+              <span className={`text-sm font-extrabold tabular-nums ${valueCls}`}>{valueOf(p)}</span>
             </li>
           ))}
         </ul>
@@ -647,13 +660,13 @@ function SubjectRows({ rows }: { rows: ReportCardStudentSubject[] }) {
             )}
           </td>
           <td className="py-2 text-center">
-            {s.computedGrade ? (
+            {(s.computedGrade ?? s.bandGrade) ? (
               <span
                 className={`inline-flex min-w-6 justify-center px-1.5 py-0.5 rounded-md text-[11.5px] font-extrabold ${
-                  GRADE_CHIP[s.computedGrade] ?? 'bg-bg-muted text-text-muted'
+                  GRADE_CHIP[(s.computedGrade ?? s.bandGrade)!] ?? 'bg-bg-muted text-text-muted'
                 }`}
               >
-                {s.computedGrade}
+                {s.computedGrade ?? s.bandGrade}
               </span>
             ) : (
               <span className="text-text-faint">—</span>
@@ -699,8 +712,10 @@ export default function ReportCardStudioPage() {
         fetchList<SchoolClass>(`/api/v1/academic/classes?academicYearId=${yearId}`, toast.error),
       ]);
       setExamId((prev) => prev || examList[0]?.id || '');
-      setClasses(classList);
-      setClassId((prev) => prev || classList[0]?.id || '');
+      // Kindergarten sits no exams — its reports live under Kindergarten Progress.
+      const examined = classList.filter((c) => c.stagePhase !== 'KINDERGARTEN');
+      setClasses(examined);
+      setClassId((prev) => prev || examined[0]?.id || '');
     })();
   }, [yearId]);
 
@@ -735,6 +750,7 @@ export default function ReportCardStudioPage() {
   }, [load]);
 
   const isALevel = report?.class.phase === 'A_LEVEL';
+  const isPrimary = report?.class.phase === 'PRIMARY';
   const student = report?.students.find((s) => s.studentUserId === studentKey) ?? null;
 
   const scoredStudents = useMemo(
@@ -759,6 +775,15 @@ export default function ReportCardStudioPage() {
   // share of the class — distinct from `gradeDistribution`, which counts
   // every subject entry rather than one grade per student.
   const gradeContribution = useMemo(() => {
+    // Primary: what a parent asks is "which division?", so share by division.
+    if (isPrimary && report) {
+      const total = report.divisionDistribution.reduce((n, d) => n + d.count, 0);
+      return report.divisionDistribution.map((d) => ({
+        grade: d.division,
+        count: d.count,
+        percent: total ? Math.round((d.count / total) * 100) : 0,
+      }));
+    }
     const counts = new Map<string, number>();
     for (const s of scoredStudents) {
       const grade = standing(s, isALevel ?? false).grade;
@@ -769,7 +794,7 @@ export default function ReportCardStudioPage() {
     return [...counts.entries()]
       .map(([grade, count]) => ({ grade, count, percent: total ? Math.round((count / total) * 100) : 0 }))
       .sort((a, b) => a.grade.localeCompare(b.grade));
-  }, [scoredStudents, isALevel]);
+  }, [scoredStudents, isALevel, isPrimary, report]);
 
   const principalSubjects = useMemo(() => report?.subjects.filter((s) => s.role === 'principal') ?? [], [report]);
   const subsidiarySubjects = useMemo(() => report?.subjects.filter((s) => s.role === 'subsidiary') ?? [], [report]);
@@ -915,7 +940,9 @@ export default function ReportCardStudioPage() {
               label="Top performer"
               description={
                 report.topPerformers[0]
-                  ? `${report.topPerformers[0].studentName} — ${round(standing(report.topPerformers[0], isALevel ?? false).average!)}%`
+                  ? report.topPerformers[0].aggregate !== null
+                    ? `${report.topPerformers[0].studentName} — Aggregate ${report.topPerformers[0].aggregate} (${report.topPerformers[0].division})`
+                    : `${report.topPerformers[0].studentName} — ${round(standing(report.topPerformers[0], isALevel ?? false).average!)}%`
                   : 'No marks entered yet'
               }
               accent="gold"
@@ -975,6 +1002,16 @@ export default function ReportCardStudioPage() {
                         <GradeChart data={report.subsidiaryGradeDistribution} />
                       </div>
                     </div>
+                  ) : isPrimary ? (
+                    <>
+                      <p className="text-sm font-bold text-primary-900 mb-2">PLE divisions</p>
+                      <GradeChart
+                        data={report.divisionDistribution.map((d) => ({
+                          grade: d.division.replace('Division ', 'Div '),
+                          count: d.count,
+                        }))}
+                      />
+                    </>
                   ) : (
                     <>
                       <p className="text-sm font-bold text-primary-900 mb-2">Grade distribution</p>
@@ -994,7 +1031,10 @@ export default function ReportCardStudioPage() {
 
             <Card className="mt-4">
               <p className="text-sm font-bold text-primary-900 mb-3">
-                Grade contribution <span className="font-medium text-text-faint">— share of students per grade</span>
+                {isPrimary ? 'Division contribution' : 'Grade contribution'}{' '}
+                <span className="font-medium text-text-faint">
+                  — share of students per {isPrimary ? 'division' : 'grade'}
+                </span>
               </p>
               <GradeContributionGauges data={gradeContribution} />
             </Card>
@@ -1072,6 +1112,21 @@ export default function ReportCardStudioPage() {
                             )}
                           </p>
                           <p className="text-[11px] text-text-muted mt-0.5">Subsidiary average</p>
+                        </div>
+                      </div>
+                    ) : isPrimary ? (
+                      <div className="grid grid-cols-3 gap-2.5 my-4">
+                        <div className="rounded-xl bg-bg-subtle px-3.5 py-3">
+                          <p className="text-xl font-extrabold text-primary-900 tabular-nums">{student.aggregate ?? '—'}</p>
+                          <p className="text-[11px] text-text-muted mt-0.5">Aggregate</p>
+                        </div>
+                        <div className="rounded-xl bg-bg-subtle px-3.5 py-3">
+                          <p className="text-xl font-extrabold text-primary-900">{student.division ?? '—'}</p>
+                          <p className="text-[11px] text-text-muted mt-0.5">Division</p>
+                        </div>
+                        <div className="rounded-xl bg-bg-subtle px-3.5 py-3">
+                          <p className="text-xl font-extrabold text-primary-900 tabular-nums">{student.rank ?? '—'}</p>
+                          <p className="text-[11px] text-text-muted mt-0.5">Position</p>
                         </div>
                       </div>
                     ) : (

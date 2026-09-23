@@ -1,5 +1,6 @@
 import { pool } from "../../../shared/db/index.js";
 import { ensureAcademicDepartment } from "../../organization/index.js";
+import { schoolOffersLevelSql, type SubjectPhase } from "../../../shared/levels.js";
 
 // A school's O-Level subject offering — which catalog subjects (super_admin's
 // "constants", from `subject`) it runs this year, and which of those are
@@ -16,7 +17,7 @@ export interface SubjectOfferingRecord {
   subjectName: string;
   subjectCategory: string;
   subjectIsGeneralPaper: boolean;
-  subjectPhase: "O_LEVEL" | "A_LEVEL";
+  subjectPhase: SubjectPhase;
   isOffered: boolean;
   isCompulsory: boolean;
   createdAt: string;
@@ -39,7 +40,7 @@ interface SubjectOfferingRow {
   subject_name: string;
   subject_category: string;
   subject_is_general_paper: boolean;
-  subject_phase: "O_LEVEL" | "A_LEVEL";
+  subject_phase: SubjectPhase;
   is_offered: boolean;
   is_compulsory: boolean;
   created_at: string;
@@ -90,10 +91,7 @@ export class SubjectNotApprovedError extends Error {
 
 export class AlwaysOnSubjectError extends Error {
   constructor() {
-    super(
-      "This subject is compulsory for every school and can't be turned off — " +
-        "core O-Level subjects and General Paper are never optional.",
-    );
+    super("This subject is compulsory for every school and can't be turned off.");
     this.name = "AlwaysOnSubjectError";
   }
 }
@@ -120,13 +118,17 @@ function isAlwaysOnCategory(category: string, isGeneralPaper: boolean): boolean 
 // safe to call on every read. This is what makes "core is compulsory by
 // default, not something admins configure away" true from a school's very
 // first visit to this page, not just something enforced reactively.
+// Only for the levels the school actually runs — a secondary school must
+// never have primary core subjects pushed onto it, and vice versa.
 async function seedAlwaysOnOfferings(schoolId: string, academicYearId: string): Promise<void> {
   await pool.query(
     `insert into subject_offering (school_id, subject_id, academic_year_id, is_offered, is_compulsory)
      select $1, s.id, $2, true, true
      from subject s
      join school_curriculum sc on sc.curriculum_id = s.curriculum_id and sc.school_id = $1
+     join schools sch on sch.id = $1
      where (s.category = 'core' or s.is_general_paper) and s.is_active
+       and ${schoolOffersLevelSql("sch", "s.phase")}
      on conflict (school_id, subject_id, academic_year_id) do nothing`,
     [schoolId, academicYearId],
   );
@@ -135,7 +137,7 @@ async function seedAlwaysOnOfferings(schoolId: string, academicYearId: string): 
 export async function listSubjectOfferings(
   schoolId: string,
   academicYearId: string,
-  phase?: "O_LEVEL" | "A_LEVEL",
+  phase?: SubjectPhase,
 ): Promise<SubjectOfferingRecord[]> {
   await seedAlwaysOnOfferings(schoolId, academicYearId);
 

@@ -2,7 +2,8 @@
 // school-combinations}.repository.ts and students/domain/{student-subjects,
 // student-combinations}.repository.ts
 
-export type SubjectPhase = 'O_LEVEL' | 'A_LEVEL';
+export type { SubjectPhase } from '@/lib/levels';
+import type { SubjectPhase } from '@/lib/levels';
 export type CombinationRole = 'principal' | 'subsidiary' | 'compulsory';
 export type SubjectApprovalStatus = 'pending' | 'approved' | 'rejected';
 

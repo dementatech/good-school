@@ -1,6 +1,8 @@
 // Mirrors backend/src/modules/academic-structure/domain/grading-schemes.repository.ts
 
-export type GradingAppliesTo = 'O_LEVEL' | 'A_LEVEL';
+import type { SubjectPhase } from '@/lib/levels';
+
+export type GradingAppliesTo = SubjectPhase;
 export type GradeRoleScope = 'any' | 'principal' | 'subsidiary';
 
 export interface GradeBand {
@@ -13,6 +15,12 @@ export interface GradeBand {
   comment: string;
 }
 
+export interface GradeDivision {
+  label: string;
+  minAggregate: number;
+  maxAggregate: number;
+}
+
 export interface GradingScheme {
   id: string;
   curriculumId: string;
@@ -22,6 +30,10 @@ export interface GradingScheme {
   name: string;
   isActive: boolean;
   bands: GradeBand[];
+  /** Aggregate schemes only (PLE: 4 subjects) — null otherwise. */
+  aggregateSubjectCount: number | null;
+  /** PLE divisions over the aggregate; lower aggregate is better. */
+  divisions: GradeDivision[] | null;
   /** Null = shared catalog template. Set = this school's own private,
    * editable fork — never set when roleScope is 'subsidiary'. */
   schoolId: string | null;
@@ -37,6 +49,7 @@ export interface SchoolGradingSchemeSelection {
 }
 
 export const APPLIES_TO_LABEL: Record<GradingAppliesTo, string> = {
+  PRIMARY: 'Primary (PLE)',
   O_LEVEL: 'O-Level',
   A_LEVEL: 'A-Level',
 };
@@ -52,6 +65,7 @@ export const ROLE_SCOPE_LABEL: Record<GradeRoleScope, string> = {
 export const REGIME_LABEL: Record<string, string> = {
   legacy_1_9: 'Legacy (D1–F9)',
   nlsc_a_e: 'NLSC (A–E)',
+  ple_1_9: 'PLE (D1–F9, aggregates)',
 };
 
 export { submitJson, fetchList } from '@/lib/api/envelope';

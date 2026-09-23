@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { SECTION_LABEL, sectionsOf, type SchoolSection } from '@/lib/levels';
 import { Modal } from '@/components/ui/Modal';
 import { Input } from '@/components/ui/Input';
 import { Button } from '@/components/ui/Button';
@@ -64,7 +65,7 @@ function Choice<T extends string>({
 type FormState = {
   name: string;
   legalName: string;
-  emisCode: string;
+  emisCodes: Record<SchoolSection, string>;
   unebCentreNumber: string;
   ownershipType: OwnershipType | null;
   registrationStatus: RegistrationStatus | null;
@@ -78,15 +79,42 @@ type FormState = {
   website: string;
   schoolType: SchoolType | null;
   genderComposition: GenderComposition | null;
+  offersKindergarten: boolean;
+  offersPrimary: boolean;
   offersOLevel: boolean;
   offersALevel: boolean;
 };
+
+// A school runs sections — Nursery, Primary, Secondary (O/A-Level). Nursery
+// and Primary may share one school (the admin switches between them in the
+// portal); Secondary always stands alone. The school only ever sees the
+// sections ticked here.
+type LevelKey = 'offersKindergarten' | 'offersPrimary' | 'offersOLevel' | 'offersALevel';
+const LEVEL_OPTIONS: readonly (readonly [LevelKey, string])[] = [
+  ['offersKindergarten', 'Nursery / Kindergarten (Baby–Top Class)'],
+  ['offersPrimary', 'Primary (P1–P7)'],
+  ['offersOLevel', 'O-Level (S1–S4)'],
+  ['offersALevel', 'A-Level (S5–S6)'],
+];
+// One-click starting points for the usual setups — the ticks stay editable.
+const LEVEL_PRESETS: { label: string; levels: LevelKey[] }[] = [
+  { label: 'Nursery only', levels: ['offersKindergarten'] },
+  { label: 'Primary only', levels: ['offersPrimary'] },
+  { label: 'Nursery + Primary', levels: ['offersKindergarten', 'offersPrimary'] },
+  { label: 'Secondary', levels: ['offersOLevel', 'offersALevel'] },
+];
+const SECONDARY_KEYS: LevelKey[] = ['offersOLevel', 'offersALevel'];
+const JUNIOR_KEYS: LevelKey[] = ['offersKindergarten', 'offersPrimary'];
 
 function initial(s?: School): FormState {
   return {
     name: s?.name ?? '',
     legalName: s?.legalName ?? '',
-    emisCode: s?.emisCode ?? '',
+    emisCodes: {
+      KINDERGARTEN: s?.emisCodes.KINDERGARTEN ?? '',
+      PRIMARY: s?.emisCodes.PRIMARY ?? '',
+      SECONDARY: s?.emisCodes.SECONDARY ?? '',
+    },
     unebCentreNumber: s?.unebCentreNumber ?? '',
     ownershipType: s?.ownershipType ?? null,
     registrationStatus: s?.registrationStatus ?? null,
@@ -100,8 +128,10 @@ function initial(s?: School): FormState {
     website: s?.website ?? '',
     schoolType: s?.schoolType ?? null,
     genderComposition: s?.genderComposition ?? null,
-    offersOLevel: s?.offersOLevel ?? true,
-    offersALevel: s?.offersALevel ?? true,
+    offersKindergarten: s?.offersKindergarten ?? false,
+    offersPrimary: s?.offersPrimary ?? false,
+    offersOLevel: s?.offersOLevel ?? false,
+    offersALevel: s?.offersALevel ?? false,
   };
 }
 
@@ -120,6 +150,8 @@ export function SchoolFormModal({
   const [form, setForm] = useState<FormState>(() => initial(school));
   const [saving, setSaving] = useState(false);
   const set = <K extends keyof FormState>(k: K, v: FormState[K]) => setForm((f) => ({ ...f, [k]: v }));
+  // Each ticked section is its own EMIS institution and gets its own number.
+  const sectionsTicked = sectionsOf(form);
 
   // Logo is a separate multipart upload (POST /schools/:id/logo), done after
   // the school row exists — so on create we save the row first, then upload.
@@ -158,12 +190,21 @@ export function SchoolFormModal({
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
+    if (!LEVEL_OPTIONS.some(([k]) => form[k])) {
+      toast.error('Tick at least one level this school offers.');
+      return;
+    }
+    if (SECONDARY_KEYS.some((k) => form[k]) && JUNIOR_KEYS.some((k) => form[k])) {
+      toast.error("Secondary can't share a school with Nursery or Primary — register it separately.");
+      return;
+    }
     setSaving(true);
     const trim = (v: string) => v.trim() || null;
     const payload = {
       name: form.name.trim(),
       legalName: trim(form.legalName),
-      emisCode: trim(form.emisCode),
+      // Only the sections this school runs — EMIS registers each separately.
+      emisCodes: Object.fromEntries(sectionsTicked.map((sec) => [sec, trim(form.emisCodes[sec])])),
       unebCentreNumber: trim(form.unebCentreNumber),
       ownershipType: form.ownershipType,
       registrationStatus: form.registrationStatus,
@@ -177,6 +218,8 @@ export function SchoolFormModal({
       website: trim(form.website),
       schoolType: form.schoolType,
       genderComposition: form.genderComposition,
+      offersKindergarten: form.offersKindergarten,
+      offersPrimary: form.offersPrimary,
       offersOLevel: form.offersOLevel,
       offersALevel: form.offersALevel,
     };
@@ -330,11 +373,17 @@ export function SchoolFormModal({
 
         <Section title="Regulatory">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <Input
-              label="EMIS code"
-              value={form.emisCode}
-              onChange={(e) => set('emisCode', e.target.value)}
-            />
+            {sectionsTicked.length === 0 && (
+              <p className="text-xs text-text-faint sm:col-span-2">Tick the levels offered to enter EMIS numbers.</p>
+            )}
+            {sectionsTicked.map((sec) => (
+              <Input
+                key={sec}
+                label={sectionsTicked.length > 1 ? `${SECTION_LABEL[sec]} EMIS number` : 'EMIS number'}
+                value={form.emisCodes[sec]}
+                onChange={(e) => set('emisCodes', { ...form.emisCodes, [sec]: e.target.value })}
+              />
+            ))}
             <Input
               label="UNEB centre number"
               value={form.unebCentreNumber}
@@ -408,25 +457,56 @@ export function SchoolFormModal({
               onChange={(v) => set('genderComposition', v)}
             />
           </div>
-          <div className="flex gap-4">
-            <label className="flex items-center gap-2 text-sm text-[#12333F]">
-              <input
-                type="checkbox"
-                checked={form.offersOLevel}
-                onChange={(e) => set('offersOLevel', e.target.checked)}
-                className="rounded border-[#E5E5E5]"
-              />
-              Offers O-Level
-            </label>
-            <label className="flex items-center gap-2 text-sm text-[#12333F]">
-              <input
-                type="checkbox"
-                checked={form.offersALevel}
-                onChange={(e) => set('offersALevel', e.target.checked)}
-                className="rounded border-[#E5E5E5]"
-              />
-              Offers A-Level
-            </label>
+          <div className="space-y-2">
+            <p className="text-xs font-medium text-text-muted">Levels offered *</p>
+            <div className="flex flex-wrap gap-1.5">
+              {LEVEL_PRESETS.map((preset) => {
+                const active = LEVEL_OPTIONS.every(([k]) => form[k] === preset.levels.includes(k));
+                return (
+                  <button
+                    key={preset.label}
+                    type="button"
+                    onClick={() =>
+                      setForm((f) => ({
+                        ...f,
+                        ...Object.fromEntries(LEVEL_OPTIONS.map(([k]) => [k, preset.levels.includes(k)])),
+                      }))
+                    }
+                    className={`px-2.5 py-1 rounded-lg border text-xs font-medium ${
+                      active
+                        ? 'border-primary-700 bg-primary-50 text-primary-900'
+                        : 'border-border text-text-muted hover:text-primary-900'
+                    }`}
+                  >
+                    {preset.label}
+                  </button>
+                );
+              })}
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-2">
+              {LEVEL_OPTIONS.map(([key, label]) => (
+                <label key={key} className="flex items-center gap-2 text-sm text-[#12333F]">
+                  <input
+                    type="checkbox"
+                    checked={form[key]}
+                    onChange={(e) => {
+                      const on = e.target.checked;
+                      // Secondary never shares a school with Nursery/Primary —
+                      // ticking one side clears the other.
+                      const clears = on ? (SECONDARY_KEYS.includes(key) ? JUNIOR_KEYS : SECONDARY_KEYS) : [];
+                      setForm((f) => ({ ...f, [key]: on, ...Object.fromEntries(clears.map((k) => [k, false])) }));
+                    }}
+                    className="rounded border-[#E5E5E5]"
+                  />
+                  {label}
+                </label>
+              ))}
+            </div>
+            <p className="text-xs text-text-faint">
+              Nursery and Primary can run under one school — its admin switches between the two
+              sections. Secondary is always registered on its own. The school only ever sees what&apos;s
+              ticked here; a section with classes can&apos;t be removed until its classes are.
+            </p>
           </div>
         </Section>
 

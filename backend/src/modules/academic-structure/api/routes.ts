@@ -1,3 +1,4 @@
+import { SECTION_COOKIE, visibleLevelsFor, type SchoolLevel, type SubjectPhase } from "../../../shared/levels.js";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { requireAuth } from "../../auth/index.js";
 import { ok, fail } from "../../../shared/envelope.js";
@@ -136,6 +137,33 @@ function schoolOf(request: FastifyRequest, reply: FastifyReply): string | null {
   return schoolId;
 }
 
+/** Levels this caller may see (null = all, super_admin). See shared/levels.ts. */
+function visibleLevels(request: FastifyRequest): Promise<SchoolLevel[] | null> {
+  return visibleLevelsFor(request.authUser!, request.cookies[SECTION_COOKIE]);
+}
+
+/** Keep only rows whose level the caller may see; level-less rows stay. */
+function onlyVisible<T>(rows: T[], levels: SchoolLevel[] | null, levelOf: (row: T) => string | null): T[] {
+  if (!levels) return rows;
+  return rows.filter((r) => {
+    const level = levelOf(r);
+    return level === null || levels.includes(level as SchoolLevel);
+  });
+}
+
+async function canSeeLevel(request: FastifyRequest, level: string): Promise<boolean> {
+  const levels = await visibleLevels(request);
+  return !levels || levels.includes(level as SchoolLevel);
+}
+
+async function stageVisible(request: FastifyRequest, stageId: string): Promise<boolean> {
+  const { rows } = await pool.query<{ phase: string | null }>(`select phase from curriculum_stage where id = $1`, [
+    stageId,
+  ]);
+  if (!rows[0]) return true; // unknown stage: createClass/updateClass reject it themselves
+  return rows[0].phase === null || canSeeLevel(request, rows[0].phase);
+}
+
 export async function academicStructureRoutes(fastify: FastifyInstance) {
   // ═══ Reference data — super_admin ═════════════════════════════════════════
 
@@ -178,14 +206,15 @@ export async function academicStructureRoutes(fastify: FastifyInstance) {
       if (!curriculumId && request.query.curriculum) {
         curriculumId = (await getCurriculumByCode(request.query.curriculum))?.id;
       }
-      return ok(await listStages(curriculumId));
+      return ok(onlyVisible(await listStages(curriculumId), await visibleLevels(request), (s) => s.phase));
     },
   );
 
   fastify.get<{ Params: { id: string } }>(
     "/curricula/:id/stages",
     { preHandler: SCHOOL },
-    async (request) => ok(await listStages(request.params.id)),
+    async (request) =>
+      ok(onlyVisible(await listStages(request.params.id), await visibleLevels(request), (s) => s.phase)),
   );
 
   fastify.post<{ Params: { id: string }; Body: StageInput }>(
@@ -219,17 +248,16 @@ export async function academicStructureRoutes(fastify: FastifyInstance) {
 
   // -- Subjects ----------------------------------------------------------
   fastify.get<{
-    Querystring: { curriculumId?: string; phase?: "O_LEVEL" | "A_LEVEL"; status?: SubjectApprovalStatus };
+    Querystring: { curriculumId?: string; phase?: SubjectPhase; status?: SubjectApprovalStatus };
   }>("/subjects", { preHandler: SCHOOL }, async (request) => {
     const isSuperAdmin = request.authUser!.role === "super_admin";
-    return ok(
-      await listSubjects({
-        curriculumId: request.query.curriculumId,
-        phase: request.query.phase,
-        status: request.query.status,
-        visibleToSchoolId: isSuperAdmin ? undefined : request.authUser!.school_id ?? undefined,
-      }),
-    );
+    const subjects = await listSubjects({
+      curriculumId: request.query.curriculumId,
+      phase: request.query.phase,
+      status: request.query.status,
+      visibleToSchoolId: isSuperAdmin ? undefined : request.authUser!.school_id ?? undefined,
+    });
+    return ok(onlyVisible(subjects, await visibleLevels(request), (s) => s.phase));
   });
 
   // Schools can add their own subjects too (docs/design/subject-selection-module.md
@@ -252,6 +280,9 @@ export async function academicStructureRoutes(fastify: FastifyInstance) {
       if (!isSuperAdmin) {
         if (request.body.category === "core") {
           return reply.status(400).send(fail("Only a platform admin can add a core subject."));
+        }
+        if (!(await canSeeLevel(request, request.body.phase))) {
+          return reply.status(400).send(fail("Unknown level."));
         }
         const schoolId = schoolOf(request, reply);
         if (!schoolId) return;
@@ -358,7 +389,8 @@ export async function academicStructureRoutes(fastify: FastifyInstance) {
   fastify.get<{ Querystring: { curriculumId?: string } }>(
     "/combinations",
     { preHandler: SCHOOL },
-    async (request) => ok(await listCombinations(request.query.curriculumId)),
+    async (request) =>
+      (await canSeeLevel(request, "A_LEVEL")) ? ok(await listCombinations(request.query.curriculumId)) : ok([]),
   );
 
   fastify.post<{ Querystring: { curriculumId?: string }; Body: CombinationInput }>(
@@ -547,7 +579,9 @@ export async function academicStructureRoutes(fastify: FastifyInstance) {
     async (request, reply) => {
       const schoolId = schoolOf(request, reply);
       if (!schoolId) return;
-      return ok(await listClasses(schoolId, request.query.academicYearId));
+      return ok(
+        onlyVisible(await listClasses(schoolId, request.query.academicYearId), await visibleLevels(request), (c) => c.stagePhase),
+      );
     },
   );
 
@@ -557,6 +591,9 @@ export async function academicStructureRoutes(fastify: FastifyInstance) {
     async (request, reply) => {
       const schoolId = schoolOf(request, reply);
       if (!schoolId) return;
+      if (!(await stageVisible(request, request.body.curriculumStageId))) {
+        return reply.status(400).send(fail("academic_year_or_stage_invalid"));
+      }
       const klass = await createClass(schoolId, request.body, request.authUser!.user_id);
       return klass
         ? reply.status(201).send(ok(klass))
@@ -570,6 +607,9 @@ export async function academicStructureRoutes(fastify: FastifyInstance) {
     async (request, reply) => {
       const schoolId = schoolOf(request, reply);
       if (!schoolId) return;
+      if (!(await stageVisible(request, request.body.curriculumStageId))) {
+        return reply.status(400).send(fail("academic_year_or_stage_invalid"));
+      }
       const updated = await updateClass(schoolId, request.params.id, request.body);
       return updated ? ok(updated) : reply.status(404).send(fail("not_found"));
     },
@@ -593,7 +633,16 @@ export async function academicStructureRoutes(fastify: FastifyInstance) {
     async (request, reply) => {
       const schoolId = schoolOf(request, reply);
       if (!schoolId) return;
-      return ok(await listStreams(schoolId, request.query.classId));
+      const streams = await listStreams(schoolId, request.query.classId);
+      const levels = await visibleLevels(request);
+      if (!levels) return ok(streams);
+      const { rows } = await pool.query<{ id: string; phase: string | null }>(
+        `select c.id, cs.phase from classes c join curriculum_stage cs on cs.id = c.curriculum_stage_id
+          where c.school_id = $1`,
+        [schoolId],
+      );
+      const phaseOfClass = new Map(rows.map((r) => [r.id, r.phase]));
+      return ok(onlyVisible(streams, levels, (st) => phaseOfClass.get(st.classId) ?? null));
     },
   );
 
@@ -634,7 +683,7 @@ export async function academicStructureRoutes(fastify: FastifyInstance) {
 
   // -- Subject offering (O-Level: which catalog subjects this school runs,
   // and which are compulsory here) — school_admin/admin, per academic year.
-  fastify.get<{ Querystring: { academicYearId?: string; phase?: "O_LEVEL" | "A_LEVEL" } }>(
+  fastify.get<{ Querystring: { academicYearId?: string; phase?: SubjectPhase } }>(
     "/subject-offerings",
     { preHandler: SCHOOL },
     async (request, reply) => {
@@ -644,7 +693,11 @@ export async function academicStructureRoutes(fastify: FastifyInstance) {
         return reply.status(400).send(fail("academicYearId query param required"));
       }
       return ok(
-        await listSubjectOfferings(schoolId, request.query.academicYearId, request.query.phase),
+        onlyVisible(
+          await listSubjectOfferings(schoolId, request.query.academicYearId, request.query.phase),
+          await visibleLevels(request),
+          (o) => o.subjectPhase,
+        ),
       );
     },
   );
@@ -657,6 +710,12 @@ export async function academicStructureRoutes(fastify: FastifyInstance) {
       if (!schoolId) return;
       if (!request.query.academicYearId) {
         return reply.status(400).send(fail("academicYearId query param required"));
+      }
+      const subject = await pool.query<{ phase: string }>(`select phase from subject where id = $1`, [
+        request.body.subjectId,
+      ]);
+      if (!subject.rows[0] || !(await canSeeLevel(request, subject.rows[0].phase))) {
+        return reply.status(400).send(fail(new UnknownSubjectError().message));
       }
       try {
         const offering = await setSubjectOffering(schoolId, request.query.academicYearId, request.body);
@@ -693,7 +752,11 @@ export async function academicStructureRoutes(fastify: FastifyInstance) {
     { preHandler: SCHOOL },
     async (request) => {
       return ok(
-        await listGradingSchemes(request.query.curriculumId, request.query.appliesTo, request.query.roleScope),
+        onlyVisible(
+          await listGradingSchemes(request.query.curriculumId, request.query.appliesTo, request.query.roleScope),
+          await visibleLevels(request),
+          (g) => g.appliesTo,
+        ),
       );
     },
   );
@@ -753,7 +816,7 @@ export async function academicStructureRoutes(fastify: FastifyInstance) {
   fastify.get("/school-grading-schemes", { preHandler: SCHOOL }, async (request, reply) => {
     const schoolId = schoolOf(request, reply);
     if (!schoolId) return;
-    return ok(await getSchoolGradingSchemes(schoolId));
+    return ok(onlyVisible(await getSchoolGradingSchemes(schoolId), await visibleLevels(request), (g) => g.appliesTo));
   });
 
   fastify.put<{ Body: { appliesTo: GradingAppliesTo; roleScope: GradeRoleScope; gradingSchemeId: string } }>(
@@ -762,6 +825,9 @@ export async function academicStructureRoutes(fastify: FastifyInstance) {
     async (request, reply) => {
       const schoolId = schoolOf(request, reply);
       if (!schoolId) return;
+      if (!(await canSeeLevel(request, request.body.appliesTo))) {
+        return reply.status(400).send(fail("Unknown level."));
+      }
       try {
         const selection = await setSchoolGradingScheme(
           schoolId,
@@ -789,6 +855,9 @@ export async function academicStructureRoutes(fastify: FastifyInstance) {
     async (request, reply) => {
       const schoolId = schoolOf(request, reply);
       if (!schoolId) return;
+      if (!(await canSeeLevel(request, request.body.appliesTo))) {
+        return reply.status(400).send(fail("Unknown level."));
+      }
       try {
         const selection = await editSchoolGradingRanges(
           schoolId,
@@ -816,6 +885,7 @@ export async function academicStructureRoutes(fastify: FastifyInstance) {
       if (!request.query.academicYearId) {
         return reply.status(400).send(fail("academicYearId query param required"));
       }
+      if (!(await canSeeLevel(request, "A_LEVEL"))) return ok([]);
       return ok(await listSchoolCombinations(schoolId, request.query.academicYearId));
     },
   );
@@ -826,6 +896,7 @@ export async function academicStructureRoutes(fastify: FastifyInstance) {
     async (request, reply) => {
       const schoolId = schoolOf(request, reply);
       if (!schoolId) return;
+      if (!(await canSeeLevel(request, "A_LEVEL"))) return reply.status(400).send(fail("Unknown level."));
       if (!request.query.academicYearId) {
         return reply.status(400).send(fail("academicYearId query param required"));
       }
