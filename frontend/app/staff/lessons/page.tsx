@@ -1,159 +1,278 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { Card } from '@/components/ui/Card';
-import { Input } from '@/components/ui/Input';
+import { useRouter } from 'next/navigation';
+import { BookOpenCheck, Plus } from 'lucide-react';
+import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
-import { LessonAnalyticsPanel } from '@/components/ui/LessonAnalyticsPanel';
-import { ChevronDown, ChevronUp, FileText, Plus } from 'lucide-react';
+import { Card } from '@/components/ui/Card';
+import { Tabs } from '@/components/ui/Tabs';
+import { Loader } from '@/components/ui/loader';
+import { useToast } from '@/components/ui/ToastProvider';
+import { fetchList, fetchOne, submitJson } from '@/lib/api/envelope';
+import {
+  STATUS_LABEL,
+  STATUS_VARIANT,
+  fmtDate,
+  type LessonPlan,
+  type Scheme,
+  type TeachingAssignment,
+} from '@/components/lesson-prep/types';
+import { DAY_NAMES, type Period, type Slot, type TermContext } from '@/components/timetable/types';
 
-interface Lesson {
-  id: string;
-  school: string;
-  className: string;
-  lessonDate: string;
-  period: string;
-  status: string;
-  learningArea: string;
-  specificSkill: string;
-  approach: string;
-  present: number;
-  absent: number;
-  computerAccess: string;
-  overallProgress: string;
-  achievement: string;
-  challenges: string;
-  challengeDetails: string;
-  supportRequired: string;
-  reference: string;
-  teacher: string;
-  createdAt: string;
+type Tab = 'week' | 'schemes' | 'plans';
+
+const eat = () => new Date(Date.now() + 3 * 3600_000);
+function thisWeekDates(): Record<number, string> {
+  const d = eat();
+  const monday = new Date(d);
+  monday.setUTCDate(d.getUTCDate() - ((d.getUTCDay() + 6) % 7));
+  const out: Record<number, string> = {};
+  for (let i = 1; i <= 6; i++) {
+    const x = new Date(monday);
+    x.setUTCDate(monday.getUTCDate() + i - 1);
+    out[i] = x.toISOString().slice(0, 10);
+  }
+  return out;
 }
 
-function Detail({ label, value }: { label: string; value: string | number }) {
-  return (
-    <div>
-      <p className="text-xs text-text-muted">{label}</p>
-      <p className="text-sm text-primary-900">{value || '—'}</p>
-    </div>
-  );
-}
-
+/** A teacher's lesson preparation: this week's lessons to plan, their schemes
+ * of work (one per subject per class), and their lesson plans. */
 export default function StaffLessonsPage() {
-  const [lessons, setLessons] = useState<Lesson[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
-  const [query, setQuery] = useState('');
-  const [expanded, setExpanded] = useState<string | null>(null);
+  const toast = useToast();
+  const router = useRouter();
+  const [tab, setTab] = useState<Tab>('week');
+  const [context, setContext] = useState<TermContext | null>(null);
+  const [assignments, setAssignments] = useState<TeachingAssignment[] | null>(null);
+  const [plans, setPlans] = useState<LessonPlan[] | null>(null);
+  const [timetable, setTimetable] = useState<{ periodsBySection: Record<string, Period[]>; slots: Slot[] } | null>(null);
+  const [starting, setStarting] = useState('');
+
+  const termId = context?.currentTermId ?? '';
+  const dates = useMemo(() => thisWeekDates(), []);
 
   useEffect(() => {
-    fetch('/api/v1/admin/lessons')
-      .then((r) => r.json())
-      .then((d) => {
-        if (d.success) setLessons(d.data);
-        else setError(d.message || 'Failed to load');
-      })
-      .catch(() => setError('Network error'))
-      .finally(() => setLoading(false));
+    void (async () => {
+      const ctx = await fetchOne<TermContext>('/api/v1/timetable/context', toast.error);
+      setContext(ctx);
+      const tid = ctx?.currentTermId;
+      const [a, p, t] = await Promise.all([
+        tid ? fetchList<TeachingAssignment>(`/api/v1/lesson-prep/my-subjects?termId=${tid}`, toast.error) : [],
+        fetchList<LessonPlan>('/api/v1/lesson-prep/plans', toast.error),
+        tid ? fetchOne<{ periodsBySection: Record<string, Period[]>; slots: Slot[] }>(`/api/v1/timetable/me?termId=${tid}`, toast.error) : null,
+      ]);
+      setAssignments(a);
+      setPlans(p);
+      setTimetable(t);
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const filtered = lessons.filter((l) => {
-    if (!query.trim()) return true;
-    const q = query.toLowerCase();
-    return [l.reference, l.school, l.className, l.learningArea]
-      .some((f) => f.toLowerCase().includes(q));
-  });
+  async function startScheme(a: TeachingAssignment) {
+    setStarting(`${a.classId}:${a.subjectId}`);
+    const res = await submitJson<Scheme>('/api/v1/lesson-prep/schemes', 'POST', {
+      termId,
+      classId: a.classId,
+      subjectId: a.subjectId,
+    });
+    setStarting('');
+    if (res.ok && res.data) router.push(`/staff/lessons/schemes/${res.data.id}`);
+    else toast.error(res.error!);
+  }
+
+  const periodById = useMemo(() => {
+    const m = new Map<string, Period>();
+    for (const ps of Object.values(timetable?.periodsBySection ?? {})) ps.forEach((p) => m.set(p.id, p));
+    return m;
+  }, [timetable]);
+
+  const weekLessons = useMemo(
+    () =>
+      (timetable?.slots ?? [])
+        .map((s) => ({ slot: s, date: dates[s.dayOfWeek], period: periodById.get(s.periodId) }))
+        .sort((a, b) => a.date.localeCompare(b.date) || (a.period?.startTime ?? '').localeCompare(b.period?.startTime ?? '')),
+    [timetable, dates, periodById],
+  );
+  const planFor = (slotId: string, date: string) =>
+    plans?.find((p) => p.timetableSlotId === slotId && p.lessonDate === date) ?? null;
+
+  const loading = !context || !assignments || !plans;
 
   return (
-    <div className="w-full">
-      <div className="flex flex-wrap items-start justify-between gap-3 mb-1">
-        <h1 className="text-2xl font-bold text-primary-900">My Lesson Reports</h1>
-        <Link href="/staff/lessons/new">
-          <Button>
+    <div className="space-y-5">
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-bold text-primary-900 mb-1 flex items-center gap-2">
+            <BookOpenCheck className="w-6 h-6 text-primary-700" aria-hidden />
+            Lesson Preparation
+          </h1>
+          <p className="text-sm text-text-muted max-w-2xl">
+            Your schemes of work, lesson plans and records of work. Submit them for the Director of Studies to review.
+          </p>
+        </div>
+        <Link href="/staff/lessons/plans/new">
+          <Button inline>
             <Plus className="w-4 h-4 mr-1.5" aria-hidden />
-            New lesson report
+            New lesson plan
           </Button>
         </Link>
       </div>
-      <p className="text-sm text-text-muted mb-6">Daily ICT lesson records you&apos;ve submitted.</p>
 
-      <div className="mb-6">
-        <LessonAnalyticsPanel endpoint="/api/v1/staff/lessons/analytics" breakdownLabel="Class" />
-      </div>
-
-      <div className="mb-4 max-w-sm">
-        <Input
-          placeholder="Search by reference, school, class…"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-        />
-      </div>
+      <Tabs
+        tabs={[
+          { key: 'week', label: 'This week' },
+          { key: 'schemes', label: 'Schemes of work', count: assignments?.length },
+          { key: 'plans', label: 'Lesson plans', count: plans?.length },
+        ]}
+        active={tab}
+        onChange={(k) => setTab(k as Tab)}
+      />
 
       {loading ? (
-        <p className="text-text-muted">Loading…</p>
-      ) : error ? (
-        <p className="text-error">{error}</p>
-      ) : filtered.length === 0 ? (
-        <Card className="p-8 text-center">
-          <FileText className="w-10 h-10 text-text-faint mx-auto mb-3" />
-          <p className="text-text-muted">No lesson reports yet.</p>
+        <div className="py-12 flex justify-center">
+          <Loader size={44} />
+        </div>
+      ) : tab === 'week' ? (
+        weekLessons.length === 0 ? (
+          <Card>
+            <p className="text-sm text-text-muted">No timetabled lessons this week.</p>
+          </Card>
+        ) : (
+          <Card className="p-0 overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-left text-[11px] font-bold uppercase tracking-wide text-text-faint border-b border-border">
+                  <th className="py-2.5 px-4">When</th>
+                  <th className="py-2.5 px-2">Class</th>
+                  <th className="py-2.5 px-2">Lesson</th>
+                  <th className="py-2.5 px-4 text-right">Plan</th>
+                </tr>
+              </thead>
+              <tbody>
+                {weekLessons.map(({ slot, date, period }) => {
+                  const plan = planFor(slot.id, date);
+                  const qs = new URLSearchParams({
+                    slot: slot.id,
+                    date,
+                    classId: slot.classId,
+                    ...(slot.subjectId ? { subjectId: slot.subjectId } : {}),
+                    ...(slot.streamId ? { streamId: slot.streamId } : {}),
+                  });
+                  return (
+                    <tr key={`${slot.id}-${date}`} className="border-b border-border last:border-0">
+                      <td className="py-2 px-4">
+                        <span className="block font-medium text-primary-900">{DAY_NAMES[slot.dayOfWeek]}</span>
+                        <span className="block text-xs text-text-faint">
+                          {period ? `${period.label} · ${period.startTime}` : ''}
+                        </span>
+                      </td>
+                      <td className="py-2 px-2">
+                        {slot.className}
+                        {slot.streamName ? ` ${slot.streamName}` : ''}
+                      </td>
+                      <td className="py-2 px-2">{slot.subjectName ?? slot.activity}</td>
+                      <td className="py-2 px-4 text-right">
+                        {plan ? (
+                          <Link href={`/staff/lessons/plans/${plan.id}`} className="inline-flex items-center gap-2">
+                            <Badge variant={STATUS_VARIANT[plan.status]}>{STATUS_LABEL[plan.status]}</Badge>
+                          </Link>
+                        ) : slot.subjectId ? (
+                          <Link
+                            href={`/staff/lessons/plans/new?${qs.toString()}`}
+                            className="text-xs font-medium text-primary-700 hover:underline"
+                          >
+                            Plan this lesson
+                          </Link>
+                        ) : (
+                          <span className="text-text-faint">—</span>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </Card>
+        )
+      ) : tab === 'schemes' ? (
+        assignments!.length === 0 ? (
+          <Card>
+            <p className="text-sm text-text-muted">You haven&apos;t been assigned any subjects to teach this year.</p>
+          </Card>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+            {assignments!.map((a) => (
+              <Card key={`${a.classId}:${a.subjectId}`} className="flex flex-col gap-2">
+                <div>
+                  <p className="font-semibold text-primary-900">{a.subjectName}</p>
+                  <p className="text-xs text-text-faint">{a.className}</p>
+                </div>
+                <div className="mt-auto flex items-center justify-between gap-2">
+                  {a.scheme ? (
+                    <>
+                      <Badge variant={STATUS_VARIANT[a.scheme.status]}>{STATUS_LABEL[a.scheme.status]}</Badge>
+                      <Link
+                        href={`/staff/lessons/schemes/${a.scheme.id}`}
+                        className="text-xs font-medium text-primary-700 hover:underline"
+                      >
+                        Open
+                      </Link>
+                    </>
+                  ) : (
+                    <>
+                      <span className="text-xs text-warning">Not started</span>
+                      <Button
+                        inline
+                        variant="outline"
+                        onClick={() => void startScheme(a)}
+                        isLoading={starting === `${a.classId}:${a.subjectId}`}
+                        disabled={!termId}
+                      >
+                        Start scheme
+                      </Button>
+                    </>
+                  )}
+                </div>
+              </Card>
+            ))}
+          </div>
+        )
+      ) : plans!.length === 0 ? (
+        <Card>
+          <p className="text-sm text-text-muted">No lesson plans yet.</p>
         </Card>
       ) : (
-        <div className="space-y-3">
-          {filtered.map((l) => {
-            const open = expanded === l.id;
-            return (
-              <Card key={l.id} className="p-0 overflow-hidden">
-                <button
-                  onClick={() => setExpanded(open ? null : l.id)}
-                  className="w-full flex items-center justify-between gap-3 p-4 text-left hover:bg-bg-muted transition-colors"
+        <Card className="p-0 overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="text-left text-[11px] font-bold uppercase tracking-wide text-text-faint border-b border-border">
+                <th className="py-2.5 px-4">Date</th>
+                <th className="py-2.5 px-2">Class</th>
+                <th className="py-2.5 px-2">Topic</th>
+                <th className="py-2.5 px-4 text-right">Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {plans!.map((p) => (
+                <tr
+                  key={p.id}
+                  onClick={() => router.push(`/staff/lessons/plans/${p.id}`)}
+                  className="border-b border-border last:border-0 cursor-pointer hover:bg-bg-subtle"
                 >
-                  <div className="min-w-0">
-                    <p className="font-semibold text-primary-900 truncate">
-                      {l.reference || 'No reference'} • {l.className}
-                    </p>
-                    <p className="text-xs text-text-muted truncate">
-                      {l.school} • {l.learningArea} • {l.lessonDate}
-                    </p>
-                  </div>
-                  {open ? <ChevronUp className="w-5 h-5 text-text-muted shrink-0" /> : <ChevronDown className="w-5 h-5 text-text-muted shrink-0" />}
-                </button>
-                {open && (
-                  <div className="border-t border-border p-4 grid grid-cols-2 sm:grid-cols-3 gap-4">
-                    <Detail label="Reference" value={l.reference} />
-                    <Detail label="Date" value={l.lessonDate} />
-                    <Detail label="School" value={l.school} />
-                    <Detail label="Class" value={l.className} />
-                    <Detail label="Session" value={l.period} />
-                    <Detail label="Status" value={l.status} />
-                    <Detail label="Learning area" value={l.learningArea} />
-                    <Detail label="Specific skill" value={l.specificSkill} />
-                    <Detail label="Approach" value={l.approach} />
-                    <Detail label="Present" value={l.present} />
-                    <Detail label="Absent" value={l.absent} />
-                    <Detail label="Computer access" value={l.computerAccess} />
-                    <Detail label="Overall progress" value={l.overallProgress} />
-                    <Detail label="Challenges" value={l.challenges} />
-                    <div className="col-span-2 sm:col-span-3">
-                      <Detail label="Achievement" value={l.achievement} />
-                    </div>
-                    {l.challengeDetails && (
-                      <div className="col-span-2 sm:col-span-3">
-                        <Detail label="Challenge details" value={l.challengeDetails} />
-                      </div>
-                    )}
-                    {l.supportRequired && (
-                      <div className="col-span-2 sm:col-span-3">
-                        <Detail label="Support required" value={l.supportRequired} />
-                      </div>
-                    )}
-                  </div>
-                )}
-              </Card>
-            );
-          })}
-        </div>
+                  <td className="py-2 px-4 whitespace-nowrap">{fmtDate(p.lessonDate)}</td>
+                  <td className="py-2 px-2">
+                    {p.className} · {p.subjectName}
+                  </td>
+                  <td className="py-2 px-2">{p.topic}</td>
+                  <td className="py-2 px-4 text-right">
+                    <Badge variant={STATUS_VARIANT[p.status]}>{STATUS_LABEL[p.status]}</Badge>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </Card>
       )}
     </div>
   );

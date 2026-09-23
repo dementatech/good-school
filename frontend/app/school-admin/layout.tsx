@@ -32,6 +32,7 @@ import {
   FileBarChart2,
   MessageSquare,
   Baby,
+  CalendarRange,
 } from 'lucide-react';
 import type { Role } from '@/lib/auth/session';
 import { subjectPhasesOf, usesNurseryRatings, useSchoolLevels } from '@/lib/levels';
@@ -65,8 +66,9 @@ const NAV_BASE = [
       { href: '/school-admin/grading-schemes', label: 'Grading Schemes', icon: Award },
     ],
   },
+  { href: '/school-admin/timetable', label: 'Timetable', icon: CalendarRange },
   { href: '/school-admin/attendance', label: 'Attendance', icon: ClipboardCheck },
-  { href: '/school-admin/lessons', label: 'Lessons', icon: NotebookPen },
+  { href: '/school-admin/lessons', label: 'Lesson Preparation', icon: NotebookPen },
   { href: '/school-admin/events', label: 'Events', icon: CalendarClock },
   { href: '/school-admin/terms', label: 'Terms', icon: CalendarDays },
   { href: '/school-admin/school', label: 'My School', icon: School },

@@ -12,7 +12,17 @@ import { TopbarSearch } from '@/components/ui/TopbarSearch';
 import { MobileNavDrawer } from '@/components/ui/MobileNavDrawer';
 import { PortalSidebar } from '@/components/ui/PortalSidebar';
 import { useUnreadMessageCount } from '@/lib/communications/useUnreadMessageCount';
-import { LayoutDashboard, FileText, UserCircle, ClipboardList, MessageSquare, Baby } from 'lucide-react';
+import {
+  LayoutDashboard,
+  FileText,
+  UserCircle,
+  ClipboardList,
+  MessageSquare,
+  Baby,
+  CalendarRange,
+  ClipboardCheck,
+  NotebookPen,
+} from 'lucide-react';
 import type { Role } from '@/lib/auth/session';
 import { subjectPhasesOf, usesNurseryRatings, useSchoolLevels } from '@/lib/levels';
 
@@ -29,6 +39,9 @@ const NAV_BASE = [
     icon: FileText,
     activePrefixes: ['/staff/forms', '/staff/lessons', '/staff/attendance', '/staff/practical', '/staff/behaviour'],
   },
+  { href: '/staff/timetable', label: 'My Timetable', icon: CalendarRange },
+  { href: '/staff/attendance', label: 'Class Register', icon: ClipboardCheck },
+  { href: '/staff/lessons', label: 'Lesson Preparation', icon: NotebookPen },
   { href: '/staff/exam-marks', label: 'Exam Marks', icon: ClipboardList },
   { href: '/staff/kindergarten', label: 'Kindergarten Progress', icon: Baby },
   { href: '/staff/communications', label: 'Communication', icon: MessageSquare },

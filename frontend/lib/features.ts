@@ -17,6 +17,8 @@ export type FeatureKey =
   | "library"
   | "performance"
   | "lessons"
+  | "lesson_prep"
+  | "timetable"
   | "attendance"
   | "events"
   | "practical"
@@ -56,8 +58,14 @@ export const FEATURES: Record<FeatureKey, FeatureMeta> = {
   marking: { label: "Marking", ready: false },
   library: { label: "Library", ready: false },
   performance: { label: "Performance", ready: false },
+  // The ported TERECO ICT-lesson reports — still only /admin/lessons.
   lessons: { label: "Lessons", ready: false },
-  attendance: { label: "Attendance", ready: false },
+  // Schemes of work, lesson plans, records of work (/api/v1/lesson-prep).
+  lesson_prep: { label: "Lesson Preparation", ready: true },
+  // Class timetables per term (/api/v1/timetable).
+  timetable: { label: "Timetable", ready: true },
+  // The daily class register (/api/v1/attendance).
+  attendance: { label: "Attendance", ready: true },
   // The school calendar (backend/src/modules/events) — holidays, meetings,
   // deadlines. Management page at /school-admin/events; every role's
   // dashboard rail (DashboardRightRail) reads from the same API once this
@@ -140,7 +148,8 @@ const ROUTE_FEATURES: { prefix: string; key: FeatureKey }[] = [
   { prefix: "/staff/marking", key: "marking" },
   { prefix: "/staff/library", key: "library" },
   { prefix: "/staff/performance", key: "performance" },
-  { prefix: "/staff/lessons", key: "lessons" },
+  { prefix: "/staff/lessons", key: "lesson_prep" },
+  { prefix: "/staff/timetable", key: "timetable" },
   { prefix: "/staff/attendance", key: "attendance" },
   { prefix: "/staff/practical", key: "practical" },
   { prefix: "/staff/behaviour", key: "behaviour" },
@@ -160,7 +169,8 @@ const ROUTE_FEATURES: { prefix: string; key: FeatureKey }[] = [
   { prefix: "/school-admin/students", key: "students" },
   { prefix: "/school-admin/events", key: "events" },
   { prefix: "/school-admin/attendance", key: "attendance" },
-  { prefix: "/school-admin/lessons", key: "lessons" },
+  { prefix: "/school-admin/lessons", key: "lesson_prep" },
+  { prefix: "/school-admin/timetable", key: "timetable" },
   { prefix: "/school-admin/assessments", key: "assessments" },
   { prefix: "/school-admin/library", key: "library" },
   { prefix: "/school-admin/performance", key: "performance" },

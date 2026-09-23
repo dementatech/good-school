@@ -122,3 +122,8 @@ export async function visibleLevelsFor(
   const section = activeSection(levels, sectionCookie);
   return section ? levels.filter((l) => SECTION_LEVELS[section].includes(l)) : [];
 }
+
+/** The section a level belongs to (O- and A-Level are both Secondary). */
+export function sectionOfLevel(level: SchoolLevel): SchoolSection {
+  return level === "KINDERGARTEN" ? "KINDERGARTEN" : level === "PRIMARY" ? "PRIMARY" : "SECONDARY";
+}
