@@ -8,6 +8,14 @@
 #   ./deploy/deploy.sh --check      # verify plumbing only (git remote, docker, DB) — no build, no restart
 #   ./deploy/deploy.sh --status     # report what's deployed vs origin/main — no changes at all
 #
+# The pitch demo school (Mirembe Hill — backend/scripts/seed-demo-primary-school.ts)
+# is created automatically by the first deploy that doesn't find it; every
+# deploy after that skips it. Optionally, before a pitch, bring its dates up to
+# the day (keeps its people and logins; replaces anything dated entered in an
+# earlier pitch):
+#   ./deploy/deploy.sh --demo-only               # back up, refresh — no rebuild
+#   ./deploy/deploy.sh --demo-only --demo-date=2027-03-10   # as if on the pitch day
+#
 # The frontend is on Vercel and redeploys itself on push — this script only
 # touches the backend + Postgres + Redis stack.
 #
@@ -24,18 +32,49 @@ DO_PULL=1
 DO_BACKUP=1
 CHECK_ONLY=0
 STATUS_ONLY=0
+DEMO_ONLY=0
+DEMO_DATE=""
 for arg in "$@"; do
   case "$arg" in
     --no-pull)   DO_PULL=0 ;;
     --no-backup) DO_BACKUP=0 ;;
     --check)     CHECK_ONLY=1 ;;
     --status)    STATUS_ONLY=1 ;;
+    --demo-only) DEMO_ONLY=1 ;;
+    --demo-date=*)
+      DEMO_DATE="${arg#--demo-date=}"
+      [[ "$DEMO_DATE" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]] || { echo "--demo-date must be YYYY-MM-DD" >&2; exit 2; } ;;
     *) echo "unknown flag: $arg" >&2; exit 2 ;;
   esac
 done
 
 say() { printf '\n\033[1;34m▸ %s\033[0m\n' "$*"; }
 die() { printf '\n\033[1;31m✗ %s\033[0m\n' "$*" >&2; exit 1; }
+DEMO_SCHOOL="Mirembe Hill Nursery & Primary School"
+
+# Refreshes the demo school's dates (creates it if it isn't there yet).
+run_demo_seed() {
+  say "demo school: refresh${DEMO_DATE:+ as of $DEMO_DATE}"
+  $COMPOSE exec -T backend npx tsx scripts/seed-demo-primary-school.ts --refresh ${DEMO_DATE:+--date=$DEMO_DATE} \
+    || die "demo seed failed — nothing was changed (it runs in one transaction). See the output above."
+}
+
+# After a deploy: create the demo school once, then leave it alone.
+ensure_demo_school() {
+  say "demo school"
+  local found
+  found=$($COMPOSE exec -T postgres psql -U postgres -d school_os -tAc \
+    "select 1 from schools where name = '$DEMO_SCHOOL'" 2>/dev/null || true)
+  if [ "$found" = "1" ]; then
+    echo "  already there — skipped"
+    return
+  fi
+  echo "  not found — creating it (about a minute)"
+  # A failed seed changes nothing and mustn't fail a deploy that already succeeded.
+  $COMPOSE exec -T backend npx tsx scripts/seed-demo-primary-school.ts \
+    || printf '\n\033[1;33m! demo seed failed (nothing was changed) — the deploy itself is fine. It will be tried again on the next deploy.\033[0m\n'
+}
+
 mark() { [ "$1" = 1 ] && printf '\033[1;32m✓\033[0m' || printf '\033[1;31m✗\033[0m'; }
 
 # ── --status: is this droplet in sync with origin/main? read-only ────────────
@@ -97,6 +136,21 @@ if [ "$CHECK_ONLY" = 1 ]; then
   exit 0
 fi
 
+# ── --demo-only: refresh the demo school on the running stack, then stop ─────
+if [ "$DEMO_ONLY" = 1 ]; then
+  $COMPOSE ps --status running --services 2>/dev/null | grep -qw backend \
+    || die "the backend isn't running — deploy first: ./deploy/deploy.sh"
+  if [ "$DO_BACKUP" = 1 ]; then
+    say "backing up the database"
+    mkdir -p "$BACKUP_DIR"
+    BACKUP="$BACKUP_DIR/school_os-$(date +%F-%H%M%S).sql.gz"
+    $COMPOSE exec -T postgres pg_dump -U postgres school_os | gzip > "$BACKUP"
+    echo "  $BACKUP"
+  fi
+  run_demo_seed
+  exit 0
+fi
+
 # ── 1. Pull ──────────────────────────────────────────────────────────────────
 if [ "$DO_PULL" = 1 ]; then
   say "git pull (fast-forward only)"
@@ -152,6 +206,7 @@ if [ "$OK" != 1 ]; then
 fi
 
 say "deployed"
+ensure_demo_school
 $COMPOSE ps
 echo
 echo "  Frontend: Vercel redeploys on push — check its dashboard."

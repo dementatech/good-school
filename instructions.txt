@@ -154,3 +154,125 @@ survives but authorized_keys / sshd state can be reset.
    rebuild and start the stack — the postgres-data named volume should
    still be intact on disk even if the containers themselves were
    removed, so data is not necessarily lost.
+
+
+DEMO DATA — MIREMBE HILL NURSERY & PRIMARY SCHOOL (FOR PRESENTATIONS)
+=====================================================================
+A made-up school with Nursery (Baby / Middle / Top Class) and P1–P7:
+1,000 pupils in streams, 38 staff, the Uganda primary subjects, marked
+and published exams, a full timetable for the current term, schemes of work, lesson
+plans, attendance, parents and a term calendar.
+
+Script:  backend/scripts/seed-demo-primary-school.ts
+Content: backend/scripts/demo-data/uganda-primary-curriculum.ts
+
+
+STEP 1 — GET THE SCRIPT ONTO main
+---------------------------------
+deploy.sh deploys origin/main only, so the two files above (and the
+"seed-demo-primary-school" line in backend/package.json) must be
+committed and merged to main first.
+
+
+STEP 2 — DEPLOY (the school is created automatically)
+------------------------------------------------------
+    cd ~/projects/school-os
+    ./deploy/deploy.sh
+
+Nothing extra to run. After the normal deploy (pull, database backup,
+rebuild, restart), deploy.sh looks for the demo school:
+  - first deploy: not found, so it creates it (about a minute) and
+    prints the logins;
+  - every deploy after that: found, so it prints "already there —
+    skipped" and leaves it untouched.
+
+If creating it ever fails, nothing from it is kept, the deploy itself
+still succeeds, and the next deploy tries again.
+
+
+STEP 3 — OPTIONAL, BEFORE A PITCH: REFRESH THE DATES
+----------------------------------------------------
+The demo is built around the day it was created or last refreshed, so
+over time it goes stale (the live exam closes, attendance and lesson plans stop at that
+week, the term ends). Before each pitch — the same day, or the day
+before — run on the droplet:
+
+    cd ~/projects/school-os
+    ./deploy/deploy.sh --demo-only
+
+That backs up the database, then refreshes the demo school on the
+running app — no rebuild, no restart, about 30 seconds.
+
+To prepare the day before, give the pitch date:
+
+    ./deploy/deploy.sh --demo-only --demo-date=2027-03-10
+
+Deploys never refresh it — only --demo-only does.
+
+What a refresh KEEPS: the school, staff, pupils, parents, classes,
+subjects, and every login and password.
+
+What a refresh REBUILDS around the pitch date: the school year and term
+dates, exams and marks, attendance, schemes of work, timetable, lesson
+plans, nursery progress ratings and the calendar. Anything of that kind
+added by hand during an earlier pitch (marks entered live, a register
+taken, events) is replaced — that's what keeps each pitch clean.
+
+Wherever the pitch date falls, there is always a term in progress and
+one exam open for live marks entry:
+  - weeks 1–2 of a term ..... Beginning of Term exam is live
+  - after that .............. Beginning of Term marked; Mid-Term live
+  - End of Term exam week ... BOT and Mid-Term marked; End of Term live
+  - holidays after Term 3 ... all marked; a Holiday Revision Test is live
+If the pitch falls in a school holiday, the nearest term is stretched
+to cover it.
+
+One limit: in the first two weeks of Term 1 there are no published
+results yet (the year has just started), so report cards will be
+empty. Everything else still works. For report cards in a pitch then,
+use --demo-date with a later day in the term.
+
+
+STEP 4 — LOG IN AND CHECK
+-------------------------
+Password for EVERY demo account:  TestPass!2026
+
+    School admin ........ admin@mirembehill.dev
+    Head teacher ........ margaret.nankya@mirembehill.dev
+    Director of Studies . paul.kasozi@mirembehill.dev   (DOS portal: /dos)
+    Nursery teacher ..... harriet.nabukenya@mirembehill.dev  (Baby Class Red)
+    P1 class teacher .... agnes.nansubuga@mirembehill.dev    (P1 Red)
+    P7 English teacher .. denis.opolot@mirembehill.dev
+    Parent .............. parent.demo@mirembehill.dev
+                          (Sarah Mukasa — children in Top Class, P3, P7)
+    Other teachers ...... firstname.lastname@mirembehill.dev
+    Pupils .............. their S-number (e.g. S26xxxx)
+
+The admin sees one section at a time — use the Nursery / Primary switch
+to move between them.
+
+
+WHAT TO SHOW IN THE PRESENTATION
+--------------------------------
+- Report cards: past terms' End of Term exams (and this term's
+  Beginning of Term exam, from week 3) are marked and published (PLE
+  aggregates and divisions for Primary, letter grades + progress
+  ratings for Nursery).
+- Live marks entry: one exam (usually the Mid-Term) is open THIS WEEK.
+  About half the mark sheets are submitted, some are half done, some
+  are empty — log in as a teacher (e.g. denis.opolot) and enter marks
+  live.
+- Timetable: the current term, every stream full, no teacher clashes.
+- Lesson prep (DOS): schemes of work for every class and subject
+  (NCDC topics), records of work, and this week's lesson plans —
+  some approved, some submitted, some returned, some drafts.
+- Attendance: taken every school day of the term up to yesterday.
+  Today is left empty so you can take a register live.
+- Parent portal: log in as parent.demo to see three children.
+- Calendar: Independence Day, sports day, PLE dates, speech day, etc.
+
+NOTE: "this week" and "yesterday" are worked out from the day you run
+the deploy that created it, or --demo-only (or --demo-date). See STEP 3.
+
+This school stays on production permanently — it is the school used for
+pitching to clients. Do NOT delete it.

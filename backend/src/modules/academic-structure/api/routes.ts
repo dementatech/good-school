@@ -1061,15 +1061,18 @@ export async function academicStructureRoutes(fastify: FastifyInstance) {
   );
 
   // -- Section settings (per school section) ------------------------------
-  // Nursery assessment style (ratings / marks / both) and whether report
-  // cards show positions. Only the caller's own sections are listed.
+  // Nursery assessment style (ratings / marks / both), whether report cards
+  // show positions, and what else they show. Only the caller's own sections
+  // are listed.
   fastify.get("/section-settings", { preHandler: SCHOOL }, async (request, reply) => {
     const schoolId = schoolOf(request, reply);
     if (!schoolId) return;
     return ok(await getSectionSettings(schoolId));
   });
 
-  fastify.put<{ Body: { section: SchoolSection; assessmentStyle?: AssessmentStyle; showPositions?: boolean } }>(
+  fastify.put<{
+    Body: { section: SchoolSection; assessmentStyle?: AssessmentStyle; showPositions?: boolean; reportCard?: Record<string, boolean> };
+  }>(
     "/section-settings",
     { preHandler: SCHOOL, schema: { body: sectionSettingsBodySchema } },
     async (request, reply) => {

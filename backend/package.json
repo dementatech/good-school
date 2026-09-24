@@ -15,7 +15,8 @@
     "create-super-admin": "tsx scripts/create-super-admin.ts",
     "reset-password": "tsx scripts/reset-password.ts",
     "seed-test-school": "tsx scripts/seed-test-school.ts",
-    "seed-demo-junior-school": "tsx scripts/seed-demo-junior-school.ts"
+    "seed-demo-junior-school": "tsx scripts/seed-demo-junior-school.ts",
+    "seed-demo-primary-school": "tsx scripts/seed-demo-primary-school.ts"
   },
   "dependencies": {
     "@fastify/cookie": "^11.0.2",

@@ -56,6 +56,16 @@ export async function renderReportCardsPdf(path: string, cookieHeader: string | 
       throw new ReportCardPdfError(`Could not load the report page (status ${response?.status() ?? "unknown"}).`);
     }
     await page.waitForSelector('body[data-pdf-ready="true"]', { timeout: 90_000 });
+    // Learners' photos and the school logo load after the data does — wait
+    // for every image (a broken one just stays blank) so none print empty.
+    // (Runs in the page; capped at 15s so one slow image can't hang the PDF.)
+    await page.evaluate(`Promise.race([
+      Promise.all(Array.from(document.images).filter((img) => !img.complete).map((img) => new Promise((resolve) => {
+        img.addEventListener("load", resolve);
+        img.addEventListener("error", resolve);
+      }))),
+      new Promise((resolve) => setTimeout(resolve, 15000)),
+    ])`);
     const pdf = await page.pdf({ printBackground: true, preferCSSPageSize: true });
     return Buffer.from(pdf);
   } finally {

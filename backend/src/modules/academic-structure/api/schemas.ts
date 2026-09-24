@@ -267,6 +267,8 @@ export const sectionSettingsBodySchema = {
     section: { type: "string", enum: ["KINDERGARTEN", "PRIMARY", "SECONDARY"] },
     assessmentStyle: { type: "string", enum: ["ratings", "marks", "both"] },
     showPositions: { type: "boolean" },
+    // { field: true | false } — checked against REPORT_CARD_FIELDS in the repository.
+    reportCard: { type: "object", additionalProperties: { type: "boolean" }, maxProperties: 50 },
   },
   additionalProperties: false,
 } as const;

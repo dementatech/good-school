@@ -14,7 +14,8 @@ import { DropdownMenu, type DropdownMenuItem } from '@/components/ui/DropdownMen
 import { useToast } from '@/components/ui/ToastProvider';
 import { fetchList, fetchOne } from '@/lib/api/envelope';
 import { useElementSize } from '@/lib/useElementSize';
-import { AlertTriangle, FileText, TrendingUp, Trophy } from 'lucide-react';
+import Link from 'next/link';
+import { AlertTriangle, FileText, LayoutTemplate, TrendingUp, Trophy } from 'lucide-react';
 import type { SchoolExam } from '@/components/admin/exams/types';
 
 const PRIMARY_600 = '#1e40af';
@@ -73,6 +74,7 @@ interface ReportCardStudent {
   systemId: string | null;
   streamId: string | null;
   streamName: string | null;
+  photoUrl: string | null;
   average: number | null;
   overallGrade: string | null;
   overallComment: string | null;
@@ -897,6 +899,15 @@ export default function ReportCardStudioPage() {
               ))}
             </select>
           )}
+          {/* Choosing the layout is the school admin's — the DOS portal shares this page. */}
+          {base === '/school-admin' && (
+            <Link
+              href="/school-admin/report-card-layout"
+              className="h-9 inline-flex items-center gap-1.5 rounded-lg border border-border-strong bg-white px-3.5 text-sm font-semibold text-primary-900 hover:bg-bg-subtle transition-colors"
+            >
+              <LayoutTemplate className="w-4 h-4" aria-hidden /> Customise layout
+            </Link>
+          )}
           {report && (
             <DropdownMenu
               items={reportCardItems}
@@ -1076,8 +1087,13 @@ export default function ReportCardStudioPage() {
                   <>
                     <div className="flex items-center justify-between gap-3 flex-wrap">
                       <div className="flex items-center gap-3">
-                        <span className="w-11 h-11 rounded-full bg-primary-100 text-primary-700 flex items-center justify-center font-extrabold text-sm shrink-0">
-                          {initials(student.studentName)}
+                        <span className="w-11 h-11 rounded-full bg-primary-100 text-primary-700 flex items-center justify-center font-extrabold text-sm shrink-0 overflow-hidden">
+                          {student.photoUrl ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img src={student.photoUrl} alt="" className="w-full h-full object-cover" />
+                          ) : (
+                            initials(student.studentName)
+                          )}
                         </span>
                         <div>
                           <p className="text-[15px] font-extrabold text-primary-900">{student.studentName}</p>

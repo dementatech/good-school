@@ -1,5 +1,6 @@
 import type { SchoolLevel, SchoolSection } from "../../../shared/levels.js";
-import { showPositionsFor } from "../../academic-structure/index.js";
+import { reportCardSettingsFor, type ReportCardFields } from "../../academic-structure/index.js";
+import { fileUrl, type StorageProvider } from "../../../shared/media.js";
 import type { Pool, PoolClient } from "pg";
 import { pool } from "../../../shared/db/index.js";
 
@@ -196,6 +197,12 @@ export interface ReportCardStudent {
   systemId: string | null;
   streamId: string | null;
   streamName: string | null;
+  /** The learner's photo, for the report card's photo box. */
+  photoUrl: string | null;
+  /** School days in the exam's term so far with a register taken for this
+   * learner, and how many of them they were in (present or late). Null when
+   * no register has been taken for them this term. */
+  attendance: { present: number; total: number } | null;
   /** O-Level only: mean of every subject score, one blended grade — there's
    * no principal/subsidiary split at this phase. Null for A-Level (use the
    * principal/subsidiary fields instead) or if nothing's been entered yet. */
@@ -235,6 +242,8 @@ export interface ExamReportCard {
   /** Whether printed report cards show each pupil's position — the school's
    * choice per section (Nursery defaults to off). */
   showPositions: boolean;
+  /** What else the section's report cards show — the school's choice. */
+  reportCardFields: ReportCardFields;
   class: { id: string; name: string; phase: SchoolLevel };
   stream: { id: string; name: string } | null;
   subjects: ReportCardSubject[];
@@ -1212,9 +1221,11 @@ export async function getExamReportCard(
     system_id: string | null;
     stream_id: string | null;
     stream_name: string | null;
+    photo_path: string | null;
+    photo_provider: StorageProvider | null;
   }>(
     `select en.student_user_id, s.first_name, s.middle_name, s.last_name, u.system_id,
-            st.id as stream_id, st.name as stream_name
+            st.id as stream_id, st.name as stream_name, s.photo_path, s.photo_provider
        from student_enrollment en
        join students s on s.user_id = en.student_user_id
        join users u on u.id = en.student_user_id
@@ -1237,7 +1248,7 @@ export async function getExamReportCard(
   };
   const section: SchoolSection =
     klass.stage_phase === "KINDERGARTEN" ? "KINDERGARTEN" : klass.stage_phase === "PRIMARY" ? "PRIMARY" : "SECONDARY";
-  const showPositions = await showPositionsFor(schoolId, section);
+  const { showPositions, fields: reportCardFields } = await reportCardSettingsFor(schoolId, section);
   const classOut = { id: klass.id, name: klass.class_name, phase: klass.stage_phase };
   const streamOut = klass.stream_id ? { id: klass.stream_id, name: klass.stream_name ?? "" } : null;
 
@@ -1245,6 +1256,7 @@ export async function getExamReportCard(
     return {
       exam: examOut,
       showPositions,
+      reportCardFields,
       class: classOut,
       stream: streamOut,
       subjects: [],
@@ -1453,6 +1465,18 @@ export async function getExamReportCard(
     return { aggregate, division };
   }
 
+  // Attendance for the exam's term, from the daily register.
+  const { rows: attendanceRows } = await pool.query<{ student_user_id: string; present: number; total: number }>(
+    `select student_user_id,
+            count(*) filter (where status in ('present', 'late'))::int as present,
+            count(*)::int as total
+       from attendance_record
+      where school_id = $1 and term_id = $2 and student_user_id = any($3::uuid[])
+      group by student_user_id`,
+    [schoolId, exam.termId, rosterRows.map((r) => r.student_user_id)],
+  );
+  const attendanceOf = new Map(attendanceRows.map((a) => [a.student_user_id, { present: a.present, total: a.total }]));
+
   const students: ReportCardStudent[] = rosterRows.map((r) => {
     const subjects = mergedByStudent.get(r.student_user_id) ?? [];
     const base = {
@@ -1461,6 +1485,10 @@ export async function getExamReportCard(
       systemId: r.system_id,
       streamId: r.stream_id,
       streamName: r.stream_name,
+      photoUrl: r.photo_path
+        ? fileUrl({ provider: r.photo_provider ?? "local", ref: r.photo_path, mimeType: "image/jpeg" })
+        : null,
+      attendance: attendanceOf.get(r.student_user_id) ?? null,
       rank: null as number | null,
       subjects: subjects
         .map((s) => ({
@@ -1634,6 +1662,7 @@ export async function getExamReportCard(
   return {
     exam: examOut,
     showPositions,
+    reportCardFields,
     class: classOut,
     stream: streamOut,
     subjects,

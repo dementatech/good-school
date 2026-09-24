@@ -12,13 +12,19 @@ cd ~/projects/school-os
 
 It pulls `main` (fast-forward only), starts Postgres/Redis, **dumps the
 database** to `~/gs-backups/` (keeps the last 10), rebuilds the backend image,
-restarts it, and waits for it to answer. The backend container runs
+restarts it, and waits for it to answer. Then, if the pitch demo school
+(Mirembe Hill — `backend/scripts/seed-demo-primary-school.ts`) isn't in the
+database yet, it creates it; once it's there, deploys skip it. The backend container runs
 `npm run migrate:up` before it boots, so migrations apply as part of the
 restart.
 
 Flags:
 - `--no-pull`, `--no-backup`
 - `--check` — verify plumbing (git remote, docker, DB), then stop
+- `--demo-only` — refresh the pitch demo school's dates on the running stack
+  (backs up first; no rebuild). Add `--demo-date=YYYY-MM-DD` to build it as of
+  the pitch day. Keeps the demo's people and logins; replaces anything dated
+  entered during an earlier pitch.
 - `--status` — report **what's deployed vs `origin/main`** (commit, container,
   image age, health, latest migrations). Read-only, changes nothing. This is
   the "is prod in sync?" command.

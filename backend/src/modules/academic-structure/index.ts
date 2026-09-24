@@ -9,10 +9,11 @@ export type { TermRecord } from "./domain/terms.repository.js";
 export { getCurrentTerm } from "./domain/terms.repository.js";
 export type { GradeBandRecord } from "./domain/grading-schemes.repository.js";
 export { computeGrade, getActiveSchemeForSubject } from "./domain/grading-schemes.repository.js";
-export type { AssessmentStyle, SectionSettings } from "./domain/section-settings.repository.js";
+export type { AssessmentStyle, ReportCardFields, SectionSettings } from "./domain/section-settings.repository.js";
 export {
   getSectionSettings,
   nurseryAssessmentStyle,
+  reportCardSettingsFor,
   showPositionsFor,
 } from "./domain/section-settings.repository.js";
 

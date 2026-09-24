@@ -34,6 +34,7 @@ import {
   Baby,
   CalendarRange,
   Users,
+  LayoutTemplate,
 } from 'lucide-react';
 import type { Role } from '@/lib/auth/session';
 import { subjectPhasesOf, usesNurseryRatings, useSchoolLevels } from '@/lib/levels';
@@ -66,6 +67,7 @@ const NAV_BASE = [
     children: [
       { href: '/school-admin/exams', label: 'Manage Exams', icon: ClipboardList, exact: true },
       { href: '/school-admin/report-card-studio', label: 'Report Card Studio', icon: FileBarChart2 },
+      { href: '/school-admin/report-card-layout', label: 'Report Card Layout', icon: LayoutTemplate },
       { href: '/school-admin/grading-schemes', label: 'Grading Schemes', icon: Award },
       { href: '/school-admin/kindergarten', label: 'Kindergarten Progress', icon: Baby },
     ],
@@ -101,7 +103,7 @@ function SchoolAdminShell({ children }: { children: React.ReactNode }) {
       ...(levels?.offersOLevel ? [] : ['/school-admin/subjects/options']),
       ...(levels?.offersALevel ? [] : ['/school-admin/subjects/combinations']),
       ...(levels ? [] : ['/school-admin/subjects']),
-      ...(hasMarks ? [] : ['/school-admin/exams', '/school-admin/report-card-studio', '/school-admin/grading-schemes']),
+      ...(hasMarks ? [] : ['/school-admin/exams', '/school-admin/report-card-studio', '/school-admin/report-card-layout', '/school-admin/grading-schemes']),
     ]);
     return NAV_BASE.filter((item) => !item.href || !hidden.has(item.href))
       .map((item) => {
