@@ -62,6 +62,8 @@ interface MeResponse {
   schoolLogoUrl: string | null;
   photoUrl: string | null;
   mustChangePassword?: boolean;
+  isPlatformOwner?: boolean;
+  isSupportAgent?: boolean;
 }
 
 export function meToUser(me: MeResponse): User {
@@ -76,6 +78,8 @@ export function meToUser(me: MeResponse): User {
     schoolId: me.schoolId,
     className: null,
     photoUrl: me.photoUrl,
+    isPlatformOwner: me.isPlatformOwner === true,
+    isSupportAgent: me.isSupportAgent === true,
   };
 }
 

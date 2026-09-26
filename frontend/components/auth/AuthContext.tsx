@@ -21,6 +21,10 @@ export interface User {
   className?: string | null;
   /** Only ever set for a teacher right now — see backend's `/me` route. */
   photoUrl?: string | null;
+  /** A super_admin who also owns the platform — sees the Support Inbox. */
+  isPlatformOwner?: boolean;
+  /** A super_admin the owner has given the Support Inbox to. */
+  isSupportAgent?: boolean;
 }
 
 interface AuthContextType {

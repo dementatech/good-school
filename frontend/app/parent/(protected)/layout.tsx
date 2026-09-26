@@ -13,7 +13,7 @@ import { MobileNavDrawer } from '@/components/ui/MobileNavDrawer';
 import { PortalSidebar } from '@/components/ui/PortalSidebar';
 import { Select } from '@/components/ui/Select';
 import { ParentChildrenProvider, useParentChildren } from '@/components/parent/ParentChildrenContext';
-import { LayoutDashboard, Award, ClipboardCheck, BookOpen, Bell } from 'lucide-react';
+import { LayoutDashboard, Award, ClipboardCheck, BookOpen, Bell, LifeBuoy } from 'lucide-react';
 import type { Role } from '@/lib/auth/session';
 
 const PARENT_ROLES: Role[] = ['parent'];
@@ -24,6 +24,7 @@ const NAV = [
   { href: '/parent/attendance', label: 'Attendance', icon: ClipboardCheck },
   { href: '/parent/lessons', label: 'Lessons', icon: BookOpen },
   { href: '/parent/notifications', label: 'Notifications', icon: Bell },
+  { href: '/parent/support', label: 'Help & Support', icon: LifeBuoy },
 ];
 
 function ChildSwitcher() {

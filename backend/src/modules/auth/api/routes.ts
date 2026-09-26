@@ -86,6 +86,8 @@ export async function authRoutes(fastify: FastifyInstance) {
         schoolLogoUrl: branding?.logoUrl ?? null,
         photoUrl,
         mustChangePassword: user.must_change_password,
+        isPlatformOwner: user.is_platform_owner === true,
+        isSupportAgent: user.is_support_agent === true,
       };
     },
   );
