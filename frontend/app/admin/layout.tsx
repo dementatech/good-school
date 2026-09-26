@@ -43,7 +43,8 @@ const SYSTEM_NAV = [
 // Available to every role that can reach this portal: an admin locked out of
 // their own password would be a strange thing to ship.
 // Reporting a problem is for everyone but the platform owner — they're who
-// reports land with, in the Support Inbox under System.
+// reports land with, in the Support Inbox under System. Support agents work
+// that inbox too, but can still report to the owner.
 const SUPPORT_NAV = { href: '/admin/support', label: 'Help & Support', icon: LifeBuoy };
 const INBOX_NAV = { href: '/admin/system/support', label: 'Support Inbox', icon: Inbox };
 
@@ -58,7 +59,11 @@ function AdminShell({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const nav = user?.isPlatformOwner ? NAV : [...NAV, SUPPORT_NAV];
   const systemNav =
-    user?.role !== 'super_admin' ? [] : user.isPlatformOwner ? [INBOX_NAV, ...SYSTEM_NAV] : SYSTEM_NAV;
+    user?.role !== 'super_admin'
+      ? []
+      : user.isPlatformOwner || user.isSupportAgent
+        ? [INBOX_NAV, ...SYSTEM_NAV]
+        : SYSTEM_NAV;
 
   return (
     <div className="min-h-screen bg-bg-canvas flex">

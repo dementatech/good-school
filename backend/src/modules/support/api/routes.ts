@@ -8,9 +8,9 @@ import {
   addReply,
   createTicket,
   findTicket,
-  isPlatformOwner,
+  isSupportStaff,
   listAllTickets,
-  listPlatformOwnerIds,
+  listSupportStaffIds,
   listReplies,
   listTicketsForReporter,
   setTicketStatus,
@@ -33,13 +33,13 @@ const APP_URL = process.env.APP_URL ?? "http://localhost:3000";
 const AUTHENTICATED = requireAuth();
 const SUPER = requireAuth(["super_admin"]);
 
-/** super_admin gets you through the door; only the owner flag gets you the
- *  inbox. Checked against the database on every call rather than carried in
- *  the JWT, so revoking the flag takes effect immediately. */
-async function requireOwner(request: FastifyRequest, reply: FastifyReply) {
+/** super_admin gets you through the door; only the owner or support-agent
+ *  flag gets you the inbox. Checked against the database on every call rather
+ *  than carried in the JWT, so revoking a flag takes effect immediately. */
+async function requireSupportStaff(request: FastifyRequest, reply: FastifyReply) {
   await SUPER(request, reply);
   if (reply.sent) return;
-  if (!(await isPlatformOwner(request.authUser!.user_id))) {
+  if (!(await isSupportStaff(request.authUser!.user_id))) {
     return reply.status(403).send({ error: "forbidden" });
   }
 }
@@ -100,12 +100,12 @@ function emailQuietly(to: string | null, subject: string, lines: string[], link:
 }
 
 async function announceNewTicket(ticket: TicketRecord) {
-  const ownerIds = await listPlatformOwnerIds();
+  const staffIds = await listSupportStaffIds();
   const link = `/admin/system/support?ticket=${ticket.id}`;
   const title = `New ${KIND_LABELS[ticket.kind].toLowerCase()}: ${ticket.subject}`;
-  await notifyUsers(ownerIds, { type: "support_ticket_new", title, body: ticket.description.slice(0, 200), link });
-  for (const ownerId of ownerIds) {
-    emailQuietly(await userEmail(ownerId), `[Support #${ticket.id}] ${title}`, [ticket.description], link);
+  await notifyUsers(staffIds, { type: "support_ticket_new", title, body: ticket.description.slice(0, 200), link });
+  for (const staffId of staffIds) {
+    emailQuietly(await userEmail(staffId), `[Support #${ticket.id}] ${title}`, [ticket.description], link);
   }
 }
 
@@ -150,15 +150,15 @@ export async function supportRoutes(fastify: FastifyInstance) {
     return ok(await listTicketsForReporter(request.authUser!.user_id));
   });
 
-  // The reporter reads their own ticket; the owner reads any.
+  // The reporter reads their own ticket; support staff read any.
   fastify.get<{ Params: { id: number } }>(
     "/tickets/:id",
     { preHandler: AUTHENTICATED, schema: { params: ticketParamsSchema } },
     async (request, reply) => {
       const userId = request.authUser!.user_id;
-      const owner = await isPlatformOwner(userId);
-      const ticket = await findTicket(request.params.id, { withReporter: owner });
-      if (!ticket || (!owner && ticket.reporterId !== userId)) return reply.status(404).send(fail("not_found"));
+      const staff = await isSupportStaff(userId);
+      const ticket = await findTicket(request.params.id, { withReporter: staff });
+      if (!ticket || (!staff && ticket.reporterId !== userId)) return reply.status(404).send(fail("not_found"));
       return ok({ ...publicTicket(ticket), replies: await listReplies(ticket.id) });
     },
   );
@@ -172,15 +172,15 @@ export async function supportRoutes(fastify: FastifyInstance) {
       if (!ticket) return reply.status(404).send(fail("not_found"));
 
       const isReporter = ticket.reporterId === userId;
-      const owner = !isReporter && (await isPlatformOwner(userId));
-      if (!isReporter && !owner) return reply.status(404).send(fail("not_found"));
+      const staff = !isReporter && (await isSupportStaff(userId));
+      if (!isReporter && !staff) return reply.status(404).send(fail("not_found"));
 
-      const created = await addReply(ticket.id, userId, request.body.body, owner);
-      if (owner) {
+      const created = await addReply(ticket.id, userId, request.body.body, staff);
+      if (staff) {
         void notifyReporter(ticket, "Support replied to your report", created.body).catch(() => {});
       } else {
-        const ownerIds = await listPlatformOwnerIds();
-        void notifyUsers(ownerIds, {
+        const staffIds = await listSupportStaffIds();
+        void notifyUsers(staffIds, {
           type: "support_ticket_reply",
           title: `Follow-up on #${ticket.id}: ${ticket.subject}`,
           body: created.body.slice(0, 200),
@@ -191,11 +191,11 @@ export async function supportRoutes(fastify: FastifyInstance) {
     },
   );
 
-  // ═══ Owner side — the support inbox ═══════════════════════════════════════
+  // ═══ Support side — the inbox (owner + support agents) ════════════════════
 
   fastify.get<{ Querystring: { status?: TicketStatus; kind?: TicketKind } }>(
     "/inbox",
-    { preHandler: requireOwner, schema: { querystring: inboxQuerySchema } },
+    { preHandler: requireSupportStaff, schema: { querystring: inboxQuerySchema } },
     async (request) => {
       const [tickets, counts] = await Promise.all([listAllTickets(request.query), ticketCounts()]);
       return ok({ tickets, counts });
@@ -206,7 +206,7 @@ export async function supportRoutes(fastify: FastifyInstance) {
   // is always told — resolving an issue quietly is the thing this is for.
   fastify.patch<{ Params: { id: number }; Body: { status: TicketStatus; message?: string | null } }>(
     "/inbox/:id",
-    { preHandler: requireOwner, schema: { params: ticketParamsSchema, body: updateTicketBodySchema } },
+    { preHandler: requireSupportStaff, schema: { params: ticketParamsSchema, body: updateTicketBodySchema } },
     async (request, reply) => {
       const ticket = await findTicket(request.params.id, { withReporter: false });
       if (!ticket) return reply.status(404).send(fail("not_found"));

@@ -97,6 +97,7 @@ export const meResponseSchema = {
       photoUrl: { type: ["string", "null"] },
       mustChangePassword: { type: "boolean" },
       isPlatformOwner: { type: "boolean" },
+      isSupportAgent: { type: "boolean" },
     },
   },
   404: {

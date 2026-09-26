@@ -1,8 +1,9 @@
 import { pool } from "../../../shared/db/index.js";
 
 // The support desk (see migrations/1700000072000_support-desk.cjs). Anyone
-// signed in files tickets and sees only their own; the platform owner sees
-// every ticket and moves it through open → in_progress → resolved/closed.
+// signed in files tickets and sees only their own; support staff — the
+// platform owner and any support agents — see every ticket and move it
+// through open → in_progress → resolved/closed.
 
 export const TICKET_KINDS = ["problem", "feature", "question"] as const;
 export const TICKET_STATUSES = ["open", "in_progress", "resolved", "closed"] as const;
@@ -256,18 +257,20 @@ export async function setTicketStatus(ticketId: number, status: TicketStatus): P
   );
 }
 
-/** Every active platform owner — who a new ticket is announced to. */
-export async function listPlatformOwnerIds(): Promise<string[]> {
+/** Everyone who works the inbox (owner + agents) — who a new ticket or a
+ *  reporter's follow-up is announced to. */
+export async function listSupportStaffIds(): Promise<string[]> {
   const { rows } = await pool.query<{ id: string }>(
-    `select id from users where is_platform_owner and is_active`,
+    `select id from users where (is_platform_owner or is_support_agent) and is_active`,
   );
   return rows.map((r) => r.id);
 }
 
-export async function isPlatformOwner(userId: string): Promise<boolean> {
-  const { rows } = await pool.query<{ is_platform_owner: boolean }>(
-    `select is_platform_owner from users where id = $1 and is_active`,
+/** The platform owner or a support agent. */
+export async function isSupportStaff(userId: string): Promise<boolean> {
+  const { rows } = await pool.query<{ ok: boolean }>(
+    `select (is_platform_owner or is_support_agent) as ok from users where id = $1 and is_active`,
     [userId],
   );
-  return rows[0]?.is_platform_owner ?? false;
+  return rows[0]?.ok ?? false;
 }

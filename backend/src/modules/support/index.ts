@@ -5,4 +5,4 @@ export async function registerSupportModule(fastify: FastifyInstance) {
   await fastify.register(supportRoutes, { prefix: "/api/v1/support" });
 }
 
-export { isPlatformOwner } from "./domain/support.repository.js";
+export { isSupportStaff } from "./domain/support.repository.js";

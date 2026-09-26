@@ -8,6 +8,10 @@ exports.shorthands = undefined;
 // The platform owner is a super_admin with `is_platform_owner` set — a flag,
 // not a new role, so every super_admin route keeps working for them unchanged
 // and only the owner-only surfaces (the support inbox) check the flag.
+//
+// Support agents are super_admins the owner has asked to help: they work the
+// inbox too (reply, change status) but can't make anyone else an agent —
+// granting either flag is a server-side script.
 
 exports.up = (pgm) => {
   pgm.addColumn("users", {
@@ -15,6 +19,12 @@ exports.up = (pgm) => {
   });
   pgm.addConstraint("users", "users_platform_owner_is_super_admin", {
     check: "not is_platform_owner or role = 'super_admin'",
+  });
+  pgm.addColumn("users", {
+    is_support_agent: { type: "boolean", notNull: true, default: false },
+  });
+  pgm.addConstraint("users", "users_support_agent_is_super_admin", {
+    check: "not is_support_agent or role = 'super_admin'",
   });
 
   pgm.createTable("support_ticket", {
@@ -61,6 +71,8 @@ exports.up = (pgm) => {
 exports.down = (pgm) => {
   pgm.dropTable("support_ticket_reply");
   pgm.dropTable("support_ticket");
+  pgm.dropConstraint("users", "users_support_agent_is_super_admin");
+  pgm.dropColumn("users", "is_support_agent");
   pgm.dropConstraint("users", "users_platform_owner_is_super_admin");
   pgm.dropColumn("users", "is_platform_owner");
 };

@@ -15,6 +15,7 @@ export interface AuthUserRecord {
   must_change_password: boolean;
   /** Only read by findUserById — see migrations/1700000072000_support-desk.cjs. */
   is_platform_owner?: boolean;
+  is_support_agent?: boolean;
 }
 
 const COLUMN_BY_KIND: Record<IdentifierKind, string> = {
@@ -113,7 +114,7 @@ export async function setUserPhoto(
 export async function findUserById(id: string): Promise<AuthUserRecord | null> {
   const result = await pool.query<AuthUserRecord>(
     `select id, school_id, system_id, email, phone_number, password_hash, role,
-            is_active, must_change_password, is_platform_owner
+            is_active, must_change_password, is_platform_owner, is_support_agent
      from users
      where id = $1`,
     [id],
