@@ -13,6 +13,7 @@
     "migrate:up": "node-pg-migrate up --no-single-transaction",
     "migrate:down": "node-pg-migrate down --no-single-transaction",
     "create-super-admin": "tsx scripts/create-super-admin.ts",
+    "set-platform-owner": "tsx scripts/set-platform-owner.ts",
     "reset-password": "tsx scripts/reset-password.ts",
     "seed-test-school": "tsx scripts/seed-test-school.ts",
     "seed-demo-junior-school": "tsx scripts/seed-demo-junior-school.ts",

@@ -96,6 +96,7 @@ export const meResponseSchema = {
       schoolLogoUrl: { type: ["string", "null"] },
       photoUrl: { type: ["string", "null"] },
       mustChangePassword: { type: "boolean" },
+      isPlatformOwner: { type: "boolean" },
     },
   },
   404: {

@@ -15,6 +15,7 @@ import {
   School, Users, CalendarDays,
   ClipboardList, CalendarClock,
   UserCircle,
+  LifeBuoy, Inbox,
 } from 'lucide-react';
 import type { Role } from '@/lib/auth/session';
 
@@ -41,6 +42,11 @@ const SYSTEM_NAV = [
 // is about the person signed in rather than the work they came here to do.
 // Available to every role that can reach this portal: an admin locked out of
 // their own password would be a strange thing to ship.
+// Reporting a problem is for everyone but the platform owner — they're who
+// reports land with, in the Support Inbox under System.
+const SUPPORT_NAV = { href: '/admin/support', label: 'Help & Support', icon: LifeBuoy };
+const INBOX_NAV = { href: '/admin/system/support', label: 'Support Inbox', icon: Inbox };
+
 const ACCOUNT_NAV = [
   { href: '/admin/account', label: 'My Account', icon: UserCircle },
 ];
@@ -50,6 +56,9 @@ const ADMIN_ROLES: Role[] = ['admin', 'super_admin'];
 function AdminShell({ children }: { children: React.ReactNode }) {
   const { user, logout } = useAuth();
   const router = useRouter();
+  const nav = user?.isPlatformOwner ? NAV : [...NAV, SUPPORT_NAV];
+  const systemNav =
+    user?.role !== 'super_admin' ? [] : user.isPlatformOwner ? [INBOX_NAV, ...SYSTEM_NAV] : SYSTEM_NAV;
 
   return (
     <div className="min-h-screen bg-bg-canvas flex">
@@ -57,15 +66,15 @@ function AdminShell({ children }: { children: React.ReactNode }) {
         brandLogoUrl={user?.logoUrl}
         brandLabel={user?.school || 'Good School'}
         subtitle={user?.name}
-        nav={NAV}
-        secondaryNav={user?.role === 'super_admin' ? { label: 'System', items: SYSTEM_NAV } : undefined}
+        nav={nav}
+        secondaryNav={systemNav.length ? { label: 'System', items: systemNav } : undefined}
       />
 
       <div className="flex-1 min-w-0 flex flex-col">
         {/* Desktop header strip: the sidebar has no room for the bell or
             account menu, and both must stay reachable from every page. */}
         <div className="hidden md:flex items-center justify-between gap-4 px-8 py-2 border-b border-border bg-bg-card print:hidden">
-          <TopbarSearch items={user?.role === 'super_admin' ? [...NAV, ...SYSTEM_NAV] : NAV} />
+          <TopbarSearch items={[...nav, ...systemNav]} />
           <div className="flex items-center gap-2 shrink-0">
             <NotificationBell />
             <AccountMenu accountHref="/admin/account" onSignOut={() => { logout(); router.push('/auth'); }} />
@@ -78,8 +87,8 @@ function AdminShell({ children }: { children: React.ReactNode }) {
             <MobileNavDrawer
               title={user?.school || 'Good School'}
               subtitle={user?.name}
-              items={NAV}
-              secondaryItems={user?.role === 'super_admin' ? SYSTEM_NAV : []}
+              items={nav}
+              secondaryItems={systemNav}
               footerItems={ACCOUNT_NAV}
               onSignOut={() => { logout(); router.push('/auth'); }}
             />

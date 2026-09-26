@@ -23,6 +23,7 @@ import {
   ClipboardCheck,
   NotebookPen,
   GraduationCap,
+  LifeBuoy,
 } from 'lucide-react';
 import type { Role } from '@/lib/auth/session';
 import { subjectPhasesOf, usesNurseryRatings, useSchoolLevels } from '@/lib/levels';
@@ -47,6 +48,7 @@ const NAV_BASE = [
   { href: '/staff/exam-marks', label: 'Exam Marks', icon: ClipboardList },
   { href: '/staff/kindergarten', label: 'Kindergarten Progress', icon: Baby },
   { href: '/staff/communications', label: 'Communication', icon: MessageSquare },
+  { href: '/staff/support', label: 'Help & Support', icon: LifeBuoy },
 ];
 
 // Own-account settings — reached via the topbar's AccountMenu on desktop;

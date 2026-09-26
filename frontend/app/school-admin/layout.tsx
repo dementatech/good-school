@@ -35,6 +35,7 @@ import {
   CalendarRange,
   Users,
   LayoutTemplate,
+  LifeBuoy,
 } from 'lucide-react';
 import type { Role } from '@/lib/auth/session';
 import { subjectPhasesOf, usesNurseryRatings, useSchoolLevels } from '@/lib/levels';
@@ -84,6 +85,7 @@ const NAV_BASE = [
   { href: '/school-admin/communications', label: 'Communication', icon: MessageSquare },
   { href: '/school-admin/events', label: 'Events', icon: CalendarClock },
   { href: '/school-admin/school', label: 'My School', icon: School },
+  { href: '/school-admin/support', label: 'Help & Support', icon: LifeBuoy },
 ];
 
 function SchoolAdminShell({ children }: { children: React.ReactNode }) {

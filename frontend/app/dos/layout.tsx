@@ -34,6 +34,7 @@ import {
   LayoutDashboard,
   ListChecks,
   NotebookPen,
+  LifeBuoy,
 } from 'lucide-react';
 
 // The Director of Studies signs in with their teacher account ('teacher' from
@@ -65,6 +66,7 @@ const NAV_BASE = [
       { href: '/dos/kindergarten', label: 'Kindergarten Progress', icon: Baby },
     ],
   },
+  { href: '/dos/support', label: 'Help & Support', icon: LifeBuoy },
   { href: '/staff', label: 'My teacher portal', icon: ArrowLeftRight },
 ];
 
