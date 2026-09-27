@@ -75,6 +75,54 @@ ensure_demo_school() {
     || printf '\n\033[1;33m! demo seed failed (nothing was changed) — the deploy itself is fine. It will be tried again on the next deploy.\033[0m\n'
 }
 
+# The build downloads the Node base image (Docker Hub) and npm packages, so the
+# droplet must be able to resolve and reach both. When it can't, `docker build`
+# fails deep inside BuildKit with an error that doesn't say what to do — check
+# up front instead, and name the likely fix.
+NET_HOSTS="registry-1.docker.io registry.npmjs.org"
+check_network() {
+  local host failed=""
+  for host in $NET_HOSTS; do
+    if getent hosts "$host" >/dev/null 2>&1; then
+      echo "  dns         : $host resolves"
+    else
+      failed="$failed $host"
+    fi
+  done
+  if [ -z "$failed" ]; then
+    # Resolving isn't reaching — a firewall can allow DNS and still block 443.
+    local code
+    code=$(curl -s -o /dev/null -m 10 -w '%{http_code}' https://registry-1.docker.io/v2/ || true)
+    if [ "$code" = "000" ] || [ -z "$code" ]; then
+      network_help "can't reach https://registry-1.docker.io (outbound HTTPS blocked?)"
+      return 1
+    fi
+    echo "  docker hub  : reachable"
+    return 0
+  fi
+  network_help "can't resolve:$failed"
+  return 1
+}
+
+network_help() {
+  printf '\n\033[1;31m✗ network: %s\033[0m\n' "$1" >&2
+  echo "  The build needs Docker Hub and npm. Stopped before building — the running site is untouched." >&2
+  if command -v ufw >/dev/null 2>&1 && sudo -n ufw status verbose 2>/dev/null | grep -q 'deny (outgoing)'; then
+    echo "  Found: ufw denies outgoing traffic by default. Allow what the build needs:" >&2
+    echo "    sudo ufw allow out 53 && sudo ufw allow out 80/tcp && sudo ufw allow out 443/tcp" >&2
+  elif command -v systemctl >/dev/null 2>&1 && ! systemctl is-active --quiet systemd-resolved >/dev/null 2>&1 \
+       && grep -q '127.0.0.53' /etc/resolv.conf 2>/dev/null; then
+    echo "  Found: /etc/resolv.conf points at systemd-resolved, which isn't running:" >&2
+    echo "    sudo systemctl restart systemd-resolved" >&2
+  else
+    echo "  Things to check:" >&2
+    echo "    sudo ufw status verbose            # 'deny (outgoing)' → sudo ufw allow out 53, 80/tcp, 443/tcp" >&2
+    echo "    sudo iptables -S OUTPUT | head     # a DROP/REJECT rule on outbound traffic" >&2
+    echo "    sudo systemctl restart systemd-resolved docker   # stale DNS / docker's iptables rules" >&2
+  fi
+  echo "  Then confirm with: getent hosts registry-1.docker.io   — and re-run this script." >&2
+}
+
 mark() { [ "$1" = 1 ] && printf '\033[1;32m✓\033[0m' || printf '\033[1;31m✗\033[0m'; }
 
 # ── --status: is this droplet in sync with origin/main? read-only ────────────
@@ -125,6 +173,7 @@ if [ "$CHECK_ONLY" = 1 ]; then
   docker version --format '{{.Server.Version}}' >/dev/null 2>&1 \
     && echo "  docker      : $(docker version --format '{{.Server.Version}}')" || die "docker not usable by this user"
   $COMPOSE config -q && echo "  compose file: valid" || die "docker-compose.prod.yml invalid"
+  check_network || exit 1
   [ -f .env ] && echo "  .env        : present" || echo "  .env        : MISSING (needed on first real deploy)"
   $COMPOSE up -d postgres >/dev/null 2>&1 || true
   for _ in $(seq 1 15); do $COMPOSE exec -T postgres pg_isready -U postgres >/dev/null 2>&1 && break; sleep 1; done
@@ -159,6 +208,11 @@ if [ "$DO_PULL" = 1 ]; then
 fi
 echo "  at $(git rev-parse --short HEAD) — $(git log -1 --pretty=%s)"
 
+# ── 1b. Can the build download what it needs? Checked before the backup and
+#        the build, so a network problem stops here with nothing changed. ─────
+say "checking the network"
+check_network || exit 1
+
 # ── 2. Make sure Postgres + Redis are up ─────────────────────────────────────
 say "starting postgres + redis"
 $COMPOSE up -d postgres redis
@@ -182,8 +236,15 @@ if [ "$DO_BACKUP" = 1 ]; then
 fi
 
 # ── 4. Build the backend image (alone — the droplet has little RAM) ──────────
+# One retry: a registry hiccup mid-build shouldn't need a second manual run.
+# The running backend is untouched until step 5, so a failed build is safe.
 say "building the backend image"
-$COMPOSE build backend
+if ! $COMPOSE build backend; then
+  echo "  build failed — checking the network, then retrying once"
+  check_network || exit 1
+  sleep 5
+  $COMPOSE build backend || die "backend build failed twice (network looks fine — see the build output above). The running site is untouched."
+fi
 
 # ── 5. Restart — the container runs migrate:up before it boots ───────────────
 say "restarting the backend (migrations run first)"

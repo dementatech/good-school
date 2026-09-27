@@ -112,3 +112,25 @@ git checkout <previous-sha>
 gunzip -c ~/gs-backups/school_os-<timestamp>.sql.gz | \
   docker compose -f docker-compose.prod.yml exec -T postgres psql -U postgres -d school_os
 ```
+
+## Troubleshooting
+
+### `failed to resolve source metadata for docker.io/library/node…` / `can't resolve registry-1.docker.io`
+
+The droplet can't look up or reach Docker Hub, which the build needs for the
+Node base image (npm is needed too, for packages). `deploy.sh` now checks this
+before backing up or building and stops early. The running site is never touched.
+
+An error like `write udp 127.0.0.1:…->127.0.0.53:53: write: operation not permitted`
+means the droplet's own firewall is blocking DNS:
+
+```bash
+getent hosts registry-1.docker.io        # no output = DNS is broken on the host
+sudo ufw status verbose                  # "deny (outgoing)"? then:
+sudo ufw allow out 53 && sudo ufw allow out 80/tcp && sudo ufw allow out 443/tcp
+sudo iptables -S OUTPUT | head           # otherwise, look for a DROP/REJECT rule
+sudo systemctl restart systemd-resolved docker   # stale DNS, or Docker's rules need rebuilding (restarts containers briefly)
+```
+
+Once `getent hosts registry-1.docker.io` prints an address, run `./deploy/deploy.sh`
+again. `./deploy/deploy.sh --check` runs the same network check without deploying.
