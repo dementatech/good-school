@@ -8,11 +8,12 @@
 #   ./deploy/deploy.sh --check      # verify plumbing only (git remote, docker, DB) — no build, no restart
 #   ./deploy/deploy.sh --status     # report what's deployed vs origin/main — no changes at all
 #
-# The pitch demo school (Mirembe Hill — backend/scripts/seed-demo-primary-school.ts)
-# is created automatically by the first deploy that doesn't find it; every
-# deploy after that skips it. Optionally, before a pitch, bring its dates up to
-# the day (keeps its people and logins; replaces anything dated entered in an
-# earlier pitch):
+# The pitch demo schools (Mirembe Hill — backend/scripts/seed-demo-primary-school.ts,
+# and Kasubi Ridge — backend/scripts/seed-demo-secondary-school.ts) are created
+# automatically by the first deploy that doesn't find them; every deploy after
+# that skips them. Optionally, before a pitch, bring their dates up to the day
+# (keeps their people and logins; replaces anything dated entered in an earlier
+# pitch):
 #   ./deploy/deploy.sh --demo-only               # back up, refresh — no rebuild
 #   ./deploy/deploy.sh --demo-only --demo-date=2027-03-10   # as if on the pitch day
 #
@@ -55,30 +56,32 @@ done
 
 say() { printf '\n\033[1;34m▸ %s\033[0m\n' "$*"; }
 die() { printf '\n\033[1;31m✗ %s\033[0m\n' "$*" >&2; exit 1; }
-DEMO_SCHOOL="Mirembe Hill Nursery & Primary School"
 
-# Refreshes the demo school's dates (creates it if it isn't there yet).
+# Refreshes a demo school's dates (creates it if it isn't there yet).
 run_demo_seed() {
-  say "demo school: refresh${DEMO_DATE:+ as of $DEMO_DATE}"
-  $COMPOSE exec -T backend npx tsx scripts/seed-demo-primary-school.ts --refresh ${DEMO_DATE:+--date=$DEMO_DATE} \
+  say "$1: refresh${DEMO_DATE:+ as of $DEMO_DATE}"
+  $COMPOSE exec -T backend npx tsx "scripts/$2.ts" --refresh ${DEMO_DATE:+--date=$DEMO_DATE} \
     || die "demo seed failed — nothing was changed (it runs in one transaction). See the output above."
 }
 
-# After a deploy: create the demo school once, then leave it alone.
+# After a deploy: create a demo school once, then leave it alone.
 ensure_demo_school() {
-  say "demo school"
+  say "$1"
   local found
   found=$($COMPOSE exec -T postgres psql -U postgres -d school_os -tAc \
-    "select 1 from schools where name = '$DEMO_SCHOOL'" 2>/dev/null || true)
+    "select 1 from schools where name = '$1'" 2>/dev/null || true)
   if [ "$found" = "1" ]; then
     echo "  already there — skipped"
     return
   fi
   echo "  not found — creating it (about a minute)"
   # A failed seed changes nothing and mustn't fail a deploy that already succeeded.
-  $COMPOSE exec -T backend npx tsx scripts/seed-demo-primary-school.ts \
+  $COMPOSE exec -T backend npx tsx "scripts/$2.ts" \
     || printf '\n\033[1;33m! demo seed failed (nothing was changed) — the deploy itself is fine. It will be tried again on the next deploy.\033[0m\n'
 }
+
+PRIMARY_DEMO="Mirembe Hill Nursery & Primary School"
+SECONDARY_DEMO="Kasubi Ridge Secondary School"
 
 # The build downloads the Node base image (Docker Hub) and npm packages, so the
 # droplet must be able to resolve and reach both. When it can't, `docker build`
@@ -203,7 +206,8 @@ if [ "$DEMO_ONLY" = 1 ]; then
     $COMPOSE exec -T postgres pg_dump -U postgres school_os | gzip > "$BACKUP"
     echo "  $BACKUP"
   fi
-  run_demo_seed
+  run_demo_seed "$PRIMARY_DEMO" seed-demo-primary-school
+  run_demo_seed "$SECONDARY_DEMO" seed-demo-secondary-school
   exit 0
 fi
 
@@ -290,7 +294,8 @@ if [ "$OK" != 1 ]; then
 fi
 
 say "deployed"
-ensure_demo_school
+ensure_demo_school "$PRIMARY_DEMO" seed-demo-primary-school
+ensure_demo_school "$SECONDARY_DEMO" seed-demo-secondary-school
 $COMPOSE ps
 echo
 echo "  Rollback: git checkout <prev sha> && ./deploy/deploy.sh --no-backup"

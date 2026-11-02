@@ -15,16 +15,17 @@ cd ~/projects/school-os
 
 It pulls `main` (fast-forward only), starts Postgres/Redis, **dumps the
 database** to `~/gs-backups/` (keeps the last 10), rebuilds the backend and
-frontend images, restarts them, and waits for both to answer. Then, if the pitch demo school
-(Mirembe Hill — `backend/scripts/seed-demo-primary-school.ts`) isn't in the
-database yet, it creates it; once it's there, deploys skip it. The backend container runs
+frontend images, restarts them, and waits for both to answer. Then, if a pitch
+demo school (Mirembe Hill — `backend/scripts/seed-demo-primary-school.ts`, Kasubi
+Ridge — `backend/scripts/seed-demo-secondary-school.ts`) isn't in the database
+yet, it creates it; once it's there, deploys skip it. The backend container runs
 `npm run migrate:up` before it boots, so migrations apply as part of the
 restart.
 
 Flags:
 - `--no-pull`, `--no-backup`
 - `--check` — verify plumbing (git remote, docker, DB), then stop
-- `--demo-only` — refresh the pitch demo school's dates on the running stack
+- `--demo-only` — refresh the pitch demo schools' dates on the running stack
   (backs up first; no rebuild). Add `--demo-date=YYYY-MM-DD` to build it as of
   the pitch day. Keeps the demo's people and logins; replaces anything dated
   entered during an earlier pitch.
