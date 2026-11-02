@@ -2,7 +2,7 @@
 #
 # Deploy the latest main to this droplet.
 #
-#   ./deploy/deploy.sh              # pull, back up, rebuild + restart the backend
+#   ./deploy/deploy.sh              # pull, back up, rebuild + restart backend and frontend
 #   ./deploy/deploy.sh --no-pull    # skip git pull (deploy what's already checked out)
 #   ./deploy/deploy.sh --no-backup  # skip the pre-deploy DB dump (not recommended)
 #   ./deploy/deploy.sh --check      # verify plumbing only (git remote, docker, DB) — no build, no restart
@@ -16,8 +16,7 @@
 #   ./deploy/deploy.sh --demo-only               # back up, refresh — no rebuild
 #   ./deploy/deploy.sh --demo-only --demo-date=2027-03-10   # as if on the pitch day
 #
-# The frontend is on Vercel and redeploys itself on push — this script only
-# touches the backend + Postgres + Redis stack.
+# The whole stack (frontend, backend, Postgres, Redis) runs on this server.
 #
 set -euo pipefail
 
@@ -26,7 +25,13 @@ cd "$(dirname "$0")/.."
 COMPOSE="docker compose -f docker-compose.prod.yml"
 BACKUP_DIR="${BACKUP_DIR:-$HOME/gs-backups}"
 KEEP_BACKUPS="${KEEP_BACKUPS:-10}"
-HEALTH_URL="${HEALTH_URL:-http://127.0.0.1:4000/api/v1/auth/me}"   # 401 = alive
+env_value() { sed -n "s/^$1=//p" .env 2>/dev/null | tail -n 1 || true; }
+BACKEND_PORT="$(env_value BACKEND_PORT)"
+FRONTEND_PORT="$(env_value FRONTEND_PORT)"
+BACKEND_PORT="${BACKEND_PORT:-4000}"
+FRONTEND_PORT="${FRONTEND_PORT:-3000}"
+HEALTH_URL="${HEALTH_URL:-http://127.0.0.1:$BACKEND_PORT/api/v1/auth/me}"   # 401 = alive
+FRONTEND_HEALTH_URL="${FRONTEND_HEALTH_URL:-http://127.0.0.1:$FRONTEND_PORT/auth}"
 
 DO_PULL=1
 DO_BACKUP=1
@@ -149,16 +154,18 @@ if [ "$STATUS_ONLY" = 1 ]; then
   [ "$IMG_FRESH" = 1 ] || echo "      → image predates HEAD: run ./deploy/deploy.sh to rebuild"
 
   CODE=$(curl -s -o /dev/null -w '%{http_code}' "$HEALTH_URL" || echo "-")
-  printf '  %s backend responding : HTTP %s on :4000\n' \
-    "$(mark "$([ "$CODE" = 401 ] || [ "$CODE" = 200 ] && echo 1 || echo 0)")" "$CODE"
+  printf '  %s backend responding : HTTP %s on :%s\n' \
+    "$(mark "$([ "$CODE" = 401 ] || [ "$CODE" = 200 ] && echo 1 || echo 0)")" "$CODE" "$BACKEND_PORT"
+
+  FE_CODE=$(curl -s -o /dev/null -w '%{http_code}' "$FRONTEND_HEALTH_URL" || echo "-")
+  printf '  %s frontend responding: HTTP %s on :%s\n' \
+    "$(mark "$([ "$FE_CODE" = 200 ] && echo 1 || echo 0)")" "$FE_CODE" "$FRONTEND_PORT"
 
   if [ "$BE_UP" = 1 ]; then
     LAST=$($COMPOSE exec -T postgres psql -U postgres -d school_os -tAc \
       "select string_agg(name, E'\n      ' order by run_on desc) from (select name, run_on from pgmigrations order by run_on desc limit 3) t" 2>/dev/null || echo "?")
     printf '    latest migrations  : %s\n' "$LAST"
   fi
-  echo
-  echo "  Frontend is on Vercel — check its dashboard shows a Ready deploy for $(git rev-parse --short origin/main)."
   exit 0
 fi
 
@@ -235,20 +242,24 @@ if [ "$DO_BACKUP" = 1 ]; then
   ls -1t "$BACKUP_DIR"/school_os-*.sql.gz 2>/dev/null | tail -n +"$((KEEP_BACKUPS + 1))" | xargs -r rm --
 fi
 
-# ── 4. Build the backend image (alone — the droplet has little RAM) ──────────
+# ── 4. Build the images (one at a time — the server has little RAM) ──────────
 # One retry: a registry hiccup mid-build shouldn't need a second manual run.
-# The running backend is untouched until step 5, so a failed build is safe.
-say "building the backend image"
-if ! $COMPOSE build backend; then
-  echo "  build failed — checking the network, then retrying once"
-  check_network || exit 1
-  sleep 5
-  $COMPOSE build backend || die "backend build failed twice (network looks fine — see the build output above). The running site is untouched."
-fi
+# The running site is untouched until step 5, so a failed build is safe.
+build_image() {
+  say "building the $1 image"
+  if ! $COMPOSE build "$1"; then
+    echo "  build failed — checking the network, then retrying once"
+    check_network || exit 1
+    sleep 5
+    $COMPOSE build "$1" || die "$1 build failed twice (network looks fine — see the build output above). The running site is untouched."
+  fi
+}
+build_image backend
+build_image frontend
 
 # ── 5. Restart — the container runs migrate:up before it boots ───────────────
-say "restarting the backend (migrations run first)"
-$COMPOSE up -d backend
+say "restarting backend + frontend (migrations run first)"
+$COMPOSE up -d backend frontend
 
 # ── 6. Health check ─────────────────────────────────────────────────────────
 say "waiting for the backend"
@@ -266,9 +277,20 @@ if [ "$OK" != 1 ]; then
      gunzip -c ${BACKUP:-<latest backup>} | $COMPOSE exec -T postgres psql -U postgres -d school_os"
 fi
 
+say "waiting for the frontend"
+OK=0
+for _ in $(seq 1 30); do
+  [ "$(curl -s -o /dev/null -w '%{http_code}' "$FRONTEND_HEALTH_URL" || true)" = "200" ] && { OK=1; break; }
+  sleep 2
+done
+if [ "$OK" != 1 ]; then
+  echo
+  $COMPOSE logs --tail=60 frontend
+  die "frontend did not become healthy (the backend is up). See the logs above."
+fi
+
 say "deployed"
 ensure_demo_school
 $COMPOSE ps
 echo
-echo "  Frontend: Vercel redeploys on push — check its dashboard."
 echo "  Rollback: git checkout <prev sha> && ./deploy/deploy.sh --no-backup"
