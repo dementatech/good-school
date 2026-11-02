@@ -1,7 +1,10 @@
 # Deploy
 
-Backend + Postgres + Redis run on the droplet via `docker-compose.prod.yml`.
-The frontend is on Vercel and redeploys itself on every push to `main`.
+The whole stack (frontend, backend, Postgres, Redis) runs on one VPS via
+`docker-compose.prod.yml`, behind nginx (`deploy/nginx/`):
+
+- Frontend: `https://goodschool.dementa.space`
+- Backend API: `https://sos.dementa.space/api/v1` (also reachable on the frontend domain)
 
 ## Manual deploy (on the droplet)
 
@@ -11,8 +14,8 @@ cd ~/projects/school-os
 ```
 
 It pulls `main` (fast-forward only), starts Postgres/Redis, **dumps the
-database** to `~/gs-backups/` (keeps the last 10), rebuilds the backend image,
-restarts it, and waits for it to answer. Then, if the pitch demo school
+database** to `~/gs-backups/` (keeps the last 10), rebuilds the backend and
+frontend images, restarts them, and waits for both to answer. Then, if the pitch demo school
 (Mirembe Hill — `backend/scripts/seed-demo-primary-school.ts`) isn't in the
 database yet, it creates it; once it's there, deploys skip it. The backend container runs
 `npm run migrate:up` before it boots, so migrations apply as part of the
@@ -37,7 +40,7 @@ the exact `psql` restore command for the backup it just took.
 `docker-compose.prod.yml` needs a `.env` beside it:
 
 ```
-JWT_SECRET=<openssl rand -hex 32>          # must match the Vercel project
+JWT_SECRET=<openssl rand -hex 32>
 COOKIE_SECRET=<openssl rand -hex 32>
 POSTGRES_PASSWORD=<openssl rand -hex 32>
 
@@ -45,8 +48,30 @@ POSTGRES_PASSWORD=<openssl rand -hex 32>
 # the backend logs the reset link instead of emailing it.
 RESEND_API_KEY=<from the Resend dashboard>
 RESEND_FROM=Good School <onboarding@resend.dev>   # until a domain is verified
-APP_URL=https://<the Vercel frontend domain>       # no trailing slash
+APP_URL=https://goodschool.dementa.space           # no trailing slash; built into the frontend
+
+# Host ports, bound to 127.0.0.1 only. Must match deploy/nginx/. The current
+# server uses 4010/4011 because nginx already routes another app to :4000.
+BACKEND_PORT=4010
+FRONTEND_PORT=4011
 ```
+
+The first deploy needs `./deploy/deploy.sh --no-backup`: the database is empty,
+so its dump is small enough to trip the "backup looks empty" safety check.
+
+Then install the nginx site and turn on HTTPS, once DNS points at the server:
+
+```bash
+cp deploy/nginx/sos.dementa.space.conf /etc/nginx/sites-available/sos.dementa.space
+ln -s /etc/nginx/sites-available/sos.dementa.space /etc/nginx/sites-enabled/
+nginx -t && systemctl reload nginx
+certbot --nginx -d goodschool.dementa.space -d sos.dementa.space --redirect
+```
+
+Changing `APP_URL` needs a frontend rebuild, which a normal deploy does.
+
+All four containers use `restart: unless-stopped`, so they come back after a
+reboot.
 
 After editing `.env`, `./deploy/deploy.sh` picks the new values up on the next
 restart (compose reads `.env` automatically).

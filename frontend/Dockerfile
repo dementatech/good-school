@@ -11,6 +11,9 @@ COPY . .
 # supplied as a plain runtime env var the way BACKEND_URL sounds like it should be.
 ARG BACKEND_URL
 ENV BACKEND_URL=${BACKEND_URL}
+# NEXT_PUBLIC_* values are inlined into the browser bundle at build time too.
+ARG NEXT_PUBLIC_BACKEND_URL=http://localhost:4000
+ENV NEXT_PUBLIC_BACKEND_URL=${NEXT_PUBLIC_BACKEND_URL}
 RUN npm run build
 
 FROM node:22-bookworm-slim AS runtime
