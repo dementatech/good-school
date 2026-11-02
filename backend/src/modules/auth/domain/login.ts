@@ -1,5 +1,5 @@
 import { resolveIdentifierKind } from "./identifier.js";
-import { findUserByIdentifier } from "./users.repository.js";
+import { findParentAtSchool, findUserByIdentifier } from "./users.repository.js";
 import { verifyPassword } from "./password.js";
 import { issueToken } from "./tokens.js";
 import { findSchoolOnboardingStatus } from "../../schools/index.js";
@@ -7,6 +7,8 @@ import { findSchoolOnboardingStatus } from "../../schools/index.js";
 export interface LoginInput {
   identifier: string;
   password: string;
+  /** Set on a school's own domain: only that school's people can sign in there.
+   * Anyone else gets the same answer as a wrong password. */
   schoolId?: string;
 }
 
@@ -33,7 +35,9 @@ export async function login({ identifier, password, schoolId }: LoginInput): Pro
     return { ok: false, reason: "invalid_identifier_format" };
   }
 
-  const user = await findUserByIdentifier(kind, identifier, schoolId);
+  const user =
+    (await findUserByIdentifier(kind, identifier, schoolId)) ??
+    (schoolId ? await findParentAtSchool(kind, identifier, schoolId) : null);
   if (!user) {
     return { ok: false, reason: "invalid_credentials" };
   }

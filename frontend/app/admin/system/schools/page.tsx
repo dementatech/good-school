@@ -11,9 +11,10 @@ import { CredentialsCard } from '@/components/admin/CredentialsCard';
 import { useToast } from '@/components/ui/ToastProvider';
 import { fetchList, submitJson } from '@/lib/api/envelope';
 import { Loader } from '@/components/ui/loader';
-import { BadgeCheck, KeyRound, Layers, Pause, Pencil, Play, Plus, Trash2 } from 'lucide-react';
+import { BadgeCheck, Globe, KeyRound, Layers, Pause, Pencil, Play, Plus, Trash2 } from 'lucide-react';
 import { SchoolFormModal } from '@/components/admin/schools/SchoolFormModal';
 import { SchoolCurriculaModal } from '@/components/admin/schools/SchoolCurriculaModal';
+import { SchoolDomainModal } from '@/components/admin/schools/SchoolDomainModal';
 import { SchoolLogo } from '@/components/admin/schools/SchoolLogo';
 import {
   STATUS_LABEL,
@@ -95,6 +96,7 @@ export default function SystemSchoolsPage() {
   const [formSchool, setFormSchool] = useState<{ school?: School } | null>(null);
   const [curriculaSchool, setCurriculaSchool] = useState<School | null>(null);
   const [adminSchool, setAdminSchool] = useState<School | null>(null);
+  const [domainSchool, setDomainSchool] = useState<School | null>(null);
 
   const load = useCallback(async () => {
     setSchools(await fetchList<School>('/api/v1/schools', toast.error));
@@ -220,6 +222,7 @@ export default function SystemSchoolsPage() {
         ]),
     { label: 'Curricula', icon: Layers, onClick: () => setCurriculaSchool(s) },
     { label: 'Add admin login', icon: KeyRound, onClick: () => setAdminSchool(s) },
+    { label: 'Custom domain', icon: Globe, onClick: () => setDomainSchool(s) },
     {
       label: 'Delete',
       icon: Trash2,
@@ -283,6 +286,7 @@ export default function SystemSchoolsPage() {
         />
       )}
       {adminSchool && <AdminLoginModal school={adminSchool} onClose={() => setAdminSchool(null)} />}
+      {domainSchool && <SchoolDomainModal school={domainSchool} onClose={() => setDomainSchool(null)} />}
     </div>
   );
 }

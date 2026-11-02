@@ -84,6 +84,28 @@ docker compose -f docker-compose.prod.yml exec postgres \
   psql -U postgres -d school_os -c "select ..."
 ```
 
+## Schools' custom domains
+
+A super admin adds a domain from **Schools → a school's menu → Custom domain**.
+The app shows the DNS record to create and checks it. A systemd timer then runs
+`deploy/domains/provision-domains.sh` every minute as root, which sets up nginx
+and HTTPS for domains that passed and takes down removed ones. Only that script
+touches nginx and certificates, so the app container never needs root.
+
+First-time setup on the server, once:
+
+```bash
+echo 'SERVER_PUBLIC_IP=<this server's public IP>' >> .env
+echo 'PLATFORM_HOSTS=sos.dementa.space' >> .env
+./deploy/deploy.sh
+./deploy/domains/install.sh
+```
+
+Check on it with `journalctl -u gs-domains.service -n 50`.
+
+On a school's domain, only that school's people can sign in, and its password
+reset emails use that address. Everyone can still use the main address.
+
 ## Deploy from GitHub (optional)
 
 `.github/workflows/deploy.yml` SSHes into the droplet and runs `deploy.sh`.

@@ -7,7 +7,12 @@ import {
   findUsersByIdentifierForReset,
   setUserPhoto,
 } from "../domain/users.repository.js";
-import { findSchoolBrandingById } from "../../schools/index.js";
+import {
+  appUrlForSchool,
+  findSchoolBrandingById,
+  findSchoolIdByActiveDomain,
+  hostFromHeader,
+} from "../../schools/index.js";
 import { findStaffPhotoUrl } from "../../teachers/index.js";
 import { UnsupportedFileTypeError } from "../../../shared/media.js";
 import { hashPassword, verifyPassword } from "../domain/password.js";
@@ -179,7 +184,8 @@ export async function authRoutes(fastify: FastifyInstance) {
     async (request, reply) => {
       const { identifier, password } = request.body;
 
-      const result = await login({ identifier, password });
+      const schoolId = await findSchoolIdByActiveDomain(hostFromHeader(request.headers.host));
+      const result = await login({ identifier, password, schoolId: schoolId ?? undefined });
 
       if (!result.ok) {
         // TEMP DEBUG — never log actual credentials, just shape/length, to
@@ -235,7 +241,7 @@ export async function authRoutes(fastify: FastifyInstance) {
           try {
             await invalidateUserResetTokens(user.id);
             const token = await createResetToken(user.id);
-            await sendPasswordResetEmail(user.email, token);
+            await sendPasswordResetEmail(user.email, token, await appUrlForSchool(user.school_id));
           } catch (err) {
             fastify.log.error({ err, userId: user.id }, "failed to send password reset email");
           }

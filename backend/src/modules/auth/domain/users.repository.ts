@@ -52,18 +52,44 @@ export async function findUserByIdentifier(
   return result.rows[0] ?? null;
 }
 
+// A parent's account isn't tied to a school — they belong to whichever schools
+// their children attend — so a school's own login page finds them this way.
+export async function findParentAtSchool(
+  kind: IdentifierKind,
+  identifier: string,
+  schoolId: string,
+): Promise<AuthUserRecord | null> {
+  const column = COLUMN_BY_KIND[kind];
+  const value = kind === "email" ? identifier.trim().toLowerCase() : identifier.trim();
+  const result = await pool.query<AuthUserRecord>(
+    `select u.id, u.school_id, u.system_id, u.email, u.phone_number, u.password_hash, u.role,
+            u.is_active, u.must_change_password
+       from users u
+      where u.${column} = $1 and u.role = 'parent'
+        and exists (
+          select 1 from guardian g
+            join student_guardian sg on sg.guardian_id = g.id
+            join student_enrollment en on en.student_user_id = sg.student_user_id
+           where g.user_id = u.id and en.school_id = $2 and en.status = 'active'
+        )
+      limit 1`,
+    [value, schoolId],
+  );
+  return result.rows[0] ?? null;
+}
+
 // Every account matching a "forgot password" identifier. Not school-scoped
 // (the reset form has no school context) and returns all matches — an email
 // can be reused across schools, and each such account gets its own link.
 export async function findUsersByIdentifierForReset(
   kind: IdentifierKind,
   identifier: string,
-): Promise<{ id: string; email: string | null }[]> {
+): Promise<{ id: string; email: string | null; school_id: string | null }[]> {
   const column = COLUMN_BY_KIND[kind];
   const value = kind === "email" ? identifier.trim().toLowerCase() : identifier.trim();
 
-  const result = await pool.query<{ id: string; email: string | null }>(
-    `select id, email from users where ${column} = $1`,
+  const result = await pool.query<{ id: string; email: string | null; school_id: string | null }>(
+    `select id, email, school_id from users where ${column} = $1`,
     [value],
   );
   return result.rows;

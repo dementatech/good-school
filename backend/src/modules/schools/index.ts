@@ -9,6 +9,11 @@ export {
   listUserIdsForSchool,
 } from "./domain/schools.repository.js";
 export { getSchoolSetting, setSchoolSetting } from "./domain/settings.repository.js";
+export {
+  appUrlForSchool,
+  findSchoolIdByActiveDomain,
+  hostFromHeader,
+} from "./domain/school-domains.repository.js";
 
 export async function registerSchoolsModule(fastify: FastifyInstance) {
   await fastify.register(schoolsRoutes, { prefix: "/api/v1/schools" });

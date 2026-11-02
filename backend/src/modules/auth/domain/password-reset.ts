@@ -82,8 +82,8 @@ export async function consumeResetToken(
   }
 }
 
-export async function sendPasswordResetEmail(to: string, rawToken: string): Promise<void> {
-  const link = `${APP_URL}/auth/reset-password?token=${encodeURIComponent(rawToken)}`;
+export async function sendPasswordResetEmail(to: string, rawToken: string, appUrl: string = APP_URL): Promise<void> {
+  const link = `${appUrl}/auth/reset-password?token=${encodeURIComponent(rawToken)}`;
   await sendEmail({
     to,
     subject: "Reset your Good School password",

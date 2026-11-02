@@ -6,6 +6,14 @@ import { User, Lock, Eye, EyeOff, AlertCircle, ArrowLeft } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { useAuth, type User as AuthUser } from './AuthContext';
 import { loadIdentity } from '@/lib/auth/identity';
+import { applyPrimary } from '@/lib/theme/school-theme';
+
+/** Set when this page is on a school's own domain. */
+interface DomainBranding {
+  name: string;
+  logoUrl: string | null;
+  primaryColor: string | null;
+}
 
 /**
  * `onBack` returns to the role picker. Without it this screen is a dead end:
@@ -30,6 +38,30 @@ export const LoginScreen: React.FC<{
   const [forgotIdentifier, setForgotIdentifier] = useState('');
   const [forgotLoading, setForgotLoading] = useState(false);
   const [forgotMessage, setForgotMessage] = useState('');
+  // undefined while checking, so a school's page never flashes the platform's name.
+  const [branding, setBranding] = useState<DomainBranding | null | undefined>(undefined);
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      let found: DomainBranding | null = null;
+      try {
+        const res = await fetch('/api/v1/schools/public/branding');
+        if (res.ok) found = ((await res.json()) as { data?: DomainBranding | null }).data ?? null;
+      } catch {
+        /* offline — fall back to the platform's own page */
+      }
+      if (cancelled) return;
+      setBranding(found);
+      if (found?.primaryColor) applyPrimary(found.primaryColor);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const logoSrc = branding?.logoUrl ?? '/logo.png';
+  const brandName = branding ? branding.name : 'Good School';
 
   useEffect(() => {
     let interval: NodeJS.Timeout;
@@ -144,7 +176,7 @@ export const LoginScreen: React.FC<{
 
           <div className="text-center mb-10">
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/logo.png" alt="" className="w-14 h-14 mx-auto mb-4 object-contain" />
+            {branding !== undefined && <img src={logoSrc} alt="" className="w-14 h-14 mx-auto mb-4 object-contain" />}
             <h1 className="text-2xl font-bold tracking-tight text-primary-900">Reset password</h1>
             <p className="text-sm text-text-muted mt-2">
               Enter your System ID or email and we&apos;ll send a reset link to the address on file.
@@ -207,15 +239,17 @@ export const LoginScreen: React.FC<{
           </button>
         )}
 
-        {/* Logo — always the platform default here, never a school's own:
-            nobody's signed in yet, so there's no school to brand this for. */}
-        <div className="text-center mb-10">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/logo.png" alt="" className="w-14 h-14 mx-auto mb-4 object-contain" />
-          <h1 className="text-3xl font-bold tracking-tight text-primary-900">
-            Good School
-          </h1>
-          <p className="text-sm text-text-muted mt-2">Sign in to your Good School account</p>
+        {/* The platform's logo, or a school's own on its own domain: nobody's
+            signed in yet, so the address is all there is to brand this for. */}
+        <div className="text-center mb-10 min-h-[8.5rem]">
+          {branding !== undefined && (
+            <>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={logoSrc} alt="" className="w-14 h-14 mx-auto mb-4 object-contain" />
+              <h1 className="text-3xl font-bold tracking-tight text-primary-900">{brandName}</h1>
+              <p className="text-sm text-text-muted mt-2">Sign in to your {brandName} account</p>
+            </>
+          )}
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-6">

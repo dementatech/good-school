@@ -1,0 +1,21 @@
+# A school's own address. Written by deploy/domains/provision-domains.sh, which
+# then runs certbot to add HTTPS. $connection_upgrade comes from the map described
+# in sos.dementa.space.conf.
+server {
+    listen 80;
+    listen [::]:80;
+    server_name __DOMAIN__;
+    client_max_body_size 25m;
+
+    proxy_http_version 1.1;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection $connection_upgrade;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+
+    location /api/     { proxy_pass http://127.0.0.1:__BACKEND_PORT__; proxy_read_timeout 300s; }
+    location /uploads/ { proxy_pass http://127.0.0.1:__BACKEND_PORT__; }
+    location /         { proxy_pass http://127.0.0.1:__FRONTEND_PORT__; }
+}

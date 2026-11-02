@@ -37,6 +37,10 @@ services:
       RESEND_API_KEY: ${RESEND_API_KEY:-}
       RESEND_FROM: ${RESEND_FROM:-Good School <onboarding@resend.dev>}
       APP_URL: ${APP_URL:-}
+      # Schools' custom domains: where their DNS must point, and addresses a
+      # school can't claim (comma-separated, besides APP_URL's own host).
+      SERVER_PUBLIC_IP: ${SERVER_PUBLIC_IP:-}
+      PLATFORM_HOSTS: ${PLATFORM_HOSTS:-}
       # Uploads (staff photos, school logos, academic documents). With all
       # three set, storage goes to Cloudinary; leave them blank to fall back
       # to the backend-uploads disk volume below.
@@ -59,10 +63,9 @@ services:
       context: ./frontend
       args:
         BACKEND_URL: http://backend:4000
-        # The browser opens its realtime WebSocket here, so it must be the
-        # public address the user is on: the login cookie isn't sent to any
-        # other host.
-        NEXT_PUBLIC_BACKEND_URL: ${APP_URL:?set APP_URL in .env}
+        # Blank: the browser opens its realtime WebSocket on whichever address
+        # the user is on, since the login cookie isn't sent to any other host.
+        NEXT_PUBLIC_BACKEND_URL: ""
     restart: unless-stopped
     mem_limit: 512m
     ports:

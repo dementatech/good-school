@@ -10,6 +10,7 @@ import {
 import {
   createSchool,
   deleteSchool,
+  findSchoolBrandingById,
   getSchool,
   listSchools,
   listUserIdsForSchool,
@@ -23,6 +24,17 @@ import {
   type SchoolInput,
 } from "../domain/schools.repository.js";
 import { pushToUser } from "../../realtime/index.js";
+import {
+  DomainInUseError,
+  DomainTakenError,
+  InvalidDomainError,
+  findSchoolIdByActiveDomain,
+  getSchoolDomain,
+  hostFromHeader,
+  removeSchoolDomain,
+  setSchoolDomain,
+  verifySchoolDomain,
+} from "../domain/school-domains.repository.js";
 import {
   attach as attachCurriculum,
   detach as detachCurriculum,
@@ -48,6 +60,57 @@ import {
 const SUPER = requireAuth(["super_admin"]);
 
 export async function schoolsRoutes(fastify: FastifyInstance) {
+  // Public: the branding for the address this request came in on, so a school's
+  // own domain can show its name and logo before anyone signs in. Null on the
+  // platform's own addresses. Only ever reveals what the login page displays.
+  fastify.get("/public/branding", async (request) => {
+    const schoolId = await findSchoolIdByActiveDomain(hostFromHeader(request.headers.host));
+    if (!schoolId) return ok(null);
+    const [branding, theme] = await Promise.all([findSchoolBrandingById(schoolId), findThemeConfigBySchoolId(schoolId)]);
+    return ok(branding ? { ...branding, primaryColor: theme?.primaryColor ?? null } : null);
+  });
+
+  // ═══ A school's custom domain — super_admin only ═════════════════════════
+
+  fastify.get<{ Params: { id: string } }>("/:id/domain", { preHandler: SUPER }, async (request) =>
+    ok(await getSchoolDomain(request.params.id)),
+  );
+
+  fastify.put<{ Params: { id: string }; Body: { domain: string } }>(
+    "/:id/domain",
+    {
+      preHandler: SUPER,
+      schema: {
+        body: {
+          type: "object",
+          required: ["domain"],
+          additionalProperties: false,
+          properties: { domain: { type: "string", minLength: 1, maxLength: 300 } },
+        },
+      },
+    },
+    async (request, reply) => {
+      try {
+        return ok(await setSchoolDomain(request.params.id, request.body.domain, request.authUser!.user_id));
+      } catch (err) {
+        if (err instanceof InvalidDomainError) return reply.status(400).send(fail(err.message));
+        if (err instanceof DomainTakenError || err instanceof DomainInUseError) {
+          return reply.status(409).send(fail(err.message));
+        }
+        throw err;
+      }
+    },
+  );
+
+  fastify.post<{ Params: { id: string } }>("/:id/domain/verify", { preHandler: SUPER }, async (request, reply) => {
+    const domain = await verifySchoolDomain(request.params.id);
+    return domain ? ok(domain) : reply.status(404).send(fail("not_found"));
+  });
+
+  fastify.delete<{ Params: { id: string } }>("/:id/domain", { preHandler: SUPER }, async (request) =>
+    ok(await removeSchoolDomain(request.params.id)),
+  );
+
   // The signed-in user's own school (read-only) — any role that belongs to a
   // school. Registered before `/:id` so "me" is not read as an id.
   fastify.get("/me", { preHandler: requireAuth() }, async (request, reply) => {
