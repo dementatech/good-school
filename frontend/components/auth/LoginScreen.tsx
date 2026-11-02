@@ -2,10 +2,67 @@
 
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { User, Lock, Eye, EyeOff, AlertCircle, ArrowLeft } from 'lucide-react';
-import { Button } from '@/components/ui/Button';
+import { Eye, EyeOff, AlertCircle, ArrowLeft, ChevronRight, Loader2 } from 'lucide-react';
 import { useAuth, type User as AuthUser } from './AuthContext';
 import { loadIdentity } from '@/lib/auth/identity';
+
+const FIELD_LABEL = 'block text-sm font-medium text-white/90 mb-1.5';
+const FIELD_INPUT =
+  'w-full h-11 rounded-sm border-0 bg-white px-3 text-sm text-text-primary placeholder:text-text-muted ' +
+  'focus:outline-none focus:ring-2 focus:ring-white focus:ring-offset-2 focus:ring-offset-primary-700';
+const SUBMIT =
+  'inline-flex items-center gap-1 min-h-11 px-1 text-base font-semibold text-white rounded-sm transition-opacity ' +
+  'hover:opacity-80 disabled:opacity-60 disabled:cursor-not-allowed ' +
+  'focus:outline-none focus-visible:ring-2 focus-visible:ring-white';
+const TEXT_LINK =
+  'text-sm italic text-white/90 hover:text-white underline-offset-4 hover:underline rounded-sm ' +
+  'focus:outline-none focus-visible:ring-2 focus-visible:ring-white';
+
+/** The full-screen frame both views share: brand on the left, a thin divider,
+ * the form on the right. Stacks on a phone, where the divider goes away. */
+const AuthShell: React.FC<{ children: React.ReactNode }> = ({ children }) => (
+  <div className="relative min-h-screen overflow-hidden bg-primary-700 text-white flex flex-col">
+    {/* A blurred classroom under the school's blue. Scaled up so the blur's soft
+        edges stay off-screen; the overlay keeps white text readable over it. */}
+    {/* eslint-disable-next-line @next/next/no-img-element */}
+    <img
+      src="/login-background.jpg"
+      alt=""
+      aria-hidden
+      className="pointer-events-none absolute inset-0 h-full w-full scale-110 object-cover blur-[6px]"
+    />
+    <div aria-hidden className="pointer-events-none absolute inset-0 bg-gradient-to-br from-primary-600/80 via-primary-700/80 to-primary-800/90" />
+
+    <main className="relative flex-1 flex items-center justify-center px-6 py-10">
+      <motion.div
+        initial={{ opacity: 0, y: 16 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
+        className="w-full max-w-sm md:max-w-3xl flex flex-col md:flex-row md:items-stretch"
+      >
+        {/* The logo is blue, so it sits on white to stay visible here. */}
+        <div className="md:w-1/2 md:pr-12 flex flex-col items-center justify-center text-center mb-8 md:mb-0">
+          <div className="rounded-full border border-dashed border-white/70 p-2 mb-4">
+            <div className="h-20 w-20 md:h-24 md:w-24 rounded-full bg-white flex items-center justify-center">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src="/logo.png" alt="" className="h-16 w-16 md:h-20 md:w-20 object-contain" />
+            </div>
+          </div>
+          <h1 className="text-3xl md:text-4xl font-bold tracking-tight">Good School</h1>
+          <p className="text-sm md:text-base text-white/90 mt-2">Sign in to your Good School account</p>
+        </div>
+
+        <div aria-hidden className="hidden md:block w-px bg-white/50" />
+
+        <div className="md:w-1/2 md:pl-12 md:py-8">{children}</div>
+      </motion.div>
+    </main>
+
+    <footer className="relative px-6 pb-5 text-center text-xs italic text-white/80">
+      Authorized personnel only. Multiple failed attempts will lock your account.
+    </footer>
+  </div>
+);
 
 /**
  * `onBack` returns to the role picker. Without it this screen is a dead end:
@@ -126,185 +183,128 @@ export const LoginScreen: React.FC<{
 
   if (showForgot) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-bg px-4 py-8">
-        <motion.div
-          initial={{ opacity: 0, y: 16 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
-          className="w-full max-w-sm"
+      <AuthShell>
+        <button
+          type="button"
+          onClick={() => { setShowForgot(false); setForgotMessage(''); }}
+          className={`${TEXT_LINK} inline-flex items-center gap-1.5 not-italic mb-4`}
         >
-          <button
-            type="button"
-            onClick={() => { setShowForgot(false); setForgotMessage(''); }}
-            className="flex items-center gap-1.5 text-sm text-text-muted hover:text-primary-700 transition-colors mb-6"
-          >
-            <ArrowLeft className="w-4 h-4" aria-hidden />
-            Back to sign in
-          </button>
+          <ArrowLeft className="w-4 h-4" aria-hidden />
+          Back to sign in
+        </button>
+        <h2 className="text-xl font-semibold">Reset password</h2>
+        <p className="text-sm text-white/90 mt-2 mb-6">
+          Enter your System ID or email and we&apos;ll send a reset link to the address on file.
+        </p>
 
-          <div className="text-center mb-10">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/logo.png" alt="" className="w-14 h-14 mx-auto mb-4 object-contain" />
-            <h1 className="text-2xl font-bold tracking-tight text-primary-900">Reset password</h1>
-            <p className="text-sm text-text-muted mt-2">
-              Enter your System ID or email and we&apos;ll send a reset link to the address on file.
-            </p>
-          </div>
-
-          {forgotMessage ? (
-            <p className="text-sm text-text-secondary text-center">{forgotMessage}</p>
-          ) : (
-            <form onSubmit={handleForgotSubmit} className="space-y-6">
-              <div>
-                <label htmlFor="forgot-identifier" className="text-xs font-medium text-text-secondary tracking-wide">
-                  System ID or email
-                </label>
-                <div className="relative mt-2">
-                  <User className="absolute left-0 top-1/2 -translate-y-1/2 w-4 h-4 text-text-faint" />
-                  <input
-                    id="forgot-identifier"
-                    type="text"
-                    value={forgotIdentifier}
-                    onChange={(e) => setForgotIdentifier(e.target.value)}
-                    className="w-full border-0 border-b border-border-strong bg-transparent pl-6 pr-2 py-2 text-sm text-text-primary transition-colors duration-200 focus:border-primary-700 focus:outline-none focus:ring-0"
-                    placeholder="e.g. TSF-2026-0001"
-                    required
-                    autoComplete="username"
-                  />
-                </div>
-              </div>
-              <Button
-                variant="primary"
-                className="w-full justify-center text-base h-11"
-                type="submit"
-                isLoading={forgotLoading}
-              >
-                Send reset link
-              </Button>
-            </form>
-          )}
-        </motion.div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="min-h-screen flex items-center justify-center bg-bg px-4 py-8">
-      <motion.div
-        initial={{ opacity: 0, y: 16 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
-        className="w-full max-w-sm"
-      >
-        {onBack && (
-          <button
-            type="button"
-            onClick={onBack}
-            className="flex items-center gap-1.5 text-sm text-text-muted hover:text-primary-700 transition-colors mb-6"
-          >
-            <ArrowLeft className="w-4 h-4" aria-hidden />
-            Choose a different role
-          </button>
-        )}
-
-        {/* Logo — always the platform default here, never a school's own:
-            nobody's signed in yet, so there's no school to brand this for. */}
-        <div className="text-center mb-10">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/logo.png" alt="" className="w-14 h-14 mx-auto mb-4 object-contain" />
-          <h1 className="text-3xl font-bold tracking-tight text-primary-900">
-            Good School
-          </h1>
-          <p className="text-sm text-text-muted mt-2">Sign in to your Good School account</p>
-        </div>
-
-        <form onSubmit={handleSubmit} className="space-y-6">
-          <div>
-            <label htmlFor="identifier" className="text-xs font-medium text-text-secondary tracking-wide">
-              System ID or email
-            </label>
-            <div className="relative mt-2">
-              <User className="absolute left-0 top-1/2 -translate-y-1/2 w-4 h-4 text-text-faint" />
+        {forgotMessage ? (
+          <p role="status" className="text-sm text-white">{forgotMessage}</p>
+        ) : (
+          <form onSubmit={handleForgotSubmit} className="space-y-5">
+            <div>
+              <label htmlFor="forgot-identifier" className={FIELD_LABEL}>
+                System ID or email
+              </label>
               <input
-                id="identifier"
+                id="forgot-identifier"
                 type="text"
-                value={identifier}
-                onChange={(e) => setIdentifier(e.target.value)}
-                className="w-full border-0 border-b border-border-strong bg-transparent pl-6 pr-2 py-2 text-sm text-text-primary transition-colors duration-200 focus:border-primary-700 focus:outline-none focus:ring-0"
-                placeholder="e.g. TSF-2026-0001"
+                value={forgotIdentifier}
+                onChange={(e) => setForgotIdentifier(e.target.value)}
+                className={FIELD_INPUT}
+                placeholder="e.g. S260001"
                 required
                 autoComplete="username"
               />
             </div>
-          </div>
-
-          <div>
-            <label htmlFor="password" className="text-xs font-medium text-text-secondary tracking-wide">
-              Password
-            </label>
-            <div className="relative mt-2">
-              <Lock className="absolute left-0 top-1/2 -translate-y-1/2 w-4 h-4 text-text-faint" />
-              <input
-                id="password"
-                type={showPassword ? 'text' : 'password'}
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className="w-full border-0 border-b border-border-strong bg-transparent pl-6 pr-8 py-2 text-sm text-text-primary transition-colors duration-200 focus:border-primary-700 focus:outline-none focus:ring-0"
-                placeholder="Enter your password"
-                required
-                autoComplete="current-password"
-              />
-              <button
-                type="button"
-                onClick={() => setShowPassword(!showPassword)}
-                className="absolute right-0 top-1/2 -translate-y-1/2 text-text-faint hover:text-primary-700 transition-colors"
-                aria-label={showPassword ? 'Hide password' : 'Show password'}
-              >
-                {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+            <div className="flex justify-end">
+              <button type="submit" className={SUBMIT} disabled={forgotLoading}>
+                {forgotLoading && <Loader2 className="w-4 h-4 animate-spin" aria-hidden />}
+                Send reset link
+                <ChevronRight className="w-5 h-5" aria-hidden />
               </button>
             </div>
-          </div>
+          </form>
+        )}
+      </AuthShell>
+    );
+  }
 
-          {error && (
-            <motion.div
-              initial={{ opacity: 0, y: -6 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="flex items-start gap-2 text-sm text-error"
-            >
-              <AlertCircle className="w-4 h-4 mt-0.5 flex-shrink-0" />
-              <p>{error}</p>
-            </motion.div>
-          )}
+  return (
+    <AuthShell>
+      {onBack && (
+        <button type="button" onClick={onBack} className={`${TEXT_LINK} inline-flex items-center gap-1.5 not-italic mb-4`}>
+          <ArrowLeft className="w-4 h-4" aria-hidden />
+          Choose a different role
+        </button>
+      )}
+      <h2 className="text-xl font-semibold mb-5">Sign in</h2>
 
-          <div className="flex items-center justify-between text-sm pt-1">
-            <label className="flex items-center gap-2 cursor-pointer text-text-muted">
-              <input type="checkbox" className="rounded border-border-strong text-primary-700 focus:ring-primary-700/20 w-4 h-4" />
-              Remember me
-            </label>
+      <form onSubmit={handleSubmit} className="space-y-5">
+        <div>
+          <label htmlFor="identifier" className={FIELD_LABEL}>
+            System ID, phone number or email
+          </label>
+          <input
+            id="identifier"
+            type="text"
+            value={identifier}
+            onChange={(e) => setIdentifier(e.target.value)}
+            className={FIELD_INPUT}
+            placeholder="e.g. S260001"
+            required
+            autoComplete="username"
+          />
+        </div>
+
+        <div>
+          <label htmlFor="password" className={FIELD_LABEL}>
+            Password
+          </label>
+          <div className="relative">
+            <input
+              id="password"
+              type={showPassword ? 'text' : 'password'}
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              className={`${FIELD_INPUT} pr-11`}
+              placeholder="Enter your password"
+              required
+              autoComplete="current-password"
+            />
             <button
               type="button"
-              onClick={() => setShowForgot(true)}
-              className="text-text-muted hover:text-primary-700 transition-colors font-medium"
+              onClick={() => setShowPassword(!showPassword)}
+              className="absolute right-0 top-0 h-11 w-11 flex items-center justify-center text-text-muted hover:text-primary-700 rounded-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-700"
+              aria-label={showPassword ? 'Hide password' : 'Show password'}
             >
-              Forgot passcode?
+              {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
             </button>
           </div>
+        </div>
 
-          <Button
-            variant="primary"
-            className="w-full justify-center text-base h-11"
-            type="submit"
-            isLoading={isLoading}
-            disabled={isLocked}
+        {error && (
+          <motion.div
+            role="alert"
+            initial={{ opacity: 0, y: -6 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="flex items-start gap-2 rounded-sm bg-white px-3 py-2 text-sm text-error"
           >
-            {isLocked ? `Locked (${Math.ceil(lockoutTimer / 60)}m)` : 'Sign In'}
-          </Button>
-        </form>
+            <AlertCircle className="w-4 h-4 mt-0.5 flex-shrink-0" aria-hidden />
+            <p>{error}</p>
+          </motion.div>
+        )}
 
-        <p className="text-xs text-text-faint text-center mt-8">
-          Authorized personnel only. Multiple failed attempts will lock your account.
-        </p>
-      </motion.div>
-    </div>
+        <div className="flex items-center justify-between gap-4">
+          <button type="button" onClick={() => setShowForgot(true)} className={TEXT_LINK}>
+            Forgot password?
+          </button>
+          <button type="submit" className={SUBMIT} disabled={isLoading || isLocked}>
+            {isLoading && <Loader2 className="w-4 h-4 animate-spin" aria-hidden />}
+            {isLocked ? `Locked (${Math.ceil(lockoutTimer / 60)}m)` : 'Sign in'}
+            {!isLocked && <ChevronRight className="w-6 h-6" aria-hidden />}
+          </button>
+        </div>
+      </form>
+    </AuthShell>
   );
 };
