@@ -45,8 +45,8 @@ export type RealtimeEvent =
   | RealtimeCalendarEvent;
 
 function wsBase(): string {
-  // Blank in production: connect to whichever address the user is on, because
-  // the login cookie belongs to that host and a school may have its own domain.
+  // Blank in production: connect to whichever address the user is on, so a
+  // school on its own domain never depends on the platform's address.
   const configured = process.env.NEXT_PUBLIC_BACKEND_URL ?? 'http://localhost:4000';
   const httpBase = configured || window.location.origin;
   return httpBase.replace(/^http/, 'ws');

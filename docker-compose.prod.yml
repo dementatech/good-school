@@ -64,7 +64,7 @@ services:
       args:
         BACKEND_URL: http://backend:4000
         # Blank: the browser opens its realtime WebSocket on whichever address
-        # the user is on, since the login cookie isn't sent to any other host.
+        # the user is on, so a school's own domain doesn't depend on the main one.
         NEXT_PUBLIC_BACKEND_URL: ""
     restart: unless-stopped
     mem_limit: 512m
