@@ -23,6 +23,7 @@ import { registerExportModule } from "./modules/export/index.js";
 import { registerCommunicationsModule } from "./modules/communications/index.js";
 import { registerRealtimeModule } from "./modules/realtime/index.js";
 import { registerSupportModule } from "./modules/support/index.js";
+import { registerSchoolAdminModule } from "./modules/school-admin/index.js";
 import { ensureUploadsRoot, uploadsRoot } from "./shared/uploads.js";
 
 const fastify = Fastify({
@@ -69,6 +70,7 @@ await registerExportModule(fastify);
 await registerRealtimeModule(fastify);
 await registerCommunicationsModule(fastify);
 await registerSupportModule(fastify);
+await registerSchoolAdminModule(fastify);
 
 const port = Number(process.env.PORT ?? 4000);
 

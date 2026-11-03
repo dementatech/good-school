@@ -6,12 +6,12 @@ import { DashboardRightRail } from './DashboardRightRail';
 // the profile/calendar/reminders right rail, stacking below xl. Deliberately
 // page-level (not in the role layout.tsx shells) — the rail belongs on the
 // dashboard landing page, not on every route under that role.
-export function DashboardShell({ children }: { children: React.ReactNode }) {
+export function DashboardShell({ children, rail = true }: { children: React.ReactNode; rail?: boolean }) {
   return (
     <div className="w-full max-w-[1440px] mx-auto">
       <div className="flex flex-col xl:flex-row gap-4 sm:gap-5 lg:gap-6 items-start">
         <div className="flex-1 min-w-0">{children}</div>
-        <DashboardRightRail />
+        {rail && <DashboardRightRail />}
       </div>
     </div>
   );

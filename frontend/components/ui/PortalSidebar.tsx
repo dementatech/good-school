@@ -4,10 +4,12 @@ import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { createPortal } from 'react-dom';
-import { ChevronDown, ChevronLeft, ChevronRight, LifeBuoy } from 'lucide-react';
+import { ChevronDown, ChevronLeft, ChevronRight } from 'lucide-react';
 import { NavBadge, type NavItem } from './MobileNavDrawer';
 
 const STORAGE_KEY = 'school_os_sidebar_collapsed';
+// From here up there's room for the labels, so a first visit opens expanded.
+const WIDE_SCREEN_PX = 1280;
 
 function isActive(item: NavItem, pathname: string): boolean {
   if (item.children?.length) return item.children.some((child) => isActive(child, pathname));
@@ -65,11 +67,11 @@ function NavLink({
         className={`flex items-center rounded-lg text-sm transition-colors ${
           collapsed ? 'justify-center px-0 py-2.5' : 'justify-between gap-3 px-3 py-2.5'
         } ${
-          active ? 'bg-white/15 text-white font-medium' : 'text-primary-100 hover:bg-white/10 hover:text-white'
+          active ? 'bg-primary-700 text-white font-medium shadow-sm' : 'text-text-secondary hover:bg-primary-50 hover:text-primary-700'
         }`}
       >
         <span className={`flex items-center gap-3 min-w-0 ${collapsed ? 'relative' : ''}`}>
-          <Icon className="w-4.5 h-4.5 shrink-0" aria-hidden />
+          <Icon className={`w-4.5 h-4.5 shrink-0 ${active ? '' : 'text-primary-600'}`} aria-hidden />
           {collapsed && !!item.badge && (
             <span
               className="absolute -top-1 -right-1.5 w-2 h-2 rounded-full bg-[#C26565]"
@@ -147,7 +149,7 @@ function NavGroupNode({
                 active ? 'bg-primary-50 text-primary-900 font-medium' : 'text-[#334155] hover:bg-primary-50'
               }`
             : `flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors ${
-                active ? 'bg-white/15 text-white font-medium' : 'text-primary-100 hover:bg-white/10 hover:text-white'
+                active ? 'bg-primary-50 text-primary-700 font-medium' : 'text-text-secondary hover:bg-primary-50 hover:text-primary-700'
               }`
         }
       >
@@ -168,7 +170,7 @@ function NavGroupNode({
           type="button"
           aria-label={item.label}
           className={`w-full flex items-center justify-center rounded-lg px-0 py-2.5 text-sm transition-colors ${
-            groupActive ? 'bg-white/15 text-white' : 'text-primary-100 hover:bg-white/10 hover:text-white'
+            groupActive ? 'bg-primary-700 text-white shadow-sm' : 'text-primary-600 hover:bg-primary-50'
           }`}
         >
           <Icon className="w-4.5 h-4.5 shrink-0" aria-hidden />
@@ -199,17 +201,17 @@ function NavGroupNode({
         onClick={() => setOpen((v) => !v)}
         aria-expanded={open}
         className={`w-full flex items-center justify-between gap-3 rounded-lg px-3 py-2.5 text-sm transition-colors ${
-          groupActive && !open ? 'bg-white/15 text-white font-medium' : 'text-primary-100 hover:bg-white/10 hover:text-white'
+          groupActive && !open ? 'bg-primary-700 text-white font-medium shadow-sm' : 'text-text-secondary hover:bg-primary-50 hover:text-primary-700'
         }`}
       >
         <span className="flex items-center gap-3 min-w-0">
-          <Icon className="w-4.5 h-4.5 shrink-0" aria-hidden />
+          <Icon className={`w-4.5 h-4.5 shrink-0 ${groupActive && !open ? '' : 'text-primary-600'}`} aria-hidden />
           <span className="truncate">{item.label}</span>
         </span>
         <ChevronDown className={`w-4 h-4 shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} aria-hidden />
       </button>
       {open && (
-        <div className="mt-1 ml-3 space-y-0.5 border-l border-white/10 pl-2">
+        <div className="mt-1 ml-5 space-y-0.5 border-l border-border pl-2">
           {item.children!.map((child) => childLink(child, false))}
         </div>
       )}
@@ -237,9 +239,10 @@ export interface PortalSidebarProps {
 }
 
 /**
- * The desktop sidebar shared by every portal — filled with the brand color,
- * collapsible to an icon+tooltip rail (collapsed by default; the choice is
- * remembered per browser via localStorage). Account/Sign out live in the
+ * The desktop sidebar shared by every portal — white, with the brand color on
+ * the current page,
+ * collapsible to an icon+tooltip rail (expanded by default on a wide screen; the
+ * choice is remembered per browser via localStorage). Account/Sign out live in the
  * topbar's `AccountMenu`, not here — mobile keeps its own off-canvas
  * `MobileNavDrawer`, fed the same `nav`/`secondaryNav` data plus its own
  * footer, so there is exactly one nav-item list per portal either way.
@@ -259,9 +262,9 @@ export function PortalSidebar({
     try {
       const stored = window.localStorage.getItem(STORAGE_KEY);
       // eslint-disable-next-line react-hooks/set-state-in-effect -- one-shot localStorage hydrate, same pattern as accounts/page.tsx
-      if (stored !== null) setCollapsed(stored === '1');
+      setCollapsed(stored !== null ? stored === '1' : window.innerWidth < WIDE_SCREEN_PX);
     } catch {
-      // Storage disabled (private browsing) — falls back to the collapsed default.
+      // Storage disabled (private browsing): stays collapsed.
     }
     setReady(true);
   }, []);
@@ -278,14 +281,14 @@ export function PortalSidebar({
     });
   }
 
-  // Starts collapsed (the default) until localStorage is read, so a fresh
-  // visitor never sees an expanded flash; a returning viewer who chose
-  // "expanded" gets it animated open once hydration runs.
+  // Starts collapsed until localStorage is read, so nobody who
+  // chose the rail sees an expanded flash; everyone else gets it animated open
+  // once hydration runs.
   const width = !ready || collapsed ? 'w-16' : 'w-60';
 
   return (
     <aside
-      className={`${width} relative shrink-0 bg-primary-700 hidden md:flex flex-col sticky top-0 h-screen transition-[width] duration-150 print:hidden`}
+      className={`${width} relative shrink-0 bg-white border-r border-border hidden md:flex flex-col sticky top-0 h-screen transition-[width] duration-150 print:hidden`}
     >
       {/* Edge toggle — the standard "collapse this panel" affordance, pinned to
           the sidebar's right edge so it's visible in both states and never
@@ -300,17 +303,17 @@ export function PortalSidebar({
         {collapsed ? <ChevronRight className="w-3.5 h-3.5" aria-hidden /> : <ChevronLeft className="w-3.5 h-3.5" aria-hidden />}
       </button>
 
-      <div className={`flex items-center gap-3 border-b border-white/10 ${collapsed ? 'justify-center p-3' : 'p-5'}`}>
+      <div className={`flex items-center gap-3 border-b border-border ${collapsed ? 'justify-center p-3' : 'p-5'}`}>
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
           src={brandLogoUrl || '/logo.png'}
           alt=""
-          className="w-10 h-10 rounded-xl object-contain bg-white/15 shrink-0"
+          className="w-10 h-10 rounded-xl object-contain bg-bg-muted shrink-0"
         />
         {ready && !collapsed && (
           <div className="min-w-0">
-            <p className="text-sm font-semibold text-white truncate">{brandLabel}</p>
-            {subtitle && <p className="text-xs text-primary-100 truncate">{subtitle}</p>}
+            <p className="text-sm font-semibold text-primary-900 truncate">{brandLabel}</p>
+            {subtitle && <p className="text-xs text-text-muted truncate">{subtitle}</p>}
           </div>
         )}
       </div>
@@ -323,11 +326,11 @@ export function PortalSidebar({
         {secondaryNav && secondaryNav.items.length > 0 && (
           <>
             {!collapsed ? (
-              <p className="px-3 pt-4 pb-1 text-[10px] font-bold uppercase tracking-widest text-primary-200">
+              <p className="px-3 pt-4 pb-1 text-[10px] font-bold uppercase tracking-widest text-text-faint">
                 {secondaryNav.label}
               </p>
             ) : (
-              <div className="my-2 border-t border-white/10" role="separator" aria-label={secondaryNav.label} />
+              <div className="my-2 border-t border-border" role="separator" aria-label={secondaryNav.label} />
             )}
             {secondaryNav.items.map((item) => (
               <NavNode key={item.href ?? item.label} item={item} collapsed={collapsed} pathname={pathname} />
@@ -335,21 +338,6 @@ export function PortalSidebar({
           </>
         )}
       </nav>
-
-      {/* Bottom-pinned, hidden collapsed — no room for the copy in the
-          icon-only rail, and it's not critical nav. Account/Sign out moved to
-          the topbar's AccountMenu, so this is the last thing in the shell. */}
-      {ready && !collapsed && (
-        <div className="p-3">
-          <div className="rounded-xl bg-white/10 p-4 text-center">
-            <div className="w-9 h-9 rounded-full bg-white/15 flex items-center justify-center mx-auto mb-2">
-              <LifeBuoy className="w-4.5 h-4.5 text-white" aria-hidden />
-            </div>
-            <p className="text-sm font-semibold text-white mb-1">Need help?</p>
-            <p className="text-xs text-primary-100">Reach out to your school admin for support.</p>
-          </div>
-        </div>
-      )}
     </aside>
   );
 }

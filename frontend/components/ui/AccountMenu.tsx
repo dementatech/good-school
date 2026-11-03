@@ -107,7 +107,7 @@ export function AccountMenu({ accountHref, onSignOut }: { accountHref?: string; 
         label="Account"
         items={items}
         trigger={
-          <span className="flex items-center gap-2 pl-1 pr-2 py-1 rounded-full border border-border hover:bg-bg-muted transition-colors">
+          <span className="flex items-center gap-2 pl-1 pr-2 py-1 rounded-full bg-white border border-border hover:bg-bg-muted transition-colors">
             {user?.photoUrl ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img src={user.photoUrl} alt="" className="w-9 h-9 rounded-full object-cover shrink-0" />
