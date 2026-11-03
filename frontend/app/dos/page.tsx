@@ -1,101 +1,109 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { StatCard } from '@/components/ui/StatCard';
-import { DashboardGrid } from '@/components/ui/DashboardGrid';
-import { DashboardShell } from '@/components/ui/DashboardShell';
-import { WelcomeBanner } from '@/components/ui/WelcomeBanner';
-import { Card } from '@/components/ui/Card';
+import { ClipboardCheck, ClipboardList, FileCheck2, NotebookPen } from 'lucide-react';
+import { ComingUpPanel } from '@/components/dashboard/ComingUpPanel';
+import { DashboardColumns, DashboardPage } from '@/components/dashboard/DashboardPage';
+import { MetricCard, MetricGrid } from '@/components/dashboard/MetricCard';
+import { OngoingExamsPanel } from '@/components/dashboard/OngoingExamsPanel';
+import { Panel } from '@/components/dashboard/Panel';
 import { useToast } from '@/components/ui/ToastProvider';
 import { fetchList, fetchOne } from '@/lib/api/envelope';
-import { ClipboardCheck, FileCheck2, NotebookPen } from 'lucide-react';
-
-interface RegisterClass {
-  classId: string;
-  className: string;
-  classTeacherName: string | null;
-  pupils: number;
-  marked: number;
-}
-
-interface Overview {
-  schemesToReview: number;
-  plansToReview: number;
-  registers: RegisterClass[];
-}
+import { registersNotTaken, type RegisterClass } from '@/lib/dashboard/role-data';
+import {
+  localIsoDate,
+  ongoingExams,
+  summariseMarks,
+  type CompletionSlot,
+  type DashboardExam,
+  type MarksProgress,
+} from '@/lib/school-admin/dashboard';
 
 /** The Director of Studies' landing page: what's waiting for them today. */
 export default function DosOverview() {
   const toast = useToast();
-  const [data, setData] = useState<Overview | null>(null);
+  const [today] = useState(() => localIsoDate(new Date()));
+  const [loading, setLoading] = useState(true);
+  const [schemes, setSchemes] = useState(0);
+  const [plans, setPlans] = useState(0);
+  const [registers, setRegisters] = useState<RegisterClass[]>([]);
+  const [exams, setExams] = useState<DashboardExam[]>([]);
+  const [progress, setProgress] = useState<Record<string, MarksProgress | undefined>>({});
+  const [examsLoading, setExamsLoading] = useState(true);
 
   useEffect(() => {
-    let cancelled = false;
     void (async () => {
-      const [schemes, plans, attendance] = await Promise.all([
-        fetchList(`/api/v1/lesson-prep/schemes?status=submitted`, toast.error),
-        fetchList(`/api/v1/lesson-prep/plans?status=submitted`, toast.error),
-        fetchOne<{ classes: RegisterClass[] }>(`/api/v1/attendance/classes`, toast.error),
+      const [schemeRows, planRows, attendance] = await Promise.all([
+        fetchList('/api/v1/lesson-prep/schemes?status=submitted', toast.error),
+        fetchList('/api/v1/lesson-prep/plans?status=submitted', toast.error),
+        fetchOne<{ classes: RegisterClass[] }>('/api/v1/attendance/classes', toast.error),
       ]);
-      if (!cancelled) {
-        setData({
-          schemesToReview: schemes.length,
-          plansToReview: plans.length,
-          registers: attendance?.classes ?? [],
-        });
-      }
+      setSchemes(schemeRows.length);
+      setPlans(planRows.length);
+      setRegisters(attendance?.classes ?? []);
+      setLoading(false);
     })();
-    return () => {
-      cancelled = true;
-    };
-  }, [toast.error]);
+    void (async () => {
+      const rows = ongoingExams(await fetchList<DashboardExam>('/api/v1/exams'));
+      const completions = await Promise.all(
+        rows.map(async (exam) => {
+          const data = await fetchOne<{ slots: CompletionSlot[] }>(`/api/v1/exams/${exam.id}/completion`);
+          return [exam.id, data ? summariseMarks(data.slots) : undefined] as const;
+        }),
+      );
+      setExams(rows);
+      setProgress(Object.fromEntries(completions));
+      setExamsLoading(false);
+    })();
+    // Loads once per visit.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
-  const registers = data?.registers ?? [];
-  const taken = registers.filter((c) => c.marked > 0).length;
-  const notTaken = registers.filter((c) => c.pupils > 0 && c.marked === 0);
+  const notTaken = registersNotTaken(registers);
 
   return (
-    <DashboardShell>
-      <WelcomeBanner subtitle="Lesson preparation, timetables, registers and exams across the school." />
-
-      <DashboardGrid>
-        <StatCard
-          icon={NotebookPen}
-          label="Schemes of work to review"
-          href="/dos/lessons"
-          value={data?.schemesToReview}
-          loading={!data}
-          accent="hero"
-        />
-        <StatCard
-          icon={FileCheck2}
-          label="Lesson plans to review"
-          href="/dos/lessons"
-          value={data?.plansToReview}
-          loading={!data}
-        />
-        <StatCard
+    <DashboardPage>
+      <MetricGrid>
+        <MetricCard icon={NotebookPen} label="Schemes of work to review" value={schemes} href="/dos/lessons" loading={loading} />
+        <MetricCard icon={FileCheck2} label="Lesson plans to review" value={plans} href="/dos/lessons" loading={loading} />
+        <MetricCard
           icon={ClipboardCheck}
           label="Registers taken today"
+          value={`${registers.length - notTaken.length} / ${registers.length}`}
           href="/dos/attendance"
-          value={data ? `${taken} / ${registers.length}` : undefined}
-          loading={!data}
+          loading={loading}
         />
-      </DashboardGrid>
+        <MetricCard icon={ClipboardList} label="Exams in progress" value={exams.length} href="/dos/exams" loading={examsLoading} />
+      </MetricGrid>
 
-      {data && notTaken.length > 0 && (
-        <Card className="mt-6">
-          <h2 className="text-sm font-semibold text-primary-900 mb-3">Registers not yet taken today</h2>
-          <ul className="divide-y divide-border">
-            {notTaken.map((c) => (
-              <li key={c.classId} className="flex items-center justify-between py-2 text-sm">
-                <span className="font-medium text-primary-900">{c.className}</span>
-                <span className="text-text-muted">{c.classTeacherName ?? 'No class teacher'}</span>
-              </li>
-            ))}
-          </ul>
-        </Card>
-      )}
-    </DashboardShell>
+      <DashboardColumns
+        left={
+          <>
+            <OngoingExamsPanel exams={exams} progress={progress} today={today} loading={examsLoading} base="/dos" />
+          </>
+        }
+        right={
+          <>
+            <Panel
+              icon={ClipboardCheck}
+              title="Registers not yet taken"
+              description="Today"
+              loading={loading}
+              empty={notTaken.length === 0 ? 'Every register has been started today.' : undefined}
+            >
+              <ul className="divide-y divide-border">
+                {notTaken.map((c) => (
+                  <li key={c.classId} className="flex items-center justify-between gap-3 py-2 text-sm">
+                    <span className="font-medium text-primary-900">{c.className}</span>
+                    <span className="text-muted-foreground truncate">{c.classTeacherName ?? 'No class teacher'}</span>
+                  </li>
+                ))}
+              </ul>
+            </Panel>
+            <ComingUpPanel />
+          </>
+        }
+      />
+    </DashboardPage>
   );
 }

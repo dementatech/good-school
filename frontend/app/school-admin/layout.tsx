@@ -1,18 +1,9 @@
 'use client';
 
+import { PortalShell } from '@/components/dashboard/PortalShell';
 import React from 'react';
-import { usePathname, useRouter } from 'next/navigation';
-import { useAuth } from '@/components/auth/AuthContext';
 import { PortalGate } from '@/components/auth/PortalGate';
 import { SchoolThemeApplier } from '@/components/theme/SchoolThemeApplier';
-import { FeatureGate } from '@/components/FeatureGate';
-import { NotificationBell } from '@/components/ui/NotificationBell';
-import { AccountMenu } from '@/components/ui/AccountMenu';
-import { TopbarSearch } from '@/components/ui/TopbarSearch';
-import { MobileNavDrawer } from '@/components/ui/MobileNavDrawer';
-import { PortalSidebar } from '@/components/ui/PortalSidebar';
-import { SectionSwitcher } from '@/components/ui/SectionSwitcher';
-import { DashboardGreeting } from '@/components/school-admin/dashboard/DashboardGreeting';
 import { useUnreadMessageCount } from '@/lib/communications/useUnreadMessageCount';
 import {
   LayoutDashboard,
@@ -92,9 +83,6 @@ const NAV_BASE = [
 ];
 
 function SchoolAdminShell({ children }: { children: React.ReactNode }) {
-  const { user, logout } = useAuth();
-  const router = useRouter();
-  const pathname = usePathname();
   const unreadMessages = useUnreadMessageCount();
   const levels = useSchoolLevels();
   const NAV = React.useMemo(() => {
@@ -122,53 +110,9 @@ function SchoolAdminShell({ children }: { children: React.ReactNode }) {
   }, [unreadMessages, levels]);
 
   return (
-    <div className="min-h-screen print:min-h-0 bg-bg-canvas print:bg-white flex">
-      <div className="print:!hidden contents">
-        <PortalSidebar
-          brandLogoUrl={user?.logoUrl}
-          brandLabel={user?.school || 'Good School'}
-          subtitle={user?.name}
-          nav={NAV}
-        />
-      </div>
-
-      <div className="flex-1 min-w-0 flex flex-col">
-        <div className="hidden md:flex print:!hidden items-center justify-between gap-4 px-8 pt-5">
-          <div className="flex items-center gap-4 min-w-0">
-            {pathname === '/school-admin' && <DashboardGreeting />}
-            <SectionSwitcher />
-          </div>
-          <div className="flex items-center justify-end gap-2 flex-1 min-w-0">
-            <TopbarSearch items={NAV} fieldClassName="bg-white" />
-            <NotificationBell />
-            <AccountMenu onSignOut={() => { logout(); router.push('/auth'); }} />
-          </div>
-        </div>
-
-        <div className="md:hidden print:!hidden flex items-center justify-between px-4 py-3 border-b border-border bg-bg-card">
-          <div className="flex items-center gap-2 min-w-0">
-            <MobileNavDrawer
-              title={user?.school || 'Good School'}
-              subtitle={user?.name}
-              items={NAV}
-              onSignOut={() => { logout(); router.push('/auth'); }}
-            />
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={user?.logoUrl || '/logo.png'}
-              alt=""
-              className="w-8 h-8 rounded-lg object-contain bg-white border border-[#EAEAEA] shrink-0"
-            />
-            <p className="text-sm font-semibold text-primary-900 truncate">{user?.school || 'Good School'}</p>
-          </div>
-          <NotificationBell />
-        </div>
-        <div className="md:hidden print:!hidden flex justify-center px-4 py-2 border-b border-border bg-bg-card empty:hidden">
-          <SectionSwitcher compact />
-        </div>
-        <main className="flex-1 p-3 sm:p-6 md:px-8 md:py-5 print:p-0"><FeatureGate>{children}</FeatureGate></main>
-      </div>
-    </div>
+    <PortalShell nav={NAV} dashboardHref="/school-admin" showSectionSwitcher>
+      {children}
+    </PortalShell>
   );
 }
 

@@ -1,130 +1,103 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { Card } from '@/components/ui/Card';
-import { StatCard } from '@/components/ui/StatCard';
-import { DashboardGrid } from '@/components/ui/DashboardGrid';
-import { DashboardShell } from '@/components/ui/DashboardShell';
-import { WelcomeBanner } from '@/components/ui/WelcomeBanner';
-import { GenderDonutChart } from '@/components/ui/GenderDonutChart';
-import { PopulationBarChart } from '@/components/ui/PopulationBarChart';
+import { useEffect, useMemo, useState } from 'react';
+import { Activity, BarChart3, Building2, GraduationCap, UserRound, Users } from 'lucide-react';
+import { Progress } from '@/components/kit/progress';
+import { ClassBarChart, type ClassBar } from '@/components/dashboard/BarChart';
+import { ComingUpPanel } from '@/components/dashboard/ComingUpPanel';
+import { DashboardColumns, DashboardPage } from '@/components/dashboard/DashboardPage';
+import { MetricCard, MetricGrid } from '@/components/dashboard/MetricCard';
+import { Panel } from '@/components/dashboard/Panel';
 import { ActivityFeed } from '@/components/ui/ActivityFeed';
-import { Building2, Users, GraduationCap, UserRound } from 'lucide-react';
+import { fetchOne } from '@/lib/api/envelope';
+import { shortClassLabel } from '@/lib/dashboard/role-data';
 
 interface Stats {
-  schools?: number;
-  staff?: number;
-  students?: number;
-  parents?: number;
-}
-
-interface GenderBreakdownEntry {
-  gender: 'male' | 'female' | 'unspecified';
-  count: number;
-}
-
-interface PopulationEntry {
-  label: string;
-  count: number;
-}
-
-interface ActivityItem {
-  type: 'enrollment' | 'submission';
-  label: string;
-  timestamp: string;
+  schools: number;
+  staff: number;
+  students: number;
+  parents: number;
 }
 
 interface Analytics {
-  gender: GenderBreakdownEntry[];
-  population: PopulationEntry[];
-  activity: ActivityItem[];
+  gender: { gender: 'male' | 'female' | 'unspecified'; count: number }[];
+  population: { label: string; count: number }[];
+  activity: { type: 'enrollment' | 'submission'; label: string; timestamp: string }[];
 }
 
-const ADMIN_CARDS = [
-  { key: 'schools' as const, label: 'Schools', href: '/admin/system/schools', icon: Building2 },
-  { key: 'staff' as const, label: 'Staff', href: '/admin/system/accounts', icon: Users },
-  { key: 'students' as const, label: 'Students', href: '/admin/system/accounts', icon: GraduationCap },
-  { key: 'parents' as const, label: 'Parents', href: '/admin/system/accounts', icon: UserRound },
-];
+const GENDER_LABELS = { male: 'Boys', female: 'Girls', unspecified: 'Not recorded' };
 
 export default function AdminDashboard() {
-  const [stats, setStats] = useState<Stats>({});
-  const [loading, setLoading] = useState(true);
+  const [stats, setStats] = useState<Stats | null>(null);
   const [analytics, setAnalytics] = useState<Analytics | null>(null);
-  const [analyticsLoading, setAnalyticsLoading] = useState(true);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    async function load() {
-      try {
-        // One counted query per entity, server-side — not four full list
-        // fetches whose lengths happen to be the numbers we want.
-        const res = await fetch('/api/v1/admin/system/stats').then((r) => r.json());
-        if (res.data) setStats(res.data);
-      } finally {
-        setLoading(false);
-      }
-    }
-    load();
+    void (async () => {
+      const [statRows, analyticRows] = await Promise.all([
+        fetchOne<Stats>('/api/v1/admin/system/stats'),
+        fetchOne<Analytics>('/api/v1/admin/system/analytics'),
+      ]);
+      setStats(statRows);
+      setAnalytics(analyticRows);
+      setLoading(false);
+    })();
   }, []);
 
-  useEffect(() => {
-    async function loadAnalytics() {
-      try {
-        const res = await fetch('/api/v1/admin/system/analytics').then((r) => r.json());
-        if (res.success) setAnalytics(res.data);
-      } finally {
-        setAnalyticsLoading(false);
-      }
-    }
-    loadAnalytics();
-  }, []);
+  const bars = useMemo<ClassBar[]>(
+    () =>
+      (analytics?.population ?? []).map((row) => ({
+        id: row.label,
+        label: shortClassLabel(row.label),
+        name: row.label,
+        value: row.count,
+        details: [{ label: 'Students', value: row.count.toLocaleString('en-GB') }],
+      })),
+    [analytics],
+  );
+  const gender = analytics?.gender ?? [];
+  const genderTotal = gender.reduce((sum, row) => sum + row.count, 0);
+  const count = (value?: number) => (value ?? 0).toLocaleString('en-GB');
 
   return (
-    <DashboardShell>
-      <WelcomeBanner subtitle="Overview of Good School data." />
+    <DashboardPage>
+      <MetricGrid>
+        <MetricCard icon={Building2} label="Schools" value={count(stats?.schools)} href="/admin/system/schools" loading={loading} />
+        <MetricCard icon={Users} label="Staff" value={count(stats?.staff)} href="/admin/system/accounts" loading={loading} />
+        <MetricCard icon={GraduationCap} label="Students" value={count(stats?.students)} href="/admin/system/accounts" loading={loading} />
+        <MetricCard icon={UserRound} label="Parents" value={count(stats?.parents)} href="/admin/system/accounts" loading={loading} />
+      </MetricGrid>
 
-      <DashboardGrid className="mb-4">
-        {ADMIN_CARDS.map((c, i) => (
-          <StatCard
-            key={c.key}
-            icon={c.icon}
-            label={c.label}
-            href={c.href}
-            value={stats[c.key] ?? 0}
-            loading={loading}
-            accent={i === 0 ? 'hero' : 'neutral'}
-          />
-        ))}
-      </DashboardGrid>
-
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 sm:gap-4 lg:gap-5">
-        <Card className="p-4 sm:p-5">
-          <h2 className="text-sm font-semibold text-primary-900 mb-3">Students by gender</h2>
-          {analyticsLoading ? (
-            <p className="text-sm text-text-muted">Loading…</p>
-          ) : (
-            <GenderDonutChart data={analytics?.gender ?? []} />
-          )}
-        </Card>
-
-        <Card className="p-4 sm:p-5">
-          <h2 className="text-sm font-semibold text-primary-900 mb-3">Population by class</h2>
-          {analyticsLoading ? (
-            <p className="text-sm text-text-muted">Loading…</p>
-          ) : (
-            <PopulationBarChart data={analytics?.population ?? []} />
-          )}
-        </Card>
-
-        <Card className="p-5 lg:col-span-2">
-          <h2 className="text-sm font-semibold text-primary-900 mb-3">Recent activity</h2>
-          {analyticsLoading ? (
-            <p className="text-sm text-text-muted">Loading…</p>
-          ) : (
-            <ActivityFeed items={analytics?.activity ?? []} />
-          )}
-        </Card>
-      </div>
-    </DashboardShell>
+      <DashboardColumns
+        left={
+          <>
+            <Panel icon={Users} title="Students by gender" description="Across every school" loading={loading} empty={genderTotal === 0 ? 'No students yet.' : undefined}>
+              <ul className="space-y-3">
+                {gender.map((row) => (
+                  <li key={row.gender} className="space-y-1">
+                    <div className="flex justify-between text-sm">
+                      <span className="text-text-secondary">{GENDER_LABELS[row.gender]}</span>
+                      <span className="font-semibold text-primary-900 tabular-nums">{row.count.toLocaleString('en-GB')}</span>
+                    </div>
+                    <Progress value={(row.count / genderTotal) * 100} aria-label={GENDER_LABELS[row.gender]} className="h-1.5" />
+                  </li>
+                ))}
+              </ul>
+            </Panel>
+            <ComingUpPanel />
+          </>
+        }
+        right={
+          <>
+            <Panel icon={BarChart3} title="Students by class" description="Across every school" loading={loading} empty={bars.length === 0 ? 'No students enrolled yet.' : undefined}>
+              <ClassBarChart bars={bars} ariaLabel="Students in each class" />
+            </Panel>
+            <Panel icon={Activity} title="Recent activity" description="Enrolments and marks" loading={loading}>
+              <ActivityFeed items={analytics?.activity ?? []} />
+            </Panel>
+          </>
+        }
+      />
+    </DashboardPage>
   );
 }

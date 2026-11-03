@@ -2,12 +2,12 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { BarChart3, Printer, Table2 } from 'lucide-react';
-import { Card } from '@/components/ui/Card';
+import { Card } from '@/components/kit/card';
+import { Panel } from '@/components/dashboard/Panel';
 import { Loader } from '@/components/ui/loader';
 import { useToast } from '@/components/ui/ToastProvider';
 import { fetchList } from '@/lib/api/envelope';
-import { ClassBarChart, type ClassBar } from '@/components/school-admin/dashboard/ClassBarChart';
-import { PanelHeader } from '@/components/school-admin/dashboard/PanelHeader';
+import { ClassBarChart, type ClassBar } from '@/components/dashboard/BarChart';
 
 interface AcademicYear {
   id: string;
@@ -192,10 +192,9 @@ export default function ExamPerformancePage() {
         </Card>
       ) : (
         <>
-          <Card>
-            <PanelHeader icon={BarChart3} title="Average mark by exam" subtitle="Oldest exam first" />
+          <Panel icon={BarChart3} title="Average mark by exam" description="Oldest exam first">
             <ClassBarChart bars={bars} scaleMax={100} ariaLabel="Average mark of each exam" />
-          </Card>
+          </Panel>
 
           <Card className="p-0 overflow-x-auto print:overflow-visible">
             <table className="w-full text-sm text-primary-900">
@@ -222,8 +221,8 @@ export default function ExamPerformancePage() {
             </table>
           </Card>
 
-          <Card className="overflow-x-auto print:overflow-visible">
-            <PanelHeader icon={Table2} title="Subject averages" subtitle="Average mark per subject in each exam" />
+          <Panel icon={Table2} title="Subject averages" description="Average mark per subject in each exam">
+            <div className="overflow-x-auto print:overflow-visible">
             <table className="w-full text-sm text-primary-900">
               <thead>
                 <tr className="text-left text-xs text-text-muted">
@@ -249,7 +248,8 @@ export default function ExamPerformancePage() {
                 ))}
               </tbody>
             </table>
-          </Card>
+            </div>
+          </Panel>
         </>
       )}
     </div>
