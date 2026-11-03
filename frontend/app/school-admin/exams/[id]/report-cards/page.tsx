@@ -74,6 +74,10 @@ function ReportCardsContent() {
       async function loadForClass(classId: string, streamId: string | null): Promise<Sheet[]> {
         const qs = new URLSearchParams({ classId });
         if (streamId) qs.set('streamId', streamId);
+        for (const key of ['mode', 'examIds', 'weights']) {
+          const value = search.get(key);
+          if (value) qs.set(key, value);
+        }
         const report = await fetchOne<ExamReportCard>(`/api/v1/exams/${examId}/report-card?${qs.toString()}`, toast.error);
         if (!report) return [];
         // "Both" mode: a Nursery report card also carries the term's progress ratings.
@@ -97,6 +101,8 @@ function ReportCardsContent() {
           totalInClass: report.students.length,
           showPositions: report.showPositions,
           fields: report.reportCardFields,
+          mode: report.mode,
+          compared: report.compared,
           nurseryRatings: ratings
             ? {
                 areas: ratings.learningAreas,
@@ -124,7 +130,7 @@ function ReportCardsContent() {
       }
       setLoading(false);
     })();
-  }, [examId, wholeSchool, yearIdParam, classIdParam, streamIdParam, studentIdParam]);
+  }, [examId, wholeSchool, yearIdParam, classIdParam, streamIdParam, studentIdParam, search]);
 
   const bands = useMemo(() => bandsFrom(gradingSchemes), [gradingSchemes]);
 

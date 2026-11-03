@@ -189,6 +189,9 @@ export interface ReportCardStudentSubject {
    * unpublished exam still shows grades. `computedGrade` (frozen at publish)
    * wins when set. */
   bandGrade: string | null;
+  /** This learner's score in each of the report's `compared` exams, in the
+   * same order. Empty on a single-exam report. */
+  history: { examId: string; rawScore: number | null; isAbsent: boolean }[];
 }
 
 export interface ReportCardStudent {
@@ -237,7 +240,38 @@ export interface ReportCardStudent {
   subjects: ReportCardStudentSubject[];
 }
 
+/**
+ * What a report card covers:
+ *  - single: one exam.
+ *  - side_by_side: `examId`'s marks, grades and positions, with columns showing
+ *    how the learner did in `examIds`.
+ *  - combined: each subject's score, grade and position come from `examIds`,
+ *    merged by `weights` (equal when omitted).
+ */
+export type ReportMode = "single" | "side_by_side" | "combined";
+
+export interface ReportOptions {
+  mode: ReportMode;
+  examIds?: string[];
+  /** Relative shares, same order as `examIds`: 40,60 and 2,3 mean the same. */
+  weights?: number[];
+}
+
+export interface ComparedExam {
+  id: string;
+  /** Short column heading, e.g. "T3 MID". */
+  label: string;
+  name: string;
+  /** Combined reports only: this exam's share of the final mark. */
+  weightPercent: number | null;
+}
+
 export interface ExamReportCard {
+  mode: ReportMode;
+  /** The exams shown as extra columns, oldest first. */
+  compared: ComparedExam[];
+  /** Every subject taught in this class in this exam, for any stream. */
+  classSubjects: { subjectId: string; subjectName: string; subjectShortName: string; role: ReportSubjectRole }[];
   exam: { id: string; name: string; termId: string; termName: string; publishedAt: string | null };
   /** Whether printed report cards show each pupil's position — the school's
    * choice per section (Nursery defaults to off). */
@@ -268,6 +302,13 @@ export interface ExamReportCard {
 }
 
 // ─── Errors ─────────────────────────────────────────────────────────────────
+
+export class InvalidReportOptionsError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "InvalidReportOptionsError";
+  }
+}
 
 export class UnknownExamError extends Error {
   constructor() {
@@ -1183,6 +1224,88 @@ export async function examCompletion(
   };
 }
 
+interface SelectedExam {
+  id: string;
+  label: string;
+  name: string;
+  startsOn: string;
+  /** Share of a combined report's final mark, always positive. */
+  weight: number;
+}
+
+/** The exams a report reads marks from, always including `examId`, oldest first. */
+async function loadSelectedExams(
+  schoolId: string,
+  academicYearId: string,
+  examId: string,
+  options: ReportOptions,
+): Promise<SelectedExam[]> {
+  const requested = options.mode === "single" ? [] : options.examIds ?? [];
+  const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  if (requested.some((id) => !uuid.test(id))) throw new InvalidReportOptionsError("One of the chosen exams isn't valid.");
+  if (options.mode !== "single" && requested.length === 0) {
+    throw new InvalidReportOptionsError("Choose at least one other exam for this report.");
+  }
+  const weights = options.mode === "combined" ? options.weights : undefined;
+  if (weights) {
+    if (weights.length !== requested.length) throw new InvalidReportOptionsError("Give one weight for each chosen exam.");
+    if (weights.some((w) => !Number.isFinite(w) || w < 0)) throw new InvalidReportOptionsError("Weights can't be negative.");
+    if (weights.reduce((a, b) => a + b, 0) <= 0) throw new InvalidReportOptionsError("At least one exam must carry some weight.");
+  }
+  const weightOf = new Map(requested.map((id, i) => [id, weights ? weights[i] : 1]));
+  if (options.mode === "combined" && !requested.includes(examId)) {
+    throw new InvalidReportOptionsError("A combined report must include the exam it's opened from.");
+  }
+
+  const ids = [...new Set([examId, ...requested])];
+  const { rows } = await pool.query<{
+    id: string;
+    name: string;
+    starts_on: string;
+    exam_code: string;
+    term_number: number;
+  }>(
+    `select se.id, se.name, se.starts_on, es.exam_code, t.term_number
+       from school_exam se
+       join exam_session es on es.id = se.exam_session_id
+       join terms t on t.id = se.term_id
+      where se.school_id = $1 and se.academic_year_id = $2 and se.id = any($3::uuid[])
+      order by se.starts_on, se.created_at`,
+    [schoolId, academicYearId, ids],
+  );
+  if (rows.length !== ids.length) {
+    throw new InvalidReportOptionsError("Only exams from the same school year can go on one report.");
+  }
+  return rows.map((row) => ({
+    id: row.id,
+    label: `T${row.term_number} ${row.exam_code}`,
+    name: row.name,
+    startsOn: row.starts_on,
+    weight: weightOf.get(row.id) ?? 1,
+  }));
+}
+
+function comparedExamsOf(
+  selected: SelectedExam[],
+  examId: string,
+  mode: ReportMode,
+  options: ReportOptions,
+): ComparedExam[] {
+  if (mode === "single") return [];
+  if (mode === "side_by_side") {
+    return selected
+      .filter((e) => e.id !== examId)
+      .map((e) => ({ id: e.id, label: e.label, name: e.name, weightPercent: null }));
+  }
+  const total = selected.reduce((sum, e) => sum + e.weight, 0);
+  return selected.map((e) => ({
+    id: e.id,
+    label: e.label,
+    name: e.name,
+    weightPercent: options.weights ? Math.round((e.weight / total) * 100) : Math.round(100 / selected.length),
+  }));
+}
+
 // Compiles one class's (or one stream's) results for an exam into a report
 // card: per-subject summary (reusing examCompletion's numbers, scoped down),
 // per-student totals/rank/overall grade, and the aggregates the studio's
@@ -1193,8 +1316,12 @@ export async function getExamReportCard(
   examId: string,
   classId: string,
   streamId: string | null,
+  options: ReportOptions = { mode: "single" },
 ): Promise<ExamReportCard> {
   const exam = await loadExam(schoolId, examId);
+  const mode = options.mode;
+  const selected = await loadSelectedExams(schoolId, exam.academicYearId, examId, options);
+  const resultExamIds = selected.map((e) => e.id);
 
   const { rows: classRows } = await pool.query<{
     id: string;
@@ -1224,24 +1351,38 @@ export async function getExamReportCard(
     photo_path: string | null;
     photo_provider: StorageProvider | null;
   }>(
-    `select en.student_user_id, s.first_name, s.middle_name, s.last_name, u.system_id,
-            st.id as stream_id, st.name as stream_name, s.photo_path, s.photo_provider
-       from student_enrollment en
-       join students s on s.user_id = en.student_user_id
-       join users u on u.id = en.student_user_id
-       left join streams st on st.id = en.stream_id
-      where en.school_id = $1 and en.academic_year_id = $2 and en.class_id = $3
-        and en.status = 'active'
-        and ($4::uuid is null or en.stream_id = $4::uuid)
-      order by s.last_name, s.first_name`,
-    [schoolId, exam.academicYearId, classId, streamId],
+    // Anyone who sat one of these exams stays on its report after leaving the
+    // class, or a past term's positions and class size would quietly change
+    // every time a learner transferred or graduated.
+    `select * from (
+       select distinct on (en.student_user_id)
+              en.student_user_id, s.first_name, s.middle_name, s.last_name, u.system_id,
+              st.id as stream_id, st.name as stream_name, s.photo_path, s.photo_provider
+         from student_enrollment en
+         join students s on s.user_id = en.student_user_id
+         join users u on u.id = en.student_user_id
+         left join streams st on st.id = en.stream_id
+        where en.school_id = $1 and en.academic_year_id = $2 and en.class_id = $3
+          and ($4::uuid is null or en.stream_id = $4::uuid)
+          and (en.status = 'active' or exists (
+                select 1 from exam_result er
+                 where er.school_exam_id = any($5::uuid[]) and er.student_user_id = en.student_user_id
+                   and (er.raw_score is not null or er.is_absent)))
+        order by en.student_user_id, (en.status = 'active') desc, en.entry_date desc
+     ) roster
+     order by last_name, first_name`,
+    [schoolId, exam.academicYearId, classId, streamId, resultExamIds],
   );
 
   const isALevel = klass.stage_phase === "A_LEVEL";
   const isPrimary = klass.stage_phase === "PRIMARY";
+  const compared = comparedExamsOf(selected, examId, mode, options);
   const examOut = {
     id: exam.id,
-    name: exam.name,
+    name:
+      mode === "combined"
+        ? `Combined report: ${compared.map((c) => `${c.label} ${c.weightPercent}%`).join(", ")}`
+        : exam.name,
     termId: exam.termId,
     termName: exam.termName,
     publishedAt: exam.publishedAt,
@@ -1254,6 +1395,9 @@ export async function getExamReportCard(
 
   if (rosterRows.length === 0) {
     return {
+      mode,
+      compared,
+      classSubjects: [],
       exam: examOut,
       showPositions,
       reportCardFields,
@@ -1274,6 +1418,7 @@ export async function getExamReportCard(
   const studentIds = rosterRows.map((r) => r.student_user_id);
 
   const { rows: resultRows } = await pool.query<{
+    school_exam_id: string;
     student_user_id: string;
     subject_id: string;
     subject_code: string;
@@ -1288,15 +1433,15 @@ export async function getExamReportCard(
     variant_name: string | null;
     contribution_percent: string | null;
   }>(
-    `select er.student_user_id, er.subject_id, sub.code as subject_code, sub.name as subject_name,
+    `select er.school_exam_id, er.student_user_id, er.subject_id, sub.code as subject_code, sub.name as subject_name,
             sub.category as subject_category, sub.is_examinable as subject_is_examinable,
             er.raw_score, er.max_mark, er.is_absent, er.computed_grade,
             er.subject_variant_id, sv.name as variant_name, sv.contribution_percent
        from exam_result er
        join subject sub on sub.id = er.subject_id
        left join subject_variant sv on sv.id = er.subject_variant_id
-      where er.school_exam_id = $1 and er.student_user_id = any($2::uuid[])`,
-    [examId, studentIds],
+      where er.school_exam_id = any($1::uuid[]) and er.student_user_id = any($2::uuid[])`,
+    [resultExamIds, studentIds],
   );
 
   // A-Level: "subsidiary" is General Paper plus whichever subsidiary the
@@ -1324,15 +1469,16 @@ export async function getExamReportCard(
   }
   const byStudentSubject = new Map<string, typeof resultRows>();
   for (const r of resultRows) {
-    const key = `${r.student_user_id}:${r.subject_id}`;
+    const key = `${r.school_exam_id}:${r.student_user_id}:${r.subject_id}`;
     const list = byStudentSubject.get(key);
     if (list) list.push(r);
     else byStudentSubject.set(key, [r]);
   }
-  const mergedByStudent = new Map<string, MergedSubjectScore[]>();
+  // examId -> studentId -> subjectId -> that subject's merged score.
+  const scoresByExam = new Map<string, Map<string, Map<string, MergedSubjectScore>>>();
   for (const [key, group] of byStudentSubject) {
-    const studentUserId = key.slice(0, key.indexOf(":"));
     const first = group[0];
+    const studentUserId = first.student_user_id;
     const hasVariant = group.some((g) => g.subject_variant_id);
     let rawScore: number | null;
     let mark: number | null = null;
@@ -1367,8 +1513,11 @@ export async function getExamReportCard(
       isAbsent = first.is_absent;
     }
     const computedGrade = group.find((g) => g.computed_grade !== null)?.computed_grade ?? null;
-    const list = mergedByStudent.get(studentUserId) ?? [];
-    list.push({
+    const byStudent = scoresByExam.get(first.school_exam_id) ?? new Map<string, Map<string, MergedSubjectScore>>();
+    scoresByExam.set(first.school_exam_id, byStudent);
+    const bySubject = byStudent.get(studentUserId) ?? new Map<string, MergedSubjectScore>();
+    byStudent.set(studentUserId, bySubject);
+    bySubject.set(first.subject_id, {
       subjectId: first.subject_id,
       subjectName: first.subject_name,
       role: roleOf(first.subject_category),
@@ -1381,7 +1530,54 @@ export async function getExamReportCard(
       isAbsent,
       computedGrade,
     });
-    mergedByStudent.set(studentUserId, list);
+  }
+
+  // What the report's grades, averages and positions are worked out from.
+  const mergedByStudent = new Map<string, MergedSubjectScore[]>();
+  for (const studentUserId of studentIds) {
+    const perExam = selected.map((e) => ({
+      exam: e,
+      scores: scoresByExam.get(e.id)?.get(studentUserId) ?? new Map<string, MergedSubjectScore>(),
+    }));
+    if (mode !== "combined") {
+      const own = perExam.find((p) => p.exam.id === examId)!.scores;
+      const list = [...own.values()];
+      // A subject sat only in a compared exam still gets a row, with no score.
+      for (const { scores } of perExam) {
+        for (const score of scores.values()) {
+          if (own.has(score.subjectId) || list.some((x) => x.subjectId === score.subjectId)) continue;
+          list.push({ ...score, hasVariant: false, variantScores: [], rawScore: null, mark: null, maxMark: 100, isAbsent: false, computedGrade: null });
+        }
+      }
+      if (list.length > 0) mergedByStudent.set(studentUserId, list);
+      continue;
+    }
+    const subjectIds = new Set(perExam.flatMap((p) => [...p.scores.keys()]));
+    const list: MergedSubjectScore[] = [];
+    for (const subjectId of subjectIds) {
+      const entries = perExam.flatMap((p) => {
+        const score = p.scores.get(subjectId);
+        return score ? [{ score, weight: p.exam.weight }] : [];
+      });
+      const scored = entries.filter((e) => !e.score.isAbsent && e.score.rawScore !== null);
+      const totalWeight = scored.reduce((sum, e) => sum + e.weight, 0);
+      list.push({
+        ...entries[0].score,
+        hasVariant: false,
+        variantScores: [],
+        // A learner who missed one of the exams is marked on those they sat,
+        // not given zero for the one they didn't.
+        rawScore:
+          totalWeight > 0
+            ? Math.round((scored.reduce((sum, e) => sum + e.score.rawScore! * e.weight, 0) / totalWeight) * 100) / 100
+            : null,
+        mark: null,
+        maxMark: 100,
+        isAbsent: scored.length === 0 && entries.every((e) => e.score.isAbsent),
+        computedGrade: null,
+      });
+    }
+    if (list.length > 0) mergedByStudent.set(studentUserId, list);
   }
 
   function averageOf(subjects: MergedSubjectScore[]): number | null {
@@ -1441,6 +1637,16 @@ export async function getExamReportCard(
   }
   const primaryBands = await loadBands(isALevel ? "principal" : "any");
   const subsidiaryBands = isALevel ? await loadBands("subsidiary") : [];
+  // Grades frozen at publish belong to a single exam. A combined mark has its
+  // own score, so it's graded here, on the same schemes.
+  if (mode === "combined") {
+    for (const list of mergedByStudent.values()) {
+      for (const m of list) {
+        if (m.isAbsent) continue;
+        m.computedGrade = bandOf(m.role === "subsidiary" ? subsidiaryBands : primaryBands, m.rawScore)?.label ?? null;
+      }
+    }
+  }
 
   // PLE-style aggregate: the points of the best N examinable subjects,
   // summed (lower is better). Needs a score in at least N of them — an
@@ -1505,6 +1711,10 @@ export async function getExamReportCard(
           isExaminable: s.isExaminable,
           points: pointsOf(s),
           bandGrade: isPrimary && !s.isAbsent ? bandOf(primaryBands, s.rawScore)?.label ?? null : null,
+          history: compared.map((c) => {
+            const score = scoresByExam.get(c.id)?.get(r.student_user_id)?.get(s.subjectId);
+            return { examId: c.id, rawScore: score?.rawScore ?? null, isAbsent: score?.isAbsent ?? false };
+          }),
         }))
         .sort((a, b) => a.subjectName.localeCompare(b.subjectName)),
     };
@@ -1573,9 +1783,27 @@ export async function getExamReportCard(
   // (it's already correct — same teaching-assignment logic), scoped to this
   // class, plus a class average computed from the merged scores above.
   const completion = await examCompletion(schoolId, examId);
-  const subjectSlots = completion.slots.filter(
-    (s) => s.classId === classId && (s.streamId === null || s.streamId === streamId),
-  );
+  // Viewing the whole class, a subject taught stream by stream has one slot per
+  // stream: they add up to one row here.
+  const slotsBySubject = new Map<string, (typeof completion.slots)[number]>();
+  for (const slot of completion.slots) {
+    if (slot.classId !== classId) continue;
+    if (streamId !== null && slot.streamId !== null && slot.streamId !== streamId) continue;
+    const seen = slotsBySubject.get(slot.subjectId);
+    slotsBySubject.set(
+      slot.subjectId,
+      seen
+        ? {
+            ...seen,
+            rosterCount: seen.rosterCount + slot.rosterCount,
+            enteredCount: seen.enteredCount + slot.enteredCount,
+            submitted: seen.submitted && slot.submitted,
+            teacherName: seen.teacherName === slot.teacherName ? seen.teacherName : null,
+          }
+        : slot,
+    );
+  }
+  const subjectSlots = [...slotsBySubject.values()];
   const { rows: subjectCategoryRows } = await pool.query<{ id: string; category: string; short_name: string }>(
     `select id, category, short_name from subject where id = any($1::uuid[])`,
     [subjectSlots.map((s) => s.subjectId)],
@@ -1605,6 +1833,27 @@ export async function getExamReportCard(
       average: subjectAverage(s.subjectId),
     }))
     .sort((a, b) => a.subjectName.localeCompare(b.subjectName));
+
+  const classSubjectsById = new Map<string, ExamReportCard["classSubjects"][number]>();
+  for (const slot of completion.slots) {
+    if (slot.classId !== classId || classSubjectsById.has(slot.subjectId)) continue;
+    classSubjectsById.set(slot.subjectId, {
+      subjectId: slot.subjectId,
+      subjectName: slot.subjectName,
+      subjectShortName: slot.subjectCode,
+      role: "principal",
+    });
+  }
+  const { rows: classSubjectRows } = await pool.query<{ id: string; category: string; short_name: string }>(
+    `select id, category, short_name from subject where id = any($1::uuid[])`,
+    [[...classSubjectsById.keys()]],
+  );
+  for (const row of classSubjectRows) {
+    const subject = classSubjectsById.get(row.id)!;
+    subject.subjectShortName = row.short_name;
+    subject.role = roleOf(row.category);
+  }
+  const classSubjects = [...classSubjectsById.values()].sort((a, b) => a.subjectName.localeCompare(b.subjectName));
 
   // Split by role: A-Level's principal scheme (A-E) and subsidiary scheme
   // (Pass/Fail) use unrelated grade vocabularies — counting them together
@@ -1660,6 +1909,9 @@ export async function getExamReportCard(
     .slice(0, 5);
 
   return {
+    mode,
+    compared,
+    classSubjects,
     exam: examOut,
     showPositions,
     reportCardFields,

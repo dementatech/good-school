@@ -86,6 +86,22 @@ export const reportCardQuerySchema = {
   properties: {
     classId: { type: "string", minLength: 1 },
     streamId: { type: "string" },
+    mode: { type: "string", enum: ["single", "side_by_side", "combined"] },
+    // Comma-separated, same order as each other.
+    examIds: { type: "string" },
+    weights: { type: "string" },
+  },
+  additionalProperties: false,
+} as const;
+
+export const classPerformanceQuerySchema = {
+  type: "object",
+  required: ["classId", "academicYearId"],
+  properties: {
+    classId: { type: "string", minLength: 1 },
+    streamId: { type: "string" },
+    academicYearId: { type: "string", minLength: 1 },
+    termId: { type: "string" },
   },
   additionalProperties: false,
 } as const;

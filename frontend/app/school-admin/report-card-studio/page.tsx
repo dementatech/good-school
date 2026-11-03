@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { usePortalBase } from '@/lib/portal';
 import { useSchoolLevels, type SchoolLevel } from '@/lib/levels';
 import { useRouter } from 'next/navigation';
@@ -17,6 +17,14 @@ import { useElementSize } from '@/lib/useElementSize';
 import Link from 'next/link';
 import { AlertTriangle, FileText, LayoutTemplate, TrendingUp, Trophy } from 'lucide-react';
 import type { SchoolExam } from '@/components/admin/exams/types';
+import { localIsoDate } from '@/lib/school-admin/dashboard';
+import {
+  REPORT_TYPE_LABELS,
+  defaultExam,
+  defaultOtherExams,
+  reportQueryParams,
+  type ReportType,
+} from '@/lib/reports/report-options';
 
 const PRIMARY_600 = '#1e40af';
 const ACCENT_DARK = '#C4952A';
@@ -691,6 +699,11 @@ export default function ReportCardStudioPage() {
   const [years, setYears] = useState<AcademicYear[]>([]);
   const [yearId, setYearId] = useState('');
   const [examId, setExamId] = useState('');
+  const [exams, setExams] = useState<SchoolExam[]>([]);
+  const [termId, setTermId] = useState('');
+  const [reportType, setReportType] = useState<ReportType>('single');
+  const [otherExamIds, setOtherExamIds] = useState<string[]>([]);
+  const [weights, setWeights] = useState<Record<string, number>>({});
   const [classes, setClasses] = useState<SchoolClass[]>([]);
   const [classId, setClassId] = useState('');
   const [streams, setStreams] = useState<Stream[]>([]);
@@ -719,7 +732,13 @@ export default function ReportCardStudioPage() {
         fetchList<SchoolExam>(`/api/v1/exams?academicYearId=${yearId}`, toast.error),
         fetchList<SchoolClass>(`/api/v1/academic/classes?academicYearId=${yearId}`, toast.error),
       ]);
-      setExamId((prev) => prev || examList[0]?.id || '');
+      // Opens on the latest exam that has started; any term or exam can then be picked.
+      const opening = defaultExam(examList, localIsoDate(new Date()));
+      setExams(examList);
+      setTermId(opening?.termId ?? '');
+      setExamId(opening?.id ?? '');
+      setOtherExamIds([]);
+      setReportType('single');
       // A Nursery on progress ratings sits no exams — its reports live under
       // Kindergarten Progress. A Nursery that gives marks is compiled here too.
       const examined = classList.filter((c) => c.stagePhase !== 'KINDERGARTEN' || nurseryGivesMarks);
@@ -742,21 +761,31 @@ export default function ReportCardStudioPage() {
     })();
   }, [classId, selectedClass?.hasStreams]);
 
+  // Stable while the choice is unchanged, so typing a share reloads once per value.
+  const reportParamsKey = JSON.stringify(
+    reportQueryParams({ type: reportType, examId, otherExamIds, weights }),
+  );
+  const reportParams = useMemo<Record<string, string> | null>(() => JSON.parse(reportParamsKey), [reportParamsKey]);
+
+  // Only the newest request may show: a slow older report must not overwrite it.
+  const latestLoad = useRef(0);
   const load = useCallback(async () => {
     if (!examId || !classId) return;
+    const thisLoad = ++latestLoad.current;
     setLoading(true);
-    const qs = new URLSearchParams({ classId });
+    const qs = new URLSearchParams({ classId, ...(reportParams ?? {}) });
     if (streamId) qs.set('streamId', streamId);
     const data = await fetchOne<ExamReportCard>(`/api/v1/exams/${examId}/report-card?${qs.toString()}`, toast.error);
+    if (thisLoad !== latestLoad.current) return;
     setReport(data);
     setStudentKey(data?.students[0]?.studentUserId ?? '');
     setLoading(false);
-  }, [examId, classId, streamId]);
+  }, [examId, classId, streamId, reportParams]);
 
   useEffect(() => {
-    void (async () => {
-      await load();
-    })();
+    // A short pause so typing "60" into a share loads one report, not two.
+    const timer = setTimeout(() => void load(), 400);
+    return () => clearTimeout(timer);
   }, [load]);
 
   const isALevel = report?.class.phase === 'A_LEVEL';
@@ -813,6 +842,15 @@ export default function ReportCardStudioPage() {
     [isALevel, principalSubjects, subsidiarySubjects, report],
   );
 
+  // A subject taught stream by stream has one mark sheet per stream.
+  function openSheet(subjectId: string) {
+    if (selectedClass?.hasStreams && !streamId) {
+      toast.error('Pick a stream first to open its mark sheet.');
+      return;
+    }
+    router.push(sheetHref(subjectId));
+  }
+
   function sheetHref(subjectId: string): string {
     const p = new URLSearchParams({ subject: subjectId, class: classId });
     if (streamId) p.set('stream', streamId);
@@ -820,7 +858,39 @@ export default function ReportCardStudioPage() {
   }
 
   function openReportCards(params: Record<string, string>) {
-    window.open(`${base}/exams/${examId}/report-cards?${new URLSearchParams(params).toString()}`, '_blank');
+    const query = new URLSearchParams({ ...params, ...(reportParams ?? {}) });
+    window.open(`${base}/exams/${examId}/report-cards?${query.toString()}`, '_blank');
+  }
+
+  function openMarkSheet(blank: boolean) {
+    const query = new URLSearchParams({ classId, ...(streamId ? { streamId } : {}), ...(blank ? { blank: '1' } : {}) });
+    window.open(`${base}/exams/${examId}/class-marksheet?${query.toString()}`, '_blank');
+  }
+
+  const today = localIsoDate(new Date());
+  const terms = [...new Map(exams.map((e) => [e.termId, e.termName])).entries()];
+  const termExams = exams.filter((e) => e.termId === termId);
+
+  function chooseExam(nextExamId: string) {
+    setExamId(nextExamId);
+    setOtherExamIds(defaultOtherExams(exams, nextExamId, today));
+    setWeights({});
+  }
+
+  function chooseTerm(nextTermId: string) {
+    setTermId(nextTermId);
+    const inTerm = exams.filter((e) => e.termId === nextTermId);
+    const next = defaultExam(inTerm, today);
+    if (next) chooseExam(next.id);
+  }
+
+  function chooseReportType(next: ReportType) {
+    setReportType(next);
+    if (next !== 'single' && otherExamIds.length === 0) setOtherExamIds(defaultOtherExams(exams, examId, today));
+  }
+
+  function toggleOtherExam(id: string) {
+    setOtherExamIds((current) => (current.includes(id) ? current.filter((x) => x !== id) : [...current, id]));
   }
 
   const selectedStreamName = streams.find((s) => s.id === streamId)?.name;
@@ -878,6 +948,38 @@ export default function ReportCardStudioPage() {
             ))}
           </select>
           <select
+            aria-label="Term"
+            value={termId}
+            onChange={(e) => chooseTerm(e.target.value)}
+            className="h-9 rounded-lg border border-border-strong bg-white px-3 text-sm font-medium text-primary-900"
+          >
+            {terms.length === 0 && <option value="">No terms</option>}
+            {terms.map(([id, name]) => (
+              <option key={id} value={id}>{name}</option>
+            ))}
+          </select>
+          <select
+            aria-label="Exam"
+            value={examId}
+            onChange={(e) => chooseExam(e.target.value)}
+            className="h-9 rounded-lg border border-border-strong bg-white px-3 text-sm font-medium text-primary-900"
+          >
+            {termExams.length === 0 && <option value="">No exams</option>}
+            {termExams.map((e) => (
+              <option key={e.id} value={e.id}>{e.name}</option>
+            ))}
+          </select>
+          <select
+            aria-label="Report type"
+            value={reportType}
+            onChange={(e) => chooseReportType(e.target.value as ReportType)}
+            className="h-9 rounded-lg border border-border-strong bg-white px-3 text-sm font-medium text-primary-900"
+          >
+            {(Object.keys(REPORT_TYPE_LABELS) as ReportType[]).map((type) => (
+              <option key={type} value={type}>{REPORT_TYPE_LABELS[type]}</option>
+            ))}
+          </select>
+          <select
             value={classId}
             onChange={(e) => setClassId(e.target.value)}
             className="h-9 rounded-lg border border-border-strong bg-white px-3 text-sm font-medium text-primary-900"
@@ -908,6 +1010,26 @@ export default function ReportCardStudioPage() {
               <LayoutTemplate className="w-4 h-4" aria-hidden /> Customise layout
             </Link>
           )}
+          <Link
+            href={`${base}/exam-performance`}
+            className="h-9 inline-flex items-center gap-1.5 rounded-lg border border-border-strong bg-white px-3.5 text-sm font-semibold text-primary-900 hover:bg-bg-subtle transition-colors"
+          >
+            <TrendingUp className="w-4 h-4" aria-hidden /> Performance
+          </Link>
+          {report && (
+            <DropdownMenu
+              label="Mark sheets"
+              items={[
+                { label: 'Class mark sheet', icon: FileText, onClick: () => openMarkSheet(false) },
+                { label: 'Blank mark sheet', icon: FileText, onClick: () => openMarkSheet(true) },
+              ]}
+              trigger={
+                <span className="h-9 inline-flex items-center gap-1.5 rounded-lg border border-border-strong bg-white px-3.5 text-sm font-semibold text-primary-900 hover:bg-bg-subtle transition-colors">
+                  <FileText className="w-4 h-4" aria-hidden /> Mark sheets
+                </span>
+              }
+            />
+          )}
           {report && (
             <DropdownMenu
               items={reportCardItems}
@@ -921,6 +1043,67 @@ export default function ReportCardStudioPage() {
           )}
         </div>
       </div>
+
+      {reportType !== 'single' && (
+        <Card className="print:hidden">
+          <p className="text-sm font-semibold text-primary-900">
+            {reportType === 'side_by_side' ? 'Show these exams beside it' : 'Combine with these exams'}
+          </p>
+          <p className="text-xs text-text-muted mt-0.5 mb-3">
+            {reportType === 'side_by_side'
+              ? 'Grades and positions stay based on the exam you picked above.'
+              : 'Grades and positions come from the final mark. A learner who missed an exam is marked on the ones they sat.'}
+          </p>
+          <ul className="space-y-2">
+            {reportType === 'combined_custom' && (
+              <li className="flex flex-wrap items-center gap-3 text-sm text-primary-900">
+                <span className="font-medium">{exams.find((e) => e.id === examId)?.name} (picked above)</span>
+                <label className="inline-flex items-center gap-1.5 text-xs text-text-muted">
+                  Share
+                  <input
+                    type="number"
+                    min={0}
+                    value={weights[examId] ?? ''}
+                    onChange={(e) => setWeights((w) => ({ ...w, [examId]: Number(e.target.value) }))}
+                    className="w-16 h-8 rounded-md border border-border-strong px-2 text-sm text-primary-900"
+                  />
+                  %
+                </label>
+              </li>
+            )}
+            {exams
+              .filter((e) => e.id !== examId)
+              .map((e) => (
+                <li key={e.id} className="flex flex-wrap items-center gap-3 text-sm text-primary-900">
+                  <label className="inline-flex items-center gap-2">
+                    <input type="checkbox" checked={otherExamIds.includes(e.id)} onChange={() => toggleOtherExam(e.id)} />
+                    {e.name} <span className="text-xs text-text-muted">{e.termName}</span>
+                  </label>
+                  {reportType === 'combined_custom' && otherExamIds.includes(e.id) && (
+                    <label className="inline-flex items-center gap-1.5 text-xs text-text-muted">
+                      Share
+                      <input
+                        type="number"
+                        min={0}
+                        value={weights[e.id] ?? ''}
+                        onChange={(event) => setWeights((w) => ({ ...w, [e.id]: Number(event.target.value) }))}
+                        className="w-16 h-8 rounded-md border border-border-strong px-2 text-sm text-primary-900"
+                      />
+                      %
+                    </label>
+                  )}
+                </li>
+              ))}
+          </ul>
+          {!reportParams && (
+            <p className="mt-3 text-xs font-medium text-warning" role="status">
+              {otherExamIds.length === 0
+                ? 'Tick at least one other exam. Until then this shows the picked exam only.'
+                : 'Enter the shares. Until then this shows the picked exam only.'}
+            </p>
+          )}
+        </Card>
+      )}
 
       {loading && (
         <div className="py-16 flex justify-center">
@@ -981,7 +1164,7 @@ export default function ReportCardStudioPage() {
                 <div>
                   <p className="text-xs font-bold uppercase tracking-wide text-text-faint mb-1.5">Principal subjects</p>
                   <Card className="overflow-x-auto p-0 print:overflow-visible">
-                    <SubjectTable rows={principalSubjects} onRowClick={(id) => router.push(sheetHref(id))} />
+                    <SubjectTable rows={principalSubjects} onRowClick={openSheet} />
                   </Card>
                 </div>
                 <div>
@@ -989,13 +1172,13 @@ export default function ReportCardStudioPage() {
                     Subsidiary subjects <span className="font-medium normal-case">(General Paper + combination choice)</span>
                   </p>
                   <Card className="overflow-x-auto p-0 print:overflow-visible">
-                    <SubjectTable rows={subsidiarySubjects} onRowClick={(id) => router.push(sheetHref(id))} />
+                    <SubjectTable rows={subsidiarySubjects} onRowClick={openSheet} />
                   </Card>
                 </div>
               </div>
             ) : (
               <Card className="overflow-x-auto p-0 print:overflow-visible">
-                <SubjectTable rows={report.subjects} onRowClick={(id) => router.push(sheetHref(id))} />
+                <SubjectTable rows={report.subjects} onRowClick={openSheet} />
               </Card>
             )}
           </section>
