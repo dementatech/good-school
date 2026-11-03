@@ -2,10 +2,15 @@
 
 import { useEffect, useState } from 'react';
 import { Activity, CalendarCheck, GraduationCap, Layers, UserCog } from 'lucide-react';
-import { DashboardShell } from '@/components/ui/DashboardShell';
+import { ClassBreakdownPanel } from '@/components/dashboard/ClassBreakdownPanel';
+import { ComingUpPanel } from '@/components/dashboard/ComingUpPanel';
+import { DashboardColumns, DashboardPage } from '@/components/dashboard/DashboardPage';
+import { MetricCard, MetricGrid } from '@/components/dashboard/MetricCard';
+import { NoticeBanner } from '@/components/dashboard/NoticeBanner';
+import { OngoingExamsPanel } from '@/components/dashboard/OngoingExamsPanel';
+import { Panel } from '@/components/dashboard/Panel';
+import { TopLearnersPanel } from '@/components/dashboard/TopLearnersPanel';
 import { ActivityFeed } from '@/components/ui/ActivityFeed';
-import { Card } from '@/components/ui/Card';
-import { DashboardGrid } from '@/components/ui/DashboardGrid';
 import { useToast } from '@/components/ui/ToastProvider';
 import { fetchList, fetchOne } from '@/lib/api/envelope';
 import {
@@ -24,17 +29,6 @@ import {
   type SchoolAnalytics,
   type TrendPoint,
 } from '@/lib/school-admin/dashboard';
-import { ClassBreakdown } from '@/components/school-admin/dashboard/ClassBreakdown';
-import { DashboardGreeting } from '@/components/school-admin/dashboard/DashboardGreeting';
-import { DashboardNotice } from '@/components/school-admin/dashboard/DashboardNotice';
-import { MetricTile } from '@/components/school-admin/dashboard/MetricTile';
-import { PanelHeader } from '@/components/school-admin/dashboard/PanelHeader';
-import { OngoingExams } from '@/components/school-admin/dashboard/OngoingExams';
-import { TopLearners } from '@/components/school-admin/dashboard/TopLearners';
-import { UpcomingEvents, type UpcomingEvent } from '@/components/school-admin/dashboard/UpcomingEvents';
-
-const UPCOMING_DAYS = 30;
-const UPCOMING_LIMIT = 4;
 
 export default function SchoolAdminDashboard() {
   const toast = useToast();
@@ -50,9 +44,6 @@ export default function SchoolAdminDashboard() {
   const [term, setTerm] = useState<DashboardTerm | null>(null);
   const [attendance, setAttendance] = useState<AttendanceClassSummary[]>([]);
   const [attendanceLoading, setAttendanceLoading] = useState(true);
-
-  const [events, setEvents] = useState<UpcomingEvent[]>([]);
-  const [eventsLoading, setEventsLoading] = useState(true);
 
   useEffect(() => {
     void (async () => {
@@ -91,13 +82,6 @@ export default function SchoolAdminDashboard() {
       setAttendanceLoading(false);
     })();
 
-    void (async () => {
-      const until = new Date();
-      until.setDate(until.getDate() + UPCOMING_DAYS);
-      const rows = await fetchList<UpcomingEvent>(`/api/v1/events?from=${today}&to=${localIsoDate(until)}`);
-      setEvents(rows.slice(0, UPCOMING_LIMIT));
-      setEventsLoading(false);
-    })();
     // Loads once per visit. toast and today never change meaningfully.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -108,49 +92,54 @@ export default function SchoolAdminDashboard() {
   const countOf = (value?: number) => (value === undefined ? '—' : value.toLocaleString('en-GB'));
 
   return (
-    <DashboardShell rail={false}>
-      <DashboardGreeting className="md:hidden mb-3" />
+    <DashboardPage>
+      {notice && (
+        <NoticeBanner
+          title={notice.title}
+          message={notice.message}
+          href={`/school-admin/exams/${notice.examId}`}
+          actionLabel="View exam"
+        />
+      )}
 
-      {notice && <DashboardNotice notice={notice} />}
-
-      <DashboardGrid className="mb-3 sm:mb-4">
-        <MetricTile icon={GraduationCap} label="Students" href="/school-admin/students" value={countOf(analytics?.counts.students)} />
-        <MetricTile icon={UserCog} label="Staff" href="/school-admin/staff" value={countOf(analytics?.counts.staff)} />
-        <MetricTile icon={Layers} label="Classes" href="/school-admin/classes" value={countOf(analytics?.counts.classes)} />
-        <MetricTile
+      <MetricGrid>
+        <MetricCard icon={GraduationCap} label="Students" href="/school-admin/students" value={countOf(analytics?.counts.students)} loading={loading} />
+        <MetricCard icon={UserCog} label="Staff" href="/school-admin/staff" value={countOf(analytics?.counts.staff)} loading={loading} />
+        <MetricCard icon={Layers} label="Classes" href="/school-admin/classes" value={countOf(analytics?.counts.classes)} loading={loading} />
+        <MetricCard
           icon={CalendarCheck}
           label="Attendance this term"
           href="/school-admin/attendance"
-          value={attendanceLoading || rate === null ? '—' : `${rate}%`}
+          value={rate === null ? '—' : `${rate}%`}
+          loading={attendanceLoading}
         />
-      </DashboardGrid>
+      </MetricGrid>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 sm:gap-4 items-start">
-        <div className="space-y-3 sm:space-y-4 min-w-0">
-          <OngoingExams exams={ongoingExams(exams)} progress={progress} today={today} loading={examsLoading} />
-          <UpcomingEvents events={events} loading={eventsLoading} />
-          <Card>
-            <PanelHeader icon={Activity} title="Recent activity" subtitle="Enrolments and mark sheets" />
-            {loading ? (
-              <p className="text-sm text-text-muted">Loading…</p>
-            ) : (
+      <DashboardColumns
+        left={
+          <>
+            <OngoingExamsPanel exams={ongoingExams(exams)} progress={progress} today={today} loading={examsLoading} base="/school-admin" />
+            <ComingUpPanel />
+            <Panel icon={Activity} title="Recent activity" description="Enrolments and mark sheets" loading={loading}>
               <ActivityFeed items={analytics?.activity ?? []} />
-            )}
-          </Card>
-        </div>
-        <div className="space-y-3 sm:space-y-4 min-w-0">
-          <ClassBreakdown
-            population={population}
-            attendance={attendance}
-            trend={trend}
-            boys={analytics?.gender.male ?? 0}
-            girls={analytics?.gender.female ?? 0}
-            termName={term?.name ?? null}
-            loading={loading || attendanceLoading}
-          />
-          <TopLearners exam={latestPublishedExam(exams)} classes={population} loading={examsLoading || loading} />
-        </div>
-      </div>
-    </DashboardShell>
+            </Panel>
+          </>
+        }
+        right={
+          <>
+            <ClassBreakdownPanel
+              population={population}
+              attendance={attendance}
+              trend={trend}
+              boys={analytics?.gender.male ?? 0}
+              girls={analytics?.gender.female ?? 0}
+              termName={term?.name ?? null}
+              loading={loading || attendanceLoading}
+            />
+            <TopLearnersPanel exam={latestPublishedExam(exams)} classes={population} loading={examsLoading || loading} />
+          </>
+        }
+      />
+    </DashboardPage>
   );
 }

@@ -1,85 +1,45 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { StatCard } from '@/components/ui/StatCard';
-import { DashboardGrid } from '@/components/ui/DashboardGrid';
-import { DashboardShell } from '@/components/ui/DashboardShell';
-import { WelcomeBanner } from '@/components/ui/WelcomeBanner';
-import { School, UserCog, Library, ShieldCheck } from 'lucide-react';
+import { Library, School, ShieldCheck, UserCog } from 'lucide-react';
+import { DashboardPage } from '@/components/dashboard/DashboardPage';
+import { MetricCard, MetricGrid } from '@/components/dashboard/MetricCard';
+import { fetchList, fetchOne } from '@/lib/api/envelope';
 
-interface Stats {
-  schools: number;
+interface AccountSummary {
   schoolAdmins: number;
   staff: number;
-  students: number;
-  parents: number;
-  superAdmins: number;
-  libraryPending: number;
 }
 
-// Strictly 4: the account breakdown (students/parents) already lives on the
-// main /admin dashboard — this page stays focused on what's unique to
-// system administration (school count, school-admin count, staff, approvals).
-const CARDS = [
-  { key: 'schools' as const, label: 'Schools', href: '/admin/system/schools', icon: School },
-  { key: 'schoolAdmins' as const, label: 'School Admins', href: '/admin/system/accounts', icon: ShieldCheck },
-  { key: 'staff' as const, label: 'Staff', href: '/admin/system/accounts', icon: UserCog },
-  { key: 'libraryPending' as const, label: 'Library approvals pending', href: '/admin/system/library', icon: Library },
-];
-
+/** What's unique to running the platform; the people totals are on /admin. */
 export default function SystemDashboard() {
-  const [stats, setStats] = useState<Stats>({
-    schools: 0,
-    schoolAdmins: 0,
-    staff: 0,
-    students: 0,
-    parents: 0,
-    superAdmins: 0,
-    libraryPending: 0,
-  });
+  const [schools, setSchools] = useState(0);
+  const [summary, setSummary] = useState<AccountSummary | null>(null);
+  const [pending, setPending] = useState(0);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    async function load() {
-      try {
-        const [schools, summary, library] = await Promise.all([
-          fetch('/api/v1/schools', { credentials: 'include' }).then((r) => r.json()),
-          fetch('/api/v1/admin/accounts/summary', { credentials: 'include' }).then((r) => r.json()),
-          fetch('/api/v1/library/content?scope=pending', { credentials: 'include' }).then((r) => r.json()),
-        ]);
-        setStats({
-          schools: schools.data?.length ?? 0,
-          schoolAdmins: summary.data?.schoolAdmins ?? 0,
-          staff: summary.data?.staff ?? 0,
-          students: summary.data?.students ?? 0,
-          parents: summary.data?.parents ?? 0,
-          superAdmins: summary.data?.superAdmins ?? 0,
-          libraryPending: library.data?.length ?? 0,
-        });
-      } finally {
-        setLoading(false);
-      }
-    }
-    load();
+    void (async () => {
+      const [schoolRows, accounts, library] = await Promise.all([
+        fetchList('/api/v1/schools'),
+        fetchOne<AccountSummary>('/api/v1/admin/accounts/summary'),
+        fetchList('/api/v1/library/content?scope=pending'),
+      ]);
+      setSchools(schoolRows.length);
+      setSummary(accounts);
+      setPending(library.length);
+      setLoading(false);
+    })();
   }, []);
 
   return (
-    <DashboardShell>
-      <WelcomeBanner subtitle="Schools, curriculum and every account. Super admin only." />
-
-      <DashboardGrid>
-        {CARDS.map((c, i) => (
-          <StatCard
-            key={c.label}
-            icon={c.icon}
-            label={c.label}
-            href={c.href}
-            value={stats[c.key]}
-            loading={loading}
-            accent={i === 0 ? 'hero' : 'neutral'}
-          />
-        ))}
-      </DashboardGrid>
-    </DashboardShell>
+    <DashboardPage title="System overview">
+      <MetricGrid>
+        <MetricCard icon={School} label="Schools" value={schools} href="/admin/system/schools" loading={loading} />
+        <MetricCard icon={ShieldCheck} label="School admins" value={summary?.schoolAdmins ?? 0} href="/admin/system/accounts" loading={loading} />
+        <MetricCard icon={UserCog} label="Staff" value={summary?.staff ?? 0} href="/admin/system/accounts" loading={loading} />
+        <MetricCard icon={Library} label="Library approvals pending" value={pending} href="/admin/system/library" loading={loading} />
+      </MetricGrid>
+    </DashboardPage>
   );
 }

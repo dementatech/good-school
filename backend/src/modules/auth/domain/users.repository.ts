@@ -111,6 +111,20 @@ export async function setUserPhoto(
   return stored ? fileUrl(stored) : null;
 }
 
+/** The person's name, from whichever profile they have. `users` holds identity
+ *  only. Null for an account with no profile, such as a school admin. */
+export async function findDisplayName(id: string): Promise<string | null> {
+  const { rows } = await pool.query<{ name: string | null }>(
+    `select coalesce(
+       (select trim(concat_ws(' ', first_name, last_name)) from students where user_id = $1),
+       (select trim(concat_ws(' ', first_name, last_name)) from staff where user_id = $1),
+       (select trim(concat_ws(' ', first_name, last_name)) from guardian where user_id = $1 limit 1)
+     ) as name`,
+    [id],
+  );
+  return rows[0]?.name || null;
+}
+
 export async function findUserById(id: string): Promise<AuthUserRecord | null> {
   const result = await pool.query<AuthUserRecord>(
     `select id, school_id, system_id, email, phone_number, password_hash, role,

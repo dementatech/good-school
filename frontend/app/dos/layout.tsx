@@ -1,19 +1,12 @@
 'use client';
 
+import { PortalShell } from '@/components/dashboard/PortalShell';
 import React from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
 import '@/lib/dosFetch';
 import { useAuth } from '@/components/auth/AuthContext';
 import { PortalGate } from '@/components/auth/PortalGate';
 import { SchoolThemeApplier } from '@/components/theme/SchoolThemeApplier';
-import { FeatureGate } from '@/components/FeatureGate';
-import { NotificationBell } from '@/components/ui/NotificationBell';
-import { AccountMenu } from '@/components/ui/AccountMenu';
-import { TopbarSearch } from '@/components/ui/TopbarSearch';
-import { MobileNavDrawer } from '@/components/ui/MobileNavDrawer';
-import { PortalSidebar } from '@/components/ui/PortalSidebar';
-import { SectionSwitcher } from '@/components/ui/SectionSwitcher';
 import { Card } from '@/components/ui/Card';
 import { PageLoader } from '@/components/ui/loader';
 import { useDirectorOfStudies } from '@/lib/portal';
@@ -73,8 +66,7 @@ const NAV_BASE = [
 ];
 
 function DosShell({ children }: { children: React.ReactNode }) {
-  const { user, logout } = useAuth();
-  const router = useRouter();
+  const { user } = useAuth();
   const levels = useSchoolLevels();
   const dos = useDirectorOfStudies();
 
@@ -114,54 +106,10 @@ function DosShell({ children }: { children: React.ReactNode }) {
     );
   }
 
-  const signOut = () => {
-    logout();
-    router.push('/auth');
-  };
-
   return (
-    <div className="min-h-screen print:min-h-0 bg-bg-canvas print:bg-white flex">
-      <div className="print:!hidden contents">
-        <PortalSidebar
-          brandLogoUrl={user?.logoUrl}
-          brandLabel={user?.school || 'Good School'}
-          subtitle={`${user?.name ?? ''} · Director of Studies`}
-          nav={NAV}
-        />
-      </div>
-
-      <div className="flex-1 min-w-0 flex flex-col">
-        <div className="hidden md:flex print:!hidden items-center justify-between gap-4 px-8 py-2 border-b border-border bg-bg-card">
-          <div className="flex items-center gap-4 min-w-0">
-            <TopbarSearch items={NAV} />
-            <SectionSwitcher />
-          </div>
-          <div className="flex items-center gap-2 shrink-0">
-            <NotificationBell />
-            <AccountMenu onSignOut={signOut} />
-          </div>
-        </div>
-
-        <div className="md:hidden print:!hidden flex items-center justify-between px-4 py-3 border-b border-border bg-bg-card">
-          <div className="flex items-center gap-2 min-w-0">
-            <MobileNavDrawer
-              title={user?.school || 'Good School'}
-              subtitle="Director of Studies"
-              items={NAV}
-              onSignOut={signOut}
-            />
-            <p className="text-sm font-semibold text-primary-900 truncate">{user?.school || 'Good School'}</p>
-          </div>
-          <NotificationBell />
-        </div>
-        <div className="md:hidden print:!hidden flex justify-center px-4 py-2 border-b border-border bg-bg-card empty:hidden">
-          <SectionSwitcher compact />
-        </div>
-        <main className="flex-1 p-3 sm:p-6 md:p-8 print:p-0">
-          <FeatureGate>{children}</FeatureGate>
-        </main>
-      </div>
-    </div>
+    <PortalShell nav={NAV} dashboardHref="/dos" subtitle={`${user?.name ?? ''} · Director of Studies`} showSectionSwitcher>
+      {children}
+    </PortalShell>
   );
 }
 

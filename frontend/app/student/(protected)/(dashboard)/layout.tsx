@@ -1,14 +1,7 @@
 'use client';
 
+import { PortalShell } from '@/components/dashboard/PortalShell';
 import React from 'react';
-import { useRouter } from 'next/navigation';
-import { useAuth } from '@/components/auth/AuthContext';
-import { NotificationBell } from '@/components/ui/NotificationBell';
-import { AccountMenu } from '@/components/ui/AccountMenu';
-import { TopbarSearch } from '@/components/ui/TopbarSearch';
-import { MobileNavDrawer } from '@/components/ui/MobileNavDrawer';
-import { PortalSidebar } from '@/components/ui/PortalSidebar';
-import { FeatureGate } from '@/components/FeatureGate';
 import { LayoutDashboard, Award, LifeBuoy } from 'lucide-react';
 
 /**
@@ -25,47 +18,10 @@ const NAV = [
 ];
 
 export default function StudentDashboardLayout({ children }: { children: React.ReactNode }) {
-  const { user, logout } = useAuth();
-  const router = useRouter();
 
   return (
-    <div className="min-h-screen bg-bg-canvas flex">
-      <PortalSidebar
-        brandLogoUrl={user?.logoUrl}
-        brandLabel={user?.school || 'Good School'}
-        subtitle={user?.name}
-        nav={NAV}
-      />
-
-      <div className="flex-1 min-w-0 flex flex-col">
-        <div className="hidden md:flex items-center justify-between gap-4 px-8 py-2 border-b border-border bg-bg-card">
-          <TopbarSearch items={NAV} />
-          <div className="flex items-center gap-2 shrink-0">
-            <NotificationBell />
-            <AccountMenu onSignOut={() => { logout(); router.push('/auth'); }} />
-          </div>
-        </div>
-
-        <div className="md:hidden flex items-center justify-between px-4 py-3 border-b border-border bg-bg-card">
-          <div className="flex items-center gap-2 min-w-0">
-            <MobileNavDrawer
-              title={user?.school || 'Good School'}
-              subtitle={user?.name}
-              items={NAV}
-              onSignOut={() => { logout(); router.push('/auth'); }}
-            />
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={user?.logoUrl || '/logo.png'}
-              alt=""
-              className="w-8 h-8 rounded-lg object-contain bg-white border border-[#EAEAEA] shrink-0"
-            />
-            <p className="text-sm font-semibold text-primary-900 truncate">{user?.school || 'Good School'}</p>
-          </div>
-          <NotificationBell />
-        </div>
-        <main className="flex-1 p-3 sm:p-6 md:p-8"><FeatureGate>{children}</FeatureGate></main>
-      </div>
-    </div>
+    <PortalShell nav={NAV} dashboardHref="/student/dashboard">
+      {children}
+    </PortalShell>
   );
 }

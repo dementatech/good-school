@@ -7,7 +7,7 @@ import { useRouter } from 'next/navigation';
 import { arc as d3arc, max, pie as d3pie, scaleBand, scaleLinear } from 'd3';
 import { Card } from '@/components/ui/Card';
 import { StatCard } from '@/components/ui/StatCard';
-import { DashboardGrid } from '@/components/ui/DashboardGrid';
+import { MetricGrid } from '@/components/dashboard/MetricCard';
 import { Badge } from '@/components/ui/Badge';
 import { Loader } from '@/components/ui/loader';
 import { DropdownMenu, type DropdownMenuItem } from '@/components/ui/DropdownMenu';
@@ -1125,12 +1125,11 @@ export default function ReportCardStudioPage() {
 
       {!loading && report && report.subjects.length > 0 && (
         <>
-          <DashboardGrid>
+          <MetricGrid>
             <StatCard
               icon={TrendingUp}
               label={isALevel ? 'Principal-subject class average' : 'Class average'}
               value={classAverage !== null ? `${classAverage}%` : '—'}
-              accent="hero"
             />
             <StatCard
               icon={Trophy}
@@ -1147,10 +1146,9 @@ export default function ReportCardStudioPage() {
                     : `${report.topPerformers[0].studentName} — ${round(standing(report.topPerformers[0], isALevel ?? false).average!)}%`
                   : 'No marks entered yet'
               }
-              accent="gold"
             />
             <StatCard icon={AlertTriangle} label="Students below 40% — needs attention" value={String(belowPassCount)} />
-          </DashboardGrid>
+          </MetricGrid>
 
           <section>
             <div className="flex items-baseline justify-between mb-3">

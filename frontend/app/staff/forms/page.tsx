@@ -1,9 +1,8 @@
 'use client';
 
 import { StatCard } from '@/components/ui/StatCard';
-import { DashboardGrid } from '@/components/ui/DashboardGrid';
-import { DashboardShell } from '@/components/ui/DashboardShell';
-import { WelcomeBanner } from '@/components/ui/WelcomeBanner';
+import { MetricGrid } from '@/components/dashboard/MetricCard';
+import { DashboardPage } from '@/components/dashboard/DashboardPage';
 import { ClipboardCheck, FileText, Laptop, Smile } from 'lucide-react';
 
 // Listed in the order a teacher actually works: register at the start of the
@@ -21,10 +20,9 @@ const FORMS = [
 
 export default function StaffFormsPage() {
   return (
-    <DashboardShell>
-      <WelcomeBanner subtitle="Field forms you fill as a teacher." />
+    <DashboardPage title="Data forms">
 
-      <DashboardGrid>
+      <MetricGrid>
         {FORMS.map((f, i) => (
           <StatCard
             key={f.href}
@@ -32,10 +30,9 @@ export default function StaffFormsPage() {
             label={f.label}
             description={f.description}
             href={f.href}
-            accent={i === 0 ? 'hero' : 'neutral'}
           />
         ))}
-      </DashboardGrid>
-    </DashboardShell>
+      </MetricGrid>
+    </DashboardPage>
   );
 }

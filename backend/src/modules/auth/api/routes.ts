@@ -2,6 +2,7 @@ import type { FastifyInstance } from "fastify";
 import { login } from "../domain/login.js";
 import { resolveIdentifierKind } from "../domain/identifier.js";
 import {
+  findDisplayName,
   findUserById,
   findUserPhotoUrl,
   findUsersByIdentifierForReset,
@@ -74,9 +75,7 @@ export async function authRoutes(fastify: FastifyInstance) {
 
       return {
         id: user.id,
-        // `users` holds identity/auth only — no name columns (see the auth
-        // brief). Name comes from the role-profile tables in a later phase.
-        name: null,
+        name: await findDisplayName(user.id),
         email: user.email,
         phoneNumber: user.phone_number,
         systemId: user.system_id,
