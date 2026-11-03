@@ -38,7 +38,10 @@ COPY tsconfig.json ./
 # crash database and refuses to launch at all otherwise ("chrome_crashpad_handler:
 # --database is required") — without -m, useradd --system leaves $HOME
 # (/home/nodeuser) pointing at a directory that doesn't exist.
-RUN useradd --system --create-home --uid 1001 nodeuser && chown -R nodeuser:nodeuser /app /home/nodeuser
+# /app/uploads must exist here so it's nodeuser's: a new named volume takes its
+# owner from the image's directory. Without it Docker creates the mount point as
+# root, and every photo and document upload fails with EACCES.
+RUN useradd --system --create-home --uid 1001 nodeuser && mkdir -p /app/uploads && chown -R nodeuser:nodeuser /app /home/nodeuser
 USER nodeuser
 
 EXPOSE 4000

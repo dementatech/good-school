@@ -264,6 +264,10 @@ build_image frontend
 # ── 5. Restart — the container runs migrate:up before it boots ───────────────
 say "restarting backend + frontend (migrations run first)"
 $COMPOSE up -d backend frontend
+# A volume created before the image owned /app/uploads stays root's, and the app
+# (nodeuser) then can't save any upload. Safe to repeat on every deploy.
+$COMPOSE exec -T -u root backend chown -R nodeuser:nodeuser /app/uploads </dev/null \
+  || echo "  warning: could not set the owner of /app/uploads; uploads may fail" >&2
 
 # ── 6. Health check ─────────────────────────────────────────────────────────
 say "waiting for the backend"
