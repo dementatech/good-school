@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { useRouter } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { useAuth } from '@/components/auth/AuthContext';
 import { PortalGate } from '@/components/auth/PortalGate';
 import { SchoolThemeApplier } from '@/components/theme/SchoolThemeApplier';
@@ -12,6 +12,7 @@ import { TopbarSearch } from '@/components/ui/TopbarSearch';
 import { MobileNavDrawer } from '@/components/ui/MobileNavDrawer';
 import { PortalSidebar } from '@/components/ui/PortalSidebar';
 import { SectionSwitcher } from '@/components/ui/SectionSwitcher';
+import { DashboardGreeting } from '@/components/school-admin/dashboard/DashboardGreeting';
 import { useUnreadMessageCount } from '@/lib/communications/useUnreadMessageCount';
 import {
   LayoutDashboard,
@@ -36,6 +37,7 @@ import {
   Users,
   LayoutTemplate,
   LifeBuoy,
+  TrendingUp,
 } from 'lucide-react';
 import type { Role } from '@/lib/auth/session';
 import { subjectPhasesOf, usesNurseryRatings, useSchoolLevels } from '@/lib/levels';
@@ -69,6 +71,7 @@ const NAV_BASE = [
       { href: '/school-admin/exams', label: 'Manage Exams', icon: ClipboardList, exact: true },
       { href: '/school-admin/report-card-studio', label: 'Report Card Studio', icon: FileBarChart2 },
       { href: '/school-admin/report-card-layout', label: 'Report Card Layout', icon: LayoutTemplate },
+      { href: '/school-admin/exam-performance', label: 'Exam Performance', icon: TrendingUp },
       { href: '/school-admin/grading-schemes', label: 'Grading Schemes', icon: Award },
       { href: '/school-admin/kindergarten', label: 'Kindergarten Progress', icon: Baby },
     ],
@@ -91,6 +94,7 @@ const NAV_BASE = [
 function SchoolAdminShell({ children }: { children: React.ReactNode }) {
   const { user, logout } = useAuth();
   const router = useRouter();
+  const pathname = usePathname();
   const unreadMessages = useUnreadMessageCount();
   const levels = useSchoolLevels();
   const NAV = React.useMemo(() => {
@@ -105,7 +109,7 @@ function SchoolAdminShell({ children }: { children: React.ReactNode }) {
       ...(levels?.offersOLevel ? [] : ['/school-admin/subjects/options']),
       ...(levels?.offersALevel ? [] : ['/school-admin/subjects/combinations']),
       ...(levels ? [] : ['/school-admin/subjects']),
-      ...(hasMarks ? [] : ['/school-admin/exams', '/school-admin/report-card-studio', '/school-admin/report-card-layout', '/school-admin/grading-schemes']),
+      ...(hasMarks ? [] : ['/school-admin/exams', '/school-admin/report-card-studio', '/school-admin/report-card-layout', '/school-admin/exam-performance', '/school-admin/grading-schemes']),
     ]);
     return NAV_BASE.filter((item) => !item.href || !hidden.has(item.href))
       .map((item) => {
@@ -129,12 +133,13 @@ function SchoolAdminShell({ children }: { children: React.ReactNode }) {
       </div>
 
       <div className="flex-1 min-w-0 flex flex-col">
-        <div className="hidden md:flex print:!hidden items-center justify-between gap-4 px-8 py-2 border-b border-border bg-bg-card">
+        <div className="hidden md:flex print:!hidden items-center justify-between gap-4 px-8 pt-5">
           <div className="flex items-center gap-4 min-w-0">
-            <TopbarSearch items={NAV} />
+            {pathname === '/school-admin' && <DashboardGreeting />}
             <SectionSwitcher />
           </div>
-          <div className="flex items-center gap-2 shrink-0">
+          <div className="flex items-center justify-end gap-2 flex-1 min-w-0">
+            <TopbarSearch items={NAV} fieldClassName="bg-white" />
             <NotificationBell />
             <AccountMenu onSignOut={() => { logout(); router.push('/auth'); }} />
           </div>
@@ -161,7 +166,7 @@ function SchoolAdminShell({ children }: { children: React.ReactNode }) {
         <div className="md:hidden print:!hidden flex justify-center px-4 py-2 border-b border-border bg-bg-card empty:hidden">
           <SectionSwitcher compact />
         </div>
-        <main className="flex-1 p-3 sm:p-6 md:p-8 print:p-0"><FeatureGate>{children}</FeatureGate></main>
+        <main className="flex-1 p-3 sm:p-6 md:px-8 md:py-5 print:p-0"><FeatureGate>{children}</FeatureGate></main>
       </div>
     </div>
   );

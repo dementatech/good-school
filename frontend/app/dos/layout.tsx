@@ -35,6 +35,7 @@ import {
   ListChecks,
   NotebookPen,
   LifeBuoy,
+  TrendingUp,
 } from 'lucide-react';
 
 // The Director of Studies signs in with their teacher account ('teacher' from
@@ -62,6 +63,7 @@ const NAV_BASE = [
     children: [
       { href: '/dos/exams', label: 'Manage Exams', icon: ClipboardList, exact: true },
       { href: '/dos/report-card-studio', label: 'Report Card Studio', icon: FileBarChart2 },
+      { href: '/dos/exam-performance', label: 'Exam Performance', icon: TrendingUp },
       { href: '/dos/grading-schemes', label: 'Grading Schemes', icon: Award },
       { href: '/dos/kindergarten', label: 'Kindergarten Progress', icon: Baby },
     ],
@@ -83,7 +85,7 @@ function DosShell({ children }: { children: React.ReactNode }) {
       ...(usesNurseryRatings(levels) ? [] : ['/dos/kindergarten']),
       ...(levels?.offersOLevel ? [] : ['/dos/subjects/options']),
       ...(levels?.offersALevel ? [] : ['/dos/subjects/combinations']),
-      ...(hasMarks ? [] : ['/dos/exams', '/dos/report-card-studio', '/dos/grading-schemes']),
+      ...(hasMarks ? [] : ['/dos/exams', '/dos/report-card-studio', '/dos/exam-performance', '/dos/grading-schemes']),
     ]);
     return NAV_BASE.filter((item) => !item.href || !hidden.has(item.href))
       .map((item) =>

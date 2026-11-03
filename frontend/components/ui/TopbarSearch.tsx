@@ -15,7 +15,16 @@ function flatten(items: NavItem[]): NavItem[] {
  * content search to yet, so this searches what we do have in hand: the
  * signed-in portal's own nav tree, already in memory.
  */
-export function TopbarSearch({ items, placeholder = 'Search pages…' }: { items: NavItem[]; placeholder?: string }) {
+export function TopbarSearch({
+  items,
+  placeholder = 'Search pages…',
+  fieldClassName = 'bg-bg-muted',
+}: {
+  items: NavItem[];
+  placeholder?: string;
+  /** The field's resting fill: muted on a white topbar, white on the canvas. */
+  fieldClassName?: string;
+}) {
   const router = useRouter();
   const flat = useMemo(() => flatten(items), [items]);
   const [query, setQuery] = useState('');
@@ -65,7 +74,7 @@ export function TopbarSearch({ items, placeholder = 'Search pages…' }: { items
 
   return (
     <div className="relative w-full max-w-xs" ref={wrapRef}>
-      <div className="flex items-center gap-2 h-9 px-3.5 rounded-full bg-bg-muted border border-transparent focus-within:border-border focus-within:bg-white transition-colors">
+      <div className={`flex items-center gap-2 h-9 px-3.5 rounded-full border border-transparent focus-within:border-border focus-within:bg-white transition-colors ${fieldClassName}`}>
         <Search className="w-4 h-4 text-text-faint shrink-0" aria-hidden />
         <input
           ref={inputRef}

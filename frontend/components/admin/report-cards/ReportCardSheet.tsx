@@ -25,6 +25,8 @@ export interface ReportCardStudentSubject {
   isExaminable: boolean;
   /** Primary: the band's points (D1 = 1 … F9 = 9). */
   points: number | null;
+  /** Scores in the report's `compared` exams, same order. */
+  history?: { examId: string; rawScore: number | null; isAbsent: boolean }[];
 }
 export interface ReportCardStudent {
   studentUserId: string;
@@ -54,7 +56,18 @@ export interface GradeDivision {
   minAggregate: number;
   maxAggregate: number;
 }
+export interface ComparedExam {
+  id: string;
+  label: string;
+  name: string;
+  weightPercent: number | null;
+}
 export interface ExamReportCard {
+  mode?: 'single' | 'side_by_side' | 'combined';
+  /** Extra columns on the report, oldest exam first. */
+  compared?: ComparedExam[];
+  /** Every subject taught in this class in this exam, for any stream. */
+  classSubjects?: { subjectId: string; subjectName: string; subjectShortName: string; role: 'principal' | 'subsidiary' }[];
   exam: { id: string; name: string; termId: string; termName: string; publishedAt: string | null };
   /** The school's choice, per section, whether report cards show positions. */
   showPositions: boolean;
@@ -247,6 +260,8 @@ export interface Sheet {
   showPositions: boolean;
   fields: ReportCardFields;
   nurseryRatings: NurseryRatings | null;
+  mode?: ExamReportCard['mode'];
+  compared?: ComparedExam[];
 }
 
 function ReportSubjectTable({
@@ -255,6 +270,8 @@ function ReportSubjectTable({
   fields,
   bands = [],
   showPoints = false,
+  compared = [],
+  combined = false,
 }: {
   title: string;
   subjects: ReportCardStudentSubject[];
@@ -262,6 +279,8 @@ function ReportSubjectTable({
   /** Live-grade fallback for an unpublished exam (Primary). */
   bands?: GradeBand[];
   showPoints?: boolean;
+  compared?: ComparedExam[];
+  combined?: boolean;
 }) {
   if (subjects.length === 0) return null;
   const points = showPoints && fields.points;
@@ -273,7 +292,17 @@ function ReportSubjectTable({
           <tr className="bg-bg-subtle text-left text-[10.5px] font-bold uppercase tracking-wide text-text-faint">
             {fields.rowNumbers && <th className="py-1 px-2 border-b border-r border-border w-8 text-center">#</th>}
             <th className="py-1 px-2 border-b border-r border-border">Subject</th>
-            {fields.score && <th className="py-1 px-2 border-b border-r border-border text-right">Score</th>}
+            {compared.map((exam) => (
+              <th key={exam.id} className="py-1 px-2 border-b border-r border-border text-right whitespace-nowrap" title={exam.name}>
+                {exam.label}
+                {exam.weightPercent !== null && ` (${exam.weightPercent}%)`}
+              </th>
+            ))}
+            {fields.score && (
+              <th className="py-1 px-2 border-b border-r border-border text-right">
+                {combined ? 'Final' : compared.length > 0 ? 'This exam' : 'Score'}
+              </th>
+            )}
             {fields.grade && <th className="py-1 px-2 border-b border-r border-border text-center">Grade</th>}
             {points && <th className="py-1 px-2 border-b border-r border-border text-center">Points</th>}
             {fields.subjectRemarks && <th className="py-1 px-2 border-b border-border">Remarks</th>}
@@ -297,6 +326,14 @@ function ReportSubjectTable({
                     </span>
                   )}
                 </td>
+                {compared.map((exam) => {
+                  const past = s.history?.find((h) => h.examId === exam.id);
+                  return (
+                    <td key={exam.id} className="py-1 px-2 border-r border-border text-right tabular-nums">
+                      {past?.isAbsent ? 'Abs' : past?.rawScore != null ? round(past.rawScore) : '—'}
+                    </td>
+                  );
+                })}
                 {fields.score && (
                   <td className="py-1 px-2 border-r border-border text-right tabular-nums font-semibold">
                     {s.isAbsent ? (
@@ -480,7 +517,8 @@ export function StudentReportCardSheet({
   principalBands: GradeBand[];
   subsidiaryBands: GradeBand[];
 }) {
-  const { student, exam, klass, stream, aggregation, totalInClass, showPositions, fields, nurseryRatings } = sheet;
+  const { student, exam, klass, stream, aggregation, totalInClass, showPositions, fields, nurseryRatings, compared, mode } = sheet;
+  const columns = { compared, combined: mode === 'combined' };
   const isALevel = klass.phase === 'A_LEVEL';
   const isPrimary = klass.phase === 'PRIMARY';
   const pleSubjects = student.subjects.filter((s) => s.isExaminable);
@@ -577,8 +615,8 @@ export function StudentReportCardSheet({
 
           {isALevel ? (
             <div className="space-y-2.5">
-              <ReportSubjectTable title="Principal Subjects" subjects={principalSubjects} fields={fields} />
-              <ReportSubjectTable title="Subsidiary Subjects" subjects={subsidiarySubjects} fields={fields} />
+              <ReportSubjectTable title="Principal Subjects" subjects={principalSubjects} fields={fields} {...columns} />
+              <ReportSubjectTable title="Subsidiary Subjects" subjects={subsidiarySubjects} fields={fields} {...columns} />
               <div className="grid grid-cols-2 gap-2.5">
                 <StatRow
                   items={[
@@ -617,9 +655,10 @@ export function StudentReportCardSheet({
                 fields={fields}
                 bands={primaryBands}
                 showPoints
+                {...columns}
               />
               {fields.otherSubjects && (
-                <ReportSubjectTable title="Other Subjects" subjects={otherSubjects} fields={fields} bands={primaryBands} />
+                <ReportSubjectTable title="Other Subjects" subjects={otherSubjects} fields={fields} bands={primaryBands} {...columns} />
               )}
               <StatRow
                 items={[
@@ -639,6 +678,7 @@ export function StudentReportCardSheet({
                 subjects={student.subjects}
                 fields={fields}
                 bands={isNursery ? nurseryBands : []}
+                {...columns}
               />
               <StatRow
                 items={[

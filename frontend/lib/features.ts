@@ -174,6 +174,7 @@ const ROUTE_FEATURES: { prefix: string; key: FeatureKey }[] = [
   { prefix: "/school-admin/assessments", key: "assessments" },
   { prefix: "/school-admin/library", key: "library" },
   { prefix: "/school-admin/performance", key: "performance" },
+  { prefix: "/school-admin/exam-performance", key: "exams" },
   { prefix: "/school-admin/communications", key: "communications" },
   { prefix: "/school-admin/kindergarten", key: "early_years" },
   // The Director of Studies' portal reuses the school admin's academic pages.
@@ -182,6 +183,7 @@ const ROUTE_FEATURES: { prefix: string; key: FeatureKey }[] = [
   { prefix: "/dos/attendance", key: "attendance" },
   { prefix: "/dos/exams", key: "exams" },
   { prefix: "/dos/report-card-studio", key: "exams" },
+  { prefix: "/dos/exam-performance", key: "exams" },
   { prefix: "/dos/grading-schemes", key: "exams" },
   { prefix: "/dos/subjects", key: "academic_structure" },
   { prefix: "/dos/classes", key: "academic_structure" },

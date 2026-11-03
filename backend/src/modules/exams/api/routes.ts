@@ -40,6 +40,9 @@ import {
   UnknownSlotError,
   examCompletion,
   getExamReportCard,
+  InvalidReportOptionsError,
+  type ReportMode,
+  type ReportOptions,
   getMarkSheet,
   getStudentExamResult,
   listAssignedExams,
@@ -50,10 +53,12 @@ import {
   type MarkEntryInput,
   type MarkSheetActor,
 } from "../domain/exam-results.repository.js";
+import { getClassPerformance } from "../domain/exam-performance.repository.js";
 import {
   examSessionBodySchema,
   markSheetSlotBodySchema,
   markSheetSlotQuerySchema,
+  classPerformanceQuerySchema,
   reportCardQuerySchema,
   saveMarksBodySchema,
   schoolExamBodySchema,
@@ -83,12 +88,22 @@ function slotOf(src: { subjectId: string; classId: string; streamId?: string | n
 }
 
 // Maps a marks-entry domain error to its HTTP status, or rethrows.
+function reportOptionsFrom(query: { mode?: ReportMode; examIds?: string; weights?: string }): ReportOptions {
+  const list = (value?: string) => (value ? value.split(",").filter(Boolean) : undefined);
+  return {
+    mode: query.mode ?? "single",
+    examIds: list(query.examIds),
+    weights: list(query.weights)?.map(Number),
+  };
+}
+
 function replyMarksError(err: unknown, reply: FastifyReply): FastifyReply {
   if (err instanceof UnknownExamError) return reply.status(404).send(fail(err.message));
   if (err instanceof UnknownSlotError) return reply.status(404).send(fail(err.message));
   if (err instanceof UnknownClassError) return reply.status(404).send(fail(err.message));
   if (err instanceof NotAssignedError) return reply.status(403).send(fail(err.message));
   if (err instanceof InvalidScoreError) return reply.status(400).send(fail(err.message));
+  if (err instanceof InvalidReportOptionsError) return reply.status(400).send(fail(err.message));
   if (
     err instanceof MarksEntryClosedError ||
     err instanceof MarkSheetLockedError ||
@@ -306,9 +321,29 @@ export async function examsRoutes(fastify: FastifyInstance) {
     },
   );
 
+  // How one class did across a school year's exams (or one term's), so past
+  // terms can be reported on at any time.
+  fastify.get<{ Querystring: { classId: string; streamId?: string; academicYearId: string; termId?: string } }>(
+    "/class-performance",
+    { preHandler: SCHOOL, schema: { querystring: classPerformanceQuerySchema } },
+    async (request, reply) => {
+      const schoolId = schoolOf(request, reply);
+      if (!schoolId) return;
+      const { classId, streamId, academicYearId, termId } = request.query;
+      try {
+        return ok(await getClassPerformance(schoolId, classId, streamId || null, academicYearId, termId || null));
+      } catch (err) {
+        return replyMarksError(err, reply);
+      }
+    },
+  );
+
   // Compiled report card — every subject's summary plus per-student totals,
   // rank and grade for one class (or one stream of it) in this exam.
-  fastify.get<{ Params: { id: string }; Querystring: { classId: string; streamId?: string } }>(
+  fastify.get<{
+    Params: { id: string };
+    Querystring: { classId: string; streamId?: string; mode?: ReportMode; examIds?: string; weights?: string };
+  }>(
     "/:id/report-card",
     { preHandler: SCHOOL, schema: { querystring: reportCardQuerySchema } },
     async (request, reply) => {
@@ -316,7 +351,13 @@ export async function examsRoutes(fastify: FastifyInstance) {
       if (!schoolId) return;
       try {
         return ok(
-          await getExamReportCard(schoolId, request.params.id, request.query.classId, request.query.streamId || null),
+          await getExamReportCard(
+            schoolId,
+            request.params.id,
+            request.query.classId,
+            request.query.streamId || null,
+            reportOptionsFrom(request.query),
+          ),
         );
       } catch (err) {
         return replyMarksError(err, reply);
@@ -330,9 +371,18 @@ export async function examsRoutes(fastify: FastifyInstance) {
   // screenshot and never a second, hand-maintained template.
   fastify.get<{
     Params: { id: string };
-    Querystring: { classId?: string; streamId?: string; studentId?: string; all?: string; yearId?: string };
+    Querystring: {
+      classId?: string;
+      streamId?: string;
+      studentId?: string;
+      all?: string;
+      yearId?: string;
+      mode?: string;
+      examIds?: string;
+      weights?: string;
+    };
   }>("/:id/report-cards/pdf", { preHandler: SCHOOL_ADMIN_ONLY }, async (request, reply) => {
-    const { classId, streamId, studentId, all, yearId } = request.query;
+    const { classId, streamId, studentId, all, yearId, mode, examIds, weights } = request.query;
     if (!classId && all !== "1") {
       return reply.status(400).send(fail("classId (or all=1) is required"));
     }
@@ -342,6 +392,9 @@ export async function examsRoutes(fastify: FastifyInstance) {
     if (studentId) qs.set("studentId", studentId);
     if (all) qs.set("all", all);
     if (yearId) qs.set("yearId", yearId);
+    if (mode) qs.set("mode", mode);
+    if (examIds) qs.set("examIds", examIds);
+    if (weights) qs.set("weights", weights);
     const path = `/school-admin/exams/${request.params.id}/report-cards?${qs.toString()}`;
     try {
       const pdf = await renderReportCardsPdf(path, request.headers.cookie);
