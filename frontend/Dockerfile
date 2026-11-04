@@ -19,6 +19,12 @@ RUN npm run build
 FROM node:22-bookworm-slim AS runtime
 WORKDIR /app
 ENV NODE_ENV=production
+# Needed while running too, not only at build time: server code such as the
+# public event page (/e/<token>) and its preview image calls the backend
+# directly. Without it they fall back to localhost:4000, which in this
+# container is nothing, and every shared event link says "not available".
+ARG BACKEND_URL
+ENV BACKEND_URL=${BACKEND_URL}
 
 RUN useradd --system --uid 1001 nodeuser
 COPY --from=build /app/public ./public
