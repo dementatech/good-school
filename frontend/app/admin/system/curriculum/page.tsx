@@ -344,7 +344,7 @@ export default function CurriculumPage() {
       render: (c) => (
         <span className="flex flex-wrap gap-1">
           {c.subjects.map((m) => (
-            <span key={m.subjectId} className="inline-flex items-center gap-1 rounded bg-[#FAFAFA] px-1.5 py-0.5 text-xs">
+            <span key={m.subjectId} className="inline-flex items-center gap-1 rounded bg-bg-subtle px-1.5 py-0.5 text-xs">
               {subjectName[m.subjectId] ?? '(deleted)'}
               <span className="text-text-faint">·{m.role[0]}</span>
             </span>

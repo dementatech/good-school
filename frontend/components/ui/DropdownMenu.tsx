@@ -110,8 +110,8 @@ export function DropdownMenu({
           trigger
             ? 'inline-flex items-center'
             : (triggerClassName ??
-              `inline-flex h-8 w-8 items-center justify-center rounded-lg text-[#666666] transition-colors hover:bg-[#F5F5F5] hover:text-[#171717] ${
-                open ? 'bg-[#F5F5F5] text-[#171717]' : ''
+              `inline-flex h-8 w-8 items-center justify-center rounded-lg text-text-muted transition-colors hover:bg-bg-muted hover:text-primary-900 ${
+                open ? 'bg-bg-muted text-primary-900' : ''
               }`)
         }
       >
@@ -126,12 +126,12 @@ export function DropdownMenu({
             ref={menuRef}
             role="menu"
             style={{ position: 'fixed', top: coords.top, right: coords.right, zIndex: 95 }}
-            className="w-52 rounded-xl border border-[#E0E0E0] bg-white p-1 shadow-[0_8px_30px_rgba(0,0,0,0.12)]"
+            className="w-52 rounded-xl border border-border-strong bg-white p-1 shadow-[0_8px_30px_rgba(0,0,0,0.12)]"
             onClick={(e) => e.stopPropagation()}
           >
             {items.map((item, i) => (
               <div key={`${item.label}-${i}`}>
-                {item.separatorBefore && <div className="my-1 h-px bg-[#EAEAEA]" />}
+                {item.separatorBefore && <div className="my-1 h-px bg-border" />}
                 <button
                   type="button"
                   role="menuitem"
@@ -141,7 +141,7 @@ export function DropdownMenu({
                     item.onClick();
                   }}
                   className={`flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-sm transition-colors disabled:pointer-events-none disabled:opacity-40 ${
-                    item.danger ? 'text-[#C0392B] hover:bg-[#FDECEA]' : 'text-[#404040] hover:bg-[#F5F5F5]'
+                    item.danger ? 'text-error hover:bg-[#FDECEA]' : 'text-text-secondary hover:bg-bg-muted'
                   }`}
                 >
                   {item.icon && <item.icon className="h-4 w-4 shrink-0" aria-hidden />}

@@ -89,12 +89,12 @@ export function PeriodsEditor({ section, onSaved }: { section: SchoolSection; on
         <p className="text-sm font-bold text-primary-900">School days</p>
         <div className="mt-2 flex flex-wrap gap-3">
           {[1, 2, 3, 4, 5, 6].map((d) => (
-            <label key={d} className="flex items-center gap-1.5 text-sm text-[#12333F]">
+            <label key={d} className="flex items-center gap-1.5 text-sm text-primary-900">
               <input
                 type="checkbox"
                 checked={days.includes(d)}
                 onChange={(e) => setDays((ds) => (e.target.checked ? [...ds, d].sort() : ds.filter((x) => x !== d)))}
-                className="rounded border-[#E5E5E5]"
+                className="rounded border-border"
               />
               {DAY_NAMES[d]}
             </label>

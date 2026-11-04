@@ -14,6 +14,9 @@ export interface SchoolEvent {
   audience: SchoolEventAudience;
   /** Set when this event is auto-synced from an exam — not editable/deletable here. */
   schoolExamId: string | null;
+  thumbnailUrl: string | null;
+  /** Set once the event has a public link; null means it's private. */
+  shareToken: string | null;
   createdAt: string;
   updatedAt: string;
 }

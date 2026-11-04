@@ -33,13 +33,13 @@ export function SchoolLogo({
       <img
         src={logoUrl}
         alt=""
-        className={`${cls} object-contain bg-white border border-[#EAEAEA] shrink-0`}
+        className={`${cls} object-contain bg-white border border-border shrink-0`}
       />
     );
   }
   return (
     <span
-      className={`${cls} bg-[#FAFAFA] text-[#666666] font-semibold flex items-center justify-center shrink-0`}
+      className={`${cls} bg-bg-subtle text-text-muted font-semibold flex items-center justify-center shrink-0`}
     >
       {initials(name) || '—'}
     </span>

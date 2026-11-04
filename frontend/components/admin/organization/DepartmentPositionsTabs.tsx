@@ -121,8 +121,8 @@ function PositionFormModal({
           onChange={(e) => setDepartmentId(e.target.value)}
           options={[{ value: '', label: 'None (leadership)' }, ...departments.map((d) => ({ value: d.id, label: d.name }))]}
         />
-        <label className="flex items-center gap-2 text-sm text-[#12333F]">
-          <input type="checkbox" checked={isUnique} onChange={(e) => setIsUnique(e.target.checked)} className="rounded border-[#E5E5E5]" />
+        <label className="flex items-center gap-2 text-sm text-primary-900">
+          <input type="checkbox" checked={isUnique} onChange={(e) => setIsUnique(e.target.checked)} className="rounded border-border" />
           Only one person can hold this at a time
         </label>
         <Button type="submit" isLoading={saving}>

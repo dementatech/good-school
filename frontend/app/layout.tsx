@@ -1,8 +1,9 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Quicksand } from "next/font/google";
 import "./globals.css";
 import { ToastProvider } from "@/components/ui/ToastProvider";
 import { AuthProvider } from "@/components/auth/AuthContext";
+import { NoPageZoom } from "@/components/NoPageZoom";
 import { RegisterServiceWorker } from "@/components/RegisterServiceWorker";
 import { InstallPrompt } from "@/components/InstallPrompt";
 import { PushNotificationPrompt } from "@/components/PushNotificationPrompt";
@@ -24,6 +25,15 @@ export const metadata: Metadata = {
   },
 };
 
+// The page never zooms on a phone (product decision). See also NoPageZoom and
+// the touch rules in globals.css.
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 1,
+  userScalable: false,
+};
+
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -41,6 +51,7 @@ export default function RootLayout({
             <PushNotificationPrompt />
           </AuthProvider>
         </ToastProvider>
+        <NoPageZoom />
         <RegisterServiceWorker />
         <InstallPrompt />
       </body>

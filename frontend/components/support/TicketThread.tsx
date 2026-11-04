@@ -86,7 +86,7 @@ export function TicketThread({
 
       {canReply && (
         <div className="space-y-2 border-t border-border pt-4">
-          <label htmlFor={`reply-${ticket.id}`} className="text-xs font-medium text-[#666666] tracking-wide">
+          <label htmlFor={`reply-${ticket.id}`} className="text-xs font-medium text-text-muted tracking-wide">
             {viewer === 'support' ? 'Reply to the reporter' : 'Add more detail'}
           </label>
           <textarea

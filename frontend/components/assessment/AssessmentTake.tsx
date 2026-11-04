@@ -377,7 +377,7 @@ export function AssessmentTake({ mode = 'live' }: { mode?: TakeMode } = {}) {
       <Card className="max-w-4xl mx-auto p-3.5 sm:p-6">
         <div className="mb-4">
           {q.config?.section && (
-            <p className="text-[10px] font-semibold text-[#666666] uppercase tracking-wider mb-1">
+            <p className="text-[10px] font-semibold text-text-muted uppercase tracking-wider mb-1">
               Section {q.config.section}
             </p>
           )}
@@ -392,13 +392,13 @@ export function AssessmentTake({ mode = 'live' }: { mode?: TakeMode } = {}) {
                   question(s)..." — it has to print above the image it refers
                   to, not after it. */}
               {currentGroup.groupHeading && (
-                <p className="text-sm italic text-[#666666] mt-2">{currentGroup.groupHeading}</p>
+                <p className="text-sm italic text-text-muted mt-2">{currentGroup.groupHeading}</p>
               )}
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src={currentGroup.groupImageUrl}
                 alt=""
-                className="mt-3 max-h-56 sm:max-h-72 max-w-full w-auto rounded-xl object-contain bg-[#FAFAFA]"
+                className="mt-3 max-h-56 sm:max-h-72 max-w-full w-auto rounded-xl object-contain bg-bg-subtle"
               />
             </>
           )}
@@ -416,7 +416,7 @@ export function AssessmentTake({ mode = 'live' }: { mode?: TakeMode } = {}) {
                 <img
                   src={stemQuestion.imageUrl}
                   alt=""
-                  className="mt-3 max-h-56 sm:max-h-72 max-w-full w-auto rounded-xl object-contain bg-[#FAFAFA]"
+                  className="mt-3 max-h-56 sm:max-h-72 max-w-full w-auto rounded-xl object-contain bg-bg-subtle"
                 />
               )}
             </>
@@ -435,13 +435,13 @@ export function AssessmentTake({ mode = 'live' }: { mode?: TakeMode } = {}) {
                   actually describing. Printed above the image, same as the
                   shared-stimulus case: the text reads "diagram below". */}
               {!currentGroup?.groupImageUrl && currentGroup?.groupHeading && (
-                <p className="text-sm italic text-[#666666] mt-2">{currentGroup.groupHeading}</p>
+                <p className="text-sm italic text-text-muted mt-2">{currentGroup.groupHeading}</p>
               )}
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src={q.imageUrl}
                 alt=""
-                className="mt-3 max-h-56 sm:max-h-72 max-w-full w-auto rounded-xl object-contain bg-[#FAFAFA]"
+                className="mt-3 max-h-56 sm:max-h-72 max-w-full w-auto rounded-xl object-contain bg-bg-subtle"
               />
             </>
           )}

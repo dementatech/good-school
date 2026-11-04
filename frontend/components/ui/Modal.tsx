@@ -58,7 +58,7 @@ export function Modal({ open, onClose, title, children, size = 'md' }: ModalProp
             aria-label={typeof title === 'string' ? title : undefined}
             className={`absolute top-0 right-0 h-full w-full ${
               size === 'lg' ? 'max-w-2xl' : 'max-w-md'
-            } bg-white shadow-xl border-l border-[#EAEAEA] flex flex-col`}
+            } bg-white shadow-xl border-l border-border flex flex-col`}
             initial={{ x: '100%' }}
             animate={{ x: 0 }}
             exit={{ x: '100%' }}
@@ -66,13 +66,13 @@ export function Modal({ open, onClose, title, children, size = 'md' }: ModalProp
             onClick={(e) => e.stopPropagation()}
           >
             {title && (
-              <div className="flex items-center justify-between gap-3 px-5 sm:px-6 py-4 border-b border-[#EAEAEA] shrink-0">
+              <div className="flex items-center justify-between gap-3 px-5 sm:px-6 py-4 border-b border-border shrink-0">
                 <h2 className="font-semibold text-primary-900 truncate">{title}</h2>
                 <button
                   type="button"
                   onClick={onClose}
                   aria-label="Close"
-                  className="p-1 -m-1 rounded-lg text-text-muted hover:bg-[#FAFAFA] hover:text-primary-900 shrink-0"
+                  className="p-1 -m-1 rounded-lg text-text-muted hover:bg-bg-subtle hover:text-primary-900 shrink-0"
                 >
                   <X className="w-4 h-4" aria-hidden />
                 </button>

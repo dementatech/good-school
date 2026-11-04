@@ -10,7 +10,7 @@ export const PORTAL_FOR_ROLE: Partial<Record<Role, string>> = {
   // had no destination and landed on "No portal available".
   teacher: '/staff',
   admin: '/admin',
-  super_admin: '/admin/system',
+  super_admin: '/admin',
   school_admin: '/school-admin',
   parent: '/parent/dashboard',
 };

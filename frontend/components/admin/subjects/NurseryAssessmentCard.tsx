@@ -82,13 +82,13 @@ export function NurseryAssessmentCard({
         })}
       </div>
       {current !== 'ratings' && (
-        <label className="flex items-center gap-2 text-sm text-[#12333F]">
+        <label className="flex items-center gap-2 text-sm text-primary-900">
           <input
             type="checkbox"
             checked={showPositions}
             disabled={saving}
             onChange={(e) => void save({ showPositions: e.target.checked })}
-            className="rounded border-[#E5E5E5]"
+            className="rounded border-border"
           />
           Show each pupil&apos;s position (class ranking) on Nursery report cards
         </label>

@@ -18,6 +18,21 @@ export function DashboardPage({ title, children }: { title?: string; children: R
   );
 }
 
+/** The feature block beside a narrower one on a wide screen, stacked on anything smaller. */
+export function DashboardFeatureRow({ feature, side }: { feature: ReactNode; side: ReactNode }) {
+  return (
+    <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 sm:gap-4 mb-3 sm:mb-4">
+      <div className="lg:col-span-2 min-w-0">{feature}</div>
+      <div className="min-w-0 [&>*]:h-full">{side}</div>
+    </div>
+  );
+}
+
+/** Three equal charts on a wide screen, one on anything smaller. */
+export function DashboardChartRow({ children }: { children: ReactNode }) {
+  return <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 sm:gap-4 mb-3 sm:mb-4 [&>*]:h-full">{children}</div>;
+}
+
 /** Two equal columns on a wide screen, one on anything smaller. */
 export function DashboardColumns({ left, right }: { left: ReactNode; right: ReactNode }) {
   return (

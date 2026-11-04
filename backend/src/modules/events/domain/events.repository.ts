@@ -1,4 +1,6 @@
+import { randomBytes } from "node:crypto";
 import { pool } from "../../../shared/db/index.js";
+import { deleteStoredFile, fileUrl, storeFile, type StorageProvider, type StoredFile } from "../../../shared/media.js";
 import type { Role } from "../../../shared/types/index.js";
 
 export type EventType = "holiday" | "exam" | "meeting" | "deadline" | "other";
@@ -17,8 +19,24 @@ export interface SchoolEventRecord {
    *  syncEventForExam. Not directly editable/deletable through the manual
    *  CRUD routes; edit the exam instead. */
   schoolExamId: string | null;
+  thumbnailUrl: string | null;
+  /** Set once the event has a public link; null means the event is private. */
+  shareToken: string | null;
   createdAt: string;
   updatedAt: string;
+}
+
+/** Everything a public event page shows. Deliberately excludes audience, ids and
+ *  who created it: this is readable by anyone holding the link. */
+export interface PublicEvent {
+  title: string;
+  description: string | null;
+  eventDate: string;
+  eventType: EventType;
+  thumbnailUrl: string | null;
+  /** null = a platform-wide event, which belongs to no school. */
+  schoolName: string | null;
+  schoolLogoUrl: string | null;
 }
 
 export interface EventInput {
@@ -45,12 +63,21 @@ interface SchoolEventRow {
   event_type: EventType;
   audience: EventAudience;
   school_exam_id: string | null;
+  thumbnail_path: string | null;
+  thumbnail_provider: StorageProvider | null;
+  share_token: string | null;
   created_at: string;
   updated_at: string;
 }
 
 const COLUMNS =
-  "id, school_id, title, description, event_date, event_type, audience, school_exam_id, created_at, updated_at";
+  "id, school_id, title, description, event_date, event_type, audience, school_exam_id, thumbnail_path, thumbnail_provider, share_token, created_at, updated_at";
+
+// Thumbnails are always images, so the mimeType only has to be image-ish for
+// fileUrl() to pick the right resource type. Same reasoning as school logos.
+function imageFile(ref: string, provider: StorageProvider | null): StoredFile {
+  return { provider: provider ?? "local", ref, mimeType: "image/jpeg" };
+}
 
 function mapRow(row: SchoolEventRow): SchoolEventRecord {
   return {
@@ -62,6 +89,8 @@ function mapRow(row: SchoolEventRow): SchoolEventRecord {
     eventType: row.event_type,
     audience: row.audience,
     schoolExamId: row.school_exam_id,
+    thumbnailUrl: row.thumbnail_path ? fileUrl(imageFile(row.thumbnail_path, row.thumbnail_provider)) : null,
+    shareToken: row.share_token,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -172,8 +201,87 @@ export async function deleteEvent(schoolId: string | null, id: string): Promise<
   if (!existing) return false;
   if (existing.schoolExamId) throw new SystemManagedEventError();
 
-  await pool.query(`delete from school_event where id = $1`, [id]);
+  const { rows } = await pool.query<Pick<SchoolEventRow, "thumbnail_path" | "thumbnail_provider">>(
+    `delete from school_event where id = $1 returning thumbnail_path, thumbnail_provider`,
+    [id],
+  );
+  const removed = rows[0];
+  if (removed?.thumbnail_path) {
+    await deleteStoredFile(imageFile(removed.thumbnail_path, removed.thumbnail_provider)).catch(() => {});
+  }
   return true;
+}
+
+/** Sets or (with null) clears an event's picture. Exam-synced events can have one
+ *  too: the picture isn't part of what the exam controls. */
+export async function setEventThumbnail(
+  schoolId: string | null,
+  id: string,
+  file: { mimeType: string; data: Buffer } | null,
+): Promise<SchoolEventRecord | null> {
+  const existing = await getEvent(schoolId, id);
+  if (!existing) return null;
+  const { rows } = await pool.query<Pick<SchoolEventRow, "thumbnail_path" | "thumbnail_provider">>(
+    `select thumbnail_path, thumbnail_provider from school_event where id = $1`,
+    [id],
+  );
+  const prior = rows[0];
+
+  const stored = file ? await storeFile(`event-thumbnails/${id}`, file.mimeType, file.data) : null;
+  await pool.query(
+    `update school_event set thumbnail_path = $1, thumbnail_provider = $2, updated_at = now() where id = $3`,
+    [stored?.ref ?? null, stored?.provider ?? null, id],
+  );
+  if (prior?.thumbnail_path) {
+    await deleteStoredFile(imageFile(prior.thumbnail_path, prior.thumbnail_provider)).catch(() => {});
+  }
+  return getEvent(schoolId, id);
+}
+
+/** Turns on the event's public link, keeping an existing one so links already
+ *  sent out keep working. */
+export async function enableEventSharing(schoolId: string | null, id: string): Promise<SchoolEventRecord | null> {
+  const existing = await getEvent(schoolId, id);
+  if (!existing) return null;
+  if (existing.shareToken) return existing;
+  await pool.query(`update school_event set share_token = $1 where id = $2`, [randomBytes(18).toString("base64url"), id]);
+  return getEvent(schoolId, id);
+}
+
+/** Switches the public page off. Sharing again makes a new link; the old one stays dead. */
+export async function disableEventSharing(schoolId: string | null, id: string): Promise<SchoolEventRecord | null> {
+  const existing = await getEvent(schoolId, id);
+  if (!existing) return null;
+  await pool.query(`update school_event set share_token = null where id = $1`, [id]);
+  return getEvent(schoolId, id);
+}
+
+export async function getPublicEvent(token: string): Promise<PublicEvent | null> {
+  const { rows } = await pool.query<
+    Pick<SchoolEventRow, "title" | "description" | "event_date" | "event_type" | "thumbnail_path" | "thumbnail_provider"> & {
+      school_name: string | null;
+      logo_path: string | null;
+      logo_provider: StorageProvider | null;
+    }
+  >(
+    `select e.title, e.description, e.event_date, e.event_type, e.thumbnail_path, e.thumbnail_provider,
+            s.name as school_name, s.logo_path, s.logo_provider
+       from school_event e
+       left join schools s on s.id = e.school_id
+      where e.share_token = $1`,
+    [token],
+  );
+  const row = rows[0];
+  if (!row) return null;
+  return {
+    title: row.title,
+    description: row.description,
+    eventDate: row.event_date,
+    eventType: row.event_type,
+    thumbnailUrl: row.thumbnail_path ? fileUrl(imageFile(row.thumbnail_path, row.thumbnail_provider)) : null,
+    schoolName: row.school_name,
+    schoolLogoUrl: row.logo_path ? fileUrl(imageFile(row.logo_path, row.logo_provider)) : null,
+  };
 }
 
 /** Called by the exams module right after a school_exam is created or its

@@ -9,9 +9,14 @@
  * and picking up an override we set on `:root`.
  */
 
-/** Keep in step with globals.css `--color-primary-700` and the
- *  1700000042000 migration. A school still on this value isn't themed. */
-export const DEFAULT_PRIMARY = '#1e3a8a';
+/** Keep in step with globals.css `--color-primary-700`. A school on this value
+ *  isn't themed. */
+export const DEFAULT_PRIMARY = '#2e77ae';
+
+/** The previous default. The backend still stores and returns it for any school
+ *  that never picked a colour (1700000042000 migration), so it means "untouched"
+ *  rather than a real brand choice. */
+const LEGACY_DEFAULT_PRIMARY = '#1e3a8a';
 
 const CACHE_KEY = 'gs.school.primary';
 
@@ -62,7 +67,14 @@ export function primaryScale(hex: string): Record<string, string> {
 }
 
 function isDefault(hex: string): boolean {
-  return hex.trim().toLowerCase() === DEFAULT_PRIMARY;
+  const value = hex.trim().toLowerCase();
+  return value === DEFAULT_PRIMARY || value === LEGACY_DEFAULT_PRIMARY;
+}
+
+/** A school's stored colour as the pickers should show it: unset or legacy
+ *  default both read as today's default. */
+export function displayPrimary(hex: string | null | undefined): string {
+  return !hex || isDefault(hex) ? DEFAULT_PRIMARY : hex;
 }
 
 /** Apply (or, for the default colour, clear) the brand colour on <html>. */

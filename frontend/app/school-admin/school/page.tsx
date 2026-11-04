@@ -11,9 +11,9 @@ import { SECTION_LABEL, useSchoolSections } from '@/lib/levels';
 
 function Row({ label, value }: { label: string; value: React.ReactNode }) {
   return (
-    <div className="flex justify-between gap-4 border-b border-[#FAFAFA] py-1.5 last:border-0">
-      <dt className="text-[#666666]">{label}</dt>
-      <dd className="text-[#12333F] text-right min-w-0 break-words">{value || '—'}</dd>
+    <div className="flex justify-between gap-4 border-b border-bg-subtle py-1.5 last:border-0">
+      <dt className="text-text-muted">{label}</dt>
+      <dd className="text-primary-900 text-right min-w-0 break-words">{value || '—'}</dd>
     </div>
   );
 }

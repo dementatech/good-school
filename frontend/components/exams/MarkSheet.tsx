@@ -361,7 +361,7 @@ export function MarkSheet({
                           max={hasVariant ? 100 : sheet.subject.maxMark}
                           inputMode="decimal"
                           aria-label={`${r.studentName} — ${c.label}`}
-                          className="w-16 rounded-lg border-2 border-[#E5E5E5] bg-white px-2 py-1.5 text-sm focus:border-primary-700 focus:outline-none disabled:bg-bg-muted disabled:text-text-muted"
+                          className="w-16 rounded-lg border-2 border-border bg-white px-2 py-1.5 text-sm focus:border-primary-700 focus:outline-none disabled:bg-bg-muted disabled:text-text-muted"
                           value={cell.absent ? '' : cell.score}
                           disabled={readOnly || cell.absent}
                           onChange={(e) => setCell(r.studentUserId, c.key, { score: e.target.value })}

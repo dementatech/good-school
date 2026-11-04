@@ -157,12 +157,12 @@ export default function StudentImportPage() {
           value={schoolId}
           onChange={(e) => { setSchoolId(e.target.value); setResults([]); }}
         />
-        <label className="flex items-start gap-2 text-sm text-[#12333F] mt-3">
+        <label className="flex items-start gap-2 text-sm text-primary-900 mt-3">
           <input
             type="checkbox"
             checked={allowCreateStructure}
             onChange={(e) => setAllowCreateStructure(e.target.checked)}
-            className="rounded border-[#E5E5E5] mt-0.5"
+            className="rounded border-border mt-0.5"
           />
           <span>
             Create missing classes and streams

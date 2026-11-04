@@ -55,7 +55,7 @@ export function ClassBarChart({ bars, scaleMax, ariaLabel }: { bars: ClassBar[];
               >
                 {isActive && (
                   <span
-                    className={`absolute bottom-full mb-2 w-max min-w-28 rounded-lg bg-[#0f172a] px-3 py-2 text-left text-[11px] text-white shadow-lg pointer-events-none ${align}`}
+                    className={`absolute bottom-full mb-2 w-max min-w-28 rounded-lg bg-primary-900 px-3 py-2 text-left text-[11px] text-white shadow-lg pointer-events-none ${align}`}
                   >
                     <span className="block font-semibold mb-1">{bar.name}</span>
                     {bar.details.map((detail) => (

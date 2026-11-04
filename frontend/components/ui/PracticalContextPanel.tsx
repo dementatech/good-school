@@ -42,9 +42,9 @@ const BAND_LABEL: Record<string, string> = {
 };
 
 const BAND_TONE: Record<string, string> = {
-  outstanding: 'bg-[#E8F7EF] text-[#1A7A4A]',
-  moderate: 'bg-[#F5F5F5] text-[#404040]',
-  needs_support: 'bg-[#FEF3DC] text-[#C47B0A]',
+  outstanding: 'bg-success-bg text-success',
+  moderate: 'bg-bg-muted text-text-secondary',
+  needs_support: 'bg-warning-bg text-warning',
 };
 
 /** For a reviewer opening a lesson report: what the class did at the machines. */
@@ -70,7 +70,7 @@ export function LessonPracticalPanel({ lessonReportId }: { lessonReportId: strin
   if (!data.scoredAt) {
     return (
       <Frame>
-        <p className="text-xs text-[#C47B0A]">
+        <p className="text-xs text-warning">
           Marked as a computer-lab lesson, but practical skills were never scored for its{' '}
           {data.learners} learner{data.learners === 1 ? '' : 's'}.
         </p>
@@ -151,7 +151,7 @@ export function ScriptPracticalPanel({
 
 function Frame({ title = 'Practical skills', children }: { title?: string; children: React.ReactNode }) {
   return (
-    <div className="rounded-xl border border-[#EAEAEA] bg-[#FAFAFA] p-3">
+    <div className="rounded-xl border border-border bg-bg-subtle p-3">
       <div className="flex items-center gap-1.5 mb-2">
         <Laptop className="w-3.5 h-3.5 text-text-muted" aria-hidden />
         <p className="text-xs font-semibold text-text-secondary">{title}</p>

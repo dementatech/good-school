@@ -151,7 +151,7 @@ function Section({
               </div>
 
               {muted ? (
-                <span className="shrink-0 flex items-center gap-1.5 text-xs font-medium text-[#1A7A4A]">
+                <span className="shrink-0 flex items-center gap-1.5 text-xs font-medium text-success">
                   <Check className="w-3.5 h-3.5" />
                   Scored
                 </span>
@@ -226,8 +226,8 @@ function ClassSummary({ classes }: { classes: StaffRound[] }) {
               onClick={() => setSelected(c)}
               className={`px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer ${
                 selected?.classId === c.classId && selected?.streamId === c.streamId
-                  ? 'bg-[#02465B] text-white'
-                  : 'bg-bg-muted text-text-secondary hover:bg-[#EAEAEA]'
+                  ? 'bg-primary-700 text-white'
+                  : 'bg-bg-muted text-text-secondary hover:bg-border'
               }`}
             >
               {c.className}
@@ -265,7 +265,7 @@ function ClassSummary({ classes }: { classes: StaffRound[] }) {
                         nobody asked. */}
                     <div className="h-1.5 rounded-full bg-bg-muted overflow-hidden">
                       <div
-                        className={`h-full rounded-full ${pct >= 50 ? 'bg-[#C47B0A]' : 'bg-[#0489AE]'}`}
+                        className={`h-full rounded-full ${pct >= 50 ? 'bg-warning' : 'bg-primary-700'}`}
                         style={{ width: `${Math.max(pct, 2)}%` }}
                       />
                     </div>
@@ -274,8 +274,8 @@ function ClassSummary({ classes }: { classes: StaffRound[] }) {
               })}
             </div>
             {aspects[0] && aspects[0].needsSupport > 0 && (
-              <p className="flex items-start gap-1.5 text-xs text-text-secondary mt-3 pt-3 border-t border-[#EAEAEA]">
-                <TrendingDown className="w-3.5 h-3.5 text-[#C47B0A] mt-0.5 shrink-0" aria-hidden />
+              <p className="flex items-start gap-1.5 text-xs text-text-secondary mt-3 pt-3 border-t border-border">
+                <TrendingDown className="w-3.5 h-3.5 text-warning mt-0.5 shrink-0" aria-hidden />
                 Most worth reteaching: {aspects[0].label.toLowerCase()}.
               </p>
             )}

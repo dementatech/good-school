@@ -150,7 +150,7 @@ export function OLevelOptionalsChecklist({
         {offerings.map((o) => {
           const checked = value.includes(o.subjectId);
           return (
-            <label key={o.subjectId} className="flex items-center gap-2 text-sm text-[#12333F]">
+            <label key={o.subjectId} className="flex items-center gap-2 text-sm text-primary-900">
               <input
                 type="checkbox"
                 checked={checked}
@@ -162,7 +162,7 @@ export function OLevelOptionalsChecklist({
                       : value.filter((id) => id !== o.subjectId),
                   )
                 }
-                className="rounded border-[#E5E5E5] disabled:opacity-60"
+                className="rounded border-border disabled:opacity-60"
               />
               {o.subjectName}
               {o.isCompulsory && <Badge variant="muted">compulsory</Badge>}
@@ -255,13 +255,13 @@ export function OLevelSubjects({
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
       {offerings.map((o) => (
-        <label key={o.subjectId} className="flex items-center gap-2 text-sm text-[#12333F]">
+        <label key={o.subjectId} className="flex items-center gap-2 text-sm text-primary-900">
           <input
             type="checkbox"
             checked={activeById.has(o.subjectId)}
             disabled={o.isCompulsory && activeById.has(o.subjectId)}
             onChange={(e) => void toggle(o.subjectId, e.target.checked)}
-            className="rounded border-[#E5E5E5] disabled:opacity-60"
+            className="rounded border-border disabled:opacity-60"
           />
           {o.subjectName}
           {o.isCompulsory && <Badge variant="muted">compulsory</Badge>}

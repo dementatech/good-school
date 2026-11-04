@@ -26,8 +26,8 @@ import {
   type ReportType,
 } from '@/lib/reports/report-options';
 
-const PRIMARY_600 = '#1e40af';
-const ACCENT_DARK = '#C4952A';
+const PRIMARY_600 = '#2E77AE';
+const ACCENT_DARK = '#B85C00';
 const ERROR = '#C0392B';
 
 interface AcademicYear {
@@ -1268,7 +1268,7 @@ export default function ReportCardStudioPage() {
                   <>
                     <div className="flex items-center justify-between gap-3 flex-wrap">
                       <div className="flex items-center gap-3">
-                        <span className="w-11 h-11 rounded-full bg-primary-100 text-primary-700 flex items-center justify-center font-extrabold text-sm shrink-0 overflow-hidden">
+                        <span className="w-11 h-11 rounded-full bg-primary-100 text-primary-900 flex items-center justify-center font-extrabold text-sm shrink-0 overflow-hidden">
                           {student.photoUrl ? (
                             // eslint-disable-next-line @next/next/no-img-element
                             <img src={student.photoUrl} alt="" className="w-full h-full object-cover" />

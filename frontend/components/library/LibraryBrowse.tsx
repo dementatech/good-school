@@ -206,7 +206,7 @@ export function LibraryBrowse() {
 
       {!loading && !error && visibleTabs.length > 0 && (
         <>
-          <div className="flex flex-wrap gap-2 border-b border-[#EAEAEA] mb-4">
+          <div className="flex flex-wrap gap-2 border-b border-border mb-4">
             {visibleTabs.map((tab) => {
               const selected = currentTab?.key === tab.key;
               return (

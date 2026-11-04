@@ -92,7 +92,7 @@ export function PdfPreviewModal({ open, onClose, url, filename, title }: PdfPrev
       {open && (
         <div className="fixed inset-0 z-[90] print:hidden" role="presentation">
           <motion.div
-            className="absolute inset-0 bg-[#02465B]/40 backdrop-blur-[2px]"
+            className="absolute inset-0 bg-primary-700/40 backdrop-blur-[2px]"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
@@ -105,14 +105,14 @@ export function PdfPreviewModal({ open, onClose, url, filename, title }: PdfPrev
               role="dialog"
               aria-modal="true"
               aria-label={typeof title === 'string' ? title : undefined}
-              className="relative flex w-full max-w-4xl h-full max-h-[90vh] flex-col bg-white rounded-2xl border border-[#EAEAEA] shadow-xl overflow-hidden"
+              className="relative flex w-full max-w-4xl h-full max-h-[90vh] flex-col bg-white rounded-2xl border border-border shadow-xl overflow-hidden"
               initial={{ opacity: 0, scale: 0.97, y: 8 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.97, y: 8 }}
               transition={{ duration: 0.15 }}
               onClick={(e) => e.stopPropagation()}
             >
-              <div className="flex items-center justify-between gap-3 border-b border-[#EAEAEA] px-4 py-3 sm:px-5">
+              <div className="flex items-center justify-between gap-3 border-b border-border px-4 py-3 sm:px-5">
                 <h2 className="min-w-0 truncate font-semibold text-primary-900">{title}</h2>
                 <div className="flex shrink-0 items-center gap-2">
                   {blobUrl && (
@@ -127,14 +127,14 @@ export function PdfPreviewModal({ open, onClose, url, filename, title }: PdfPrev
                     type="button"
                     onClick={onClose}
                     aria-label="Close"
-                    className="p-1.5 rounded-lg hover:bg-[#FAFAFA]"
+                    className="p-1.5 rounded-lg hover:bg-bg-subtle"
                   >
                     <X className="w-4 h-4 text-text-muted" aria-hidden />
                   </button>
                 </div>
               </div>
 
-              <div className="relative flex-1 bg-[#FAFAFA]">
+              <div className="relative flex-1 bg-bg-subtle">
                 {loading && (
                   <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-text-muted">
                     <Loader2 className="w-6 h-6 animate-spin" aria-hidden />

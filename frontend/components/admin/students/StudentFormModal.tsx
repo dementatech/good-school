@@ -236,16 +236,16 @@ function GuardiansFields({
             />
           </div>
           <div className="flex flex-wrap gap-4">
-            <label className="flex items-center gap-2 text-sm text-[#12333F]">
-              <input type="checkbox" checked={g.isPrimaryContact} onChange={(e) => update(i, { isPrimaryContact: e.target.checked })} className="rounded border-[#E5E5E5]" />
+            <label className="flex items-center gap-2 text-sm text-primary-900">
+              <input type="checkbox" checked={g.isPrimaryContact} onChange={(e) => update(i, { isPrimaryContact: e.target.checked })} className="rounded border-border" />
               Primary contact
             </label>
-            <label className="flex items-center gap-2 text-sm text-[#12333F]">
-              <input type="checkbox" checked={g.isFeeResponsible} onChange={(e) => update(i, { isFeeResponsible: e.target.checked })} className="rounded border-[#E5E5E5]" />
+            <label className="flex items-center gap-2 text-sm text-primary-900">
+              <input type="checkbox" checked={g.isFeeResponsible} onChange={(e) => update(i, { isFeeResponsible: e.target.checked })} className="rounded border-border" />
               Fee responsible
             </label>
-            <label className="flex items-center gap-2 text-sm text-[#12333F]">
-              <input type="checkbox" checked={g.isEmergencyContact} onChange={(e) => update(i, { isEmergencyContact: e.target.checked })} className="rounded border-[#E5E5E5]" />
+            <label className="flex items-center gap-2 text-sm text-primary-900">
+              <input type="checkbox" checked={g.isEmergencyContact} onChange={(e) => update(i, { isEmergencyContact: e.target.checked })} className="rounded border-border" />
               Emergency contact
             </label>
           </div>

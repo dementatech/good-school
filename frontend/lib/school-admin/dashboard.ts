@@ -108,6 +108,27 @@ export function pickCurrentTerm<T extends DashboardTerm>(terms: T[], today: stri
 /** Pooled across classes so a small class can't count as much as a large one.
  *  Uses the same formula as the backend's per-class rate: late counts as
  *  attending. Null when no register has been taken. */
+/** Under this rate a class is flagged on the dashboard. */
+export const ATTENDANCE_TARGET = 80;
+
+/** Classes that have had attendance taken and sit under the target. */
+export function classesBelowTarget(classes: AttendanceClassSummary[]): number {
+  return classes.filter((c) => c.daysTaken > 0 && c.rate < ATTENDANCE_TARGET).length;
+}
+
+/** Every mark recorded this term, split by status. */
+export function attendanceMix(classes: AttendanceClassSummary[]) {
+  return classes.reduce(
+    (mix, c) => ({
+      present: mix.present + c.present,
+      late: mix.late + c.late,
+      absent: mix.absent + c.absent,
+      excused: mix.excused + c.excused,
+    }),
+    { present: 0, late: 0, absent: 0, excused: 0 },
+  );
+}
+
 export function overallAttendanceRate(classes: AttendanceClassSummary[]): number | null {
   let attended = 0;
   let marked = 0;

@@ -62,7 +62,7 @@ export function CredentialSlips({ title, entries, fileBaseName }: CredentialSlip
         </Button>
       </div>
       {pdfError && (
-        <p role="alert" className="flex items-center gap-1.5 text-xs text-[#C0392B] mb-2 print:hidden">
+        <p role="alert" className="flex items-center gap-1.5 text-xs text-error mb-2 print:hidden">
           <AlertCircle className="w-3.5 h-3.5" aria-hidden /> {pdfError}
         </p>
       )}

@@ -231,21 +231,21 @@ export function SubjectFormModal({
             </select>
           </div>
           <div className="flex items-end gap-4">
-            <label className="flex items-center gap-2 text-sm text-[#12333F]">
+            <label className="flex items-center gap-2 text-sm text-primary-900">
               <input
                 type="checkbox"
                 checked={form.isExaminable}
                 onChange={(e) => setForm({ ...form, isExaminable: e.target.checked })}
-                className="rounded border-[#E5E5E5]"
+                className="rounded border-border"
               />
               Examinable
             </label>
-            <label className="flex items-center gap-2 text-sm text-[#12333F]">
+            <label className="flex items-center gap-2 text-sm text-primary-900">
               <input
                 type="checkbox"
                 checked={form.isActive}
                 onChange={(e) => setForm({ ...form, isActive: e.target.checked })}
-                className="rounded border-[#E5E5E5]"
+                className="rounded border-border"
               />
               Active
             </label>
@@ -285,12 +285,12 @@ export function SubjectFormModal({
         </div>
 
         <div className="border-t border-border pt-3">
-          <label className="flex items-center gap-2 text-sm text-[#12333F] mb-2">
+          <label className="flex items-center gap-2 text-sm text-primary-900 mb-2">
             <input
               type="checkbox"
               checked={hasVariant}
               onChange={(e) => setHasVariant(e.target.checked)}
-              className="rounded border-[#E5E5E5]"
+              className="rounded border-border"
             />
             Examined as separate papers, merged into one mark
           </label>

@@ -7,7 +7,7 @@ import { useToast } from '@/components/ui/ToastProvider';
 import { useElementSize } from '@/lib/useElementSize';
 
 // Keep in sync with --color-accent-dark in app/globals.css.
-const ACCENT_DARK = '#C4952A';
+const ACCENT_DARK = '#B85C00';
 const TREND_HEIGHT = 220;
 
 type Period = 'day' | 'week' | 'month';

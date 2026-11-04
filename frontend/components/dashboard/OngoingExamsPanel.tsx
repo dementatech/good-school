@@ -28,7 +28,7 @@ function PendingTeachers({ names }: { names: string[] }) {
     >
       {shown.map((name) => (
         <Avatar key={name} className="size-8 ring-2 ring-card">
-          <AvatarFallback className="bg-primary-100 text-primary-700 text-[10px] font-bold">{initialsOf(name)}</AvatarFallback>
+          <AvatarFallback className="bg-primary-100 text-primary-900 text-[10px] font-bold">{initialsOf(name)}</AvatarFallback>
         </Avatar>
       ))}
       {extra > 0 && (

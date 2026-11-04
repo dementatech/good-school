@@ -135,9 +135,9 @@ export function NotificationBell() {
       </button>
 
       {open && (
-        <div className="absolute right-0 mt-2 w-[calc(100vw-2rem)] sm:w-96 max-h-[70vh] overflow-y-auto rounded-2xl border border-[#EAEAEA] bg-white shadow-lg z-50">
-          <div className="flex items-center justify-between px-4 py-3 border-b border-[#FAFAFA] sticky top-0 bg-white">
-            <span className="font-medium text-[#12333F]">Notifications</span>
+        <div className="absolute right-0 mt-2 w-[calc(100vw-2rem)] sm:w-96 max-h-[70vh] overflow-y-auto rounded-2xl border border-border bg-white shadow-lg z-50">
+          <div className="flex items-center justify-between px-4 py-3 border-b border-bg-subtle sticky top-0 bg-white">
+            <span className="font-medium text-primary-900">Notifications</span>
             {unread > 0 && (
               <button
                 type="button"
@@ -151,15 +151,15 @@ export function NotificationBell() {
           </div>
 
           {items.length === 0 ? (
-            <p className="px-4 py-8 text-center text-sm text-[#666666]">Nothing yet.</p>
+            <p className="px-4 py-8 text-center text-sm text-text-muted">Nothing yet.</p>
           ) : (
             items.map((n) => (
               <button
                 key={n.id}
                 type="button"
                 onClick={() => void openItem(n)}
-                className={`w-full text-left px-4 py-3 border-b border-[#FAFAFA] last:border-0 hover:bg-[#FAFAFA] transition-colors ${
-                  n.isRead ? '' : 'bg-[#FAFAFA]/60'
+                className={`w-full text-left px-4 py-3 border-b border-bg-subtle last:border-0 hover:bg-bg-subtle transition-colors ${
+                  n.isRead ? '' : 'bg-bg-subtle/60'
                 }`}
               >
                 <span className="flex items-start gap-2">
@@ -167,9 +167,9 @@ export function NotificationBell() {
                     <span className="w-1.5 h-1.5 rounded-full bg-primary-700 mt-1.5 shrink-0" aria-hidden />
                   )}
                   <span className="min-w-0">
-                    <span className="block text-sm font-medium text-[#12333F]">{n.title}</span>
-                    {n.body && <span className="block text-xs text-[#666666] mt-0.5">{n.body}</span>}
-                    <span className="block text-[10px] text-[#A3A3A3] mt-1">{timeAgo(n.createdAt)}</span>
+                    <span className="block text-sm font-medium text-primary-900">{n.title}</span>
+                    {n.body && <span className="block text-xs text-text-muted mt-0.5">{n.body}</span>}
+                    <span className="block text-[10px] text-text-faint mt-1">{timeAgo(n.createdAt)}</span>
                   </span>
                 </span>
               </button>

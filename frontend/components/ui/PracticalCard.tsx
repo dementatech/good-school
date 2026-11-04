@@ -125,7 +125,7 @@ export function PracticalCard({
           weight of 0 the overall figure IS the written one, and printing them
           side by side as though they were different numbers would be noise. */}
       {performance && performance.weight > 0 && performance.overall !== null ? (
-        <div className="mt-4 pt-3 border-t border-[#EAEAEA]">
+        <div className="mt-4 pt-3 border-t border-border">
           <div className="flex items-baseline justify-between gap-3">
             <span className="text-sm text-text-secondary">Overall</span>
             <span className="text-lg font-bold text-primary-900 tabular-nums">
@@ -138,7 +138,7 @@ export function PracticalCard({
           </p>
         </div>
       ) : (
-        <p className="text-xs text-text-faint mt-4 pt-3 border-t border-[#EAEAEA]">
+        <p className="text-xs text-text-faint mt-4 pt-3 border-t border-border">
           Practical skills are observed in the lab. They are recorded separately and are not part
           of the written average.
         </p>
@@ -167,9 +167,9 @@ function BandLine({
 }) {
   const toneClass =
     tone === 'success'
-      ? 'text-[#1A7A4A]'
+      ? 'text-success'
       : tone === 'warning'
-        ? 'text-[#C47B0A]'
+        ? 'text-warning'
         : 'text-text-secondary';
   return (
     <div className="flex items-baseline justify-between gap-4">

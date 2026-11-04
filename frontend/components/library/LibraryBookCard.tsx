@@ -53,7 +53,7 @@ export function LibraryBookCard({ item }: { item: LibraryBookCardItem }) {
   const coverAspect = item.contentType === 'video' ? 'aspect-video' : 'aspect-[4/5]';
 
   return (
-    <div className="group flex h-full flex-col overflow-hidden rounded-xl bg-[#02465B] shadow-md ring-1 ring-black/5 transition-shadow hover:shadow-xl">
+    <div className="group flex h-full flex-col overflow-hidden rounded-xl bg-primary-700 shadow-md ring-1 ring-black/5 transition-shadow hover:shadow-xl">
       <div className="relative overflow-hidden">
         <div className="transition-transform duration-300 group-hover:scale-[1.03]">
           <LibraryThumbnail item={item} aspectClassName={coverAspect} />
@@ -68,7 +68,7 @@ export function LibraryBookCard({ item }: { item: LibraryBookCardItem }) {
       {/* The byline is one line, not two: the "Author" caption under the name
           was a whole row of height explaining what an avatar and a name next to
           a timestamp already say. */}
-      <div className="flex flex-1 flex-col bg-gradient-to-b from-[#0B6C7E] to-[#02465B] px-2.5 py-2 text-white">
+      <div className="flex flex-1 flex-col bg-gradient-to-b from-primary-400 to-primary-700 px-2.5 py-2 text-white">
         <h3 className="truncate text-sm font-bold leading-tight">{item.title}</h3>
         <p className="mt-0.5 truncate text-xs text-white/70">
           {item.description?.trim() || 'No description provided.'}

@@ -103,7 +103,7 @@ export default function StaffDashboard() {
                 ))}
               </ul>
             </Panel>
-            <ComingUpPanel />
+            <ComingUpPanel href="/staff/calendar" />
           </>
         }
         right={

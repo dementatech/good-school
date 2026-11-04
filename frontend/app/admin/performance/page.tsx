@@ -9,7 +9,7 @@ import { useIsPhone } from '@/lib/useMediaQuery';
 import { useElementSize } from '@/lib/useElementSize';
 
 // Keep in sync with --color-accent-dark in app/globals.css.
-const ACCENT_DARK = '#C4952A';
+const ACCENT_DARK = '#B85C00';
 
 interface SchoolBenchmarkEntry {
   schoolId: string;

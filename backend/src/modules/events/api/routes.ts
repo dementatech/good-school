@@ -5,14 +5,19 @@ import {
   SystemManagedEventError,
   createEvent,
   deleteEvent,
+  disableEventSharing,
+  enableEventSharing,
+  getPublicEvent,
   listGlobalEvents,
   listSchoolEvents,
+  setEventThumbnail,
   updateEvent,
   type EventInput,
 } from "../domain/events.repository.js";
 import { createEventBodySchema, listEventsQuerySchema, updateEventBodySchema } from "./schemas.js";
 import { listUserIdsForSchool } from "../../schools/index.js";
 import { pushToUser } from "../../realtime/index.js";
+import { UnsupportedFileTypeError } from "../../../shared/media.js";
 
 // Any signed-in member of a school (plus super_admin, for the global
 // calendar) can read; only a school_admin (their own school) or super_admin
@@ -34,6 +39,13 @@ function ownerScope(request: FastifyRequest, reply: FastifyReply): { schoolId: s
 }
 
 export async function eventsRoutes(fastify: FastifyInstance) {
+  // No login: this is what a shared link opens. Only events someone chose to
+  // share have a token, and only the PublicEvent fields come back.
+  fastify.get<{ Params: { token: string } }>("/public/:token", async (request, reply) => {
+    const event = await getPublicEvent(request.params.token);
+    return event ? ok(event) : reply.status(404).send(fail("not_found"));
+  });
+
   fastify.get<{ Querystring: { from: string; to: string } }>(
     "/",
     { preHandler: MEMBER, schema: { querystring: listEventsQuerySchema } },
@@ -85,6 +97,44 @@ export async function eventsRoutes(fastify: FastifyInstance) {
       }
     },
   );
+
+  // Multipart, @fastify/multipart is registered globally in server.ts (5 MB / 1 file
+  // cap). Same pattern as a school's logo.
+  fastify.post<{ Params: { id: string } }>("/:id/thumbnail", { preHandler: MANAGE }, async (request, reply) => {
+    const scope = ownerScope(request, reply);
+    if (!scope) return;
+    const uploaded = await request.file();
+    if (!uploaded) return reply.status(400).send(fail("No file uploaded"));
+    const data = await uploaded.toBuffer();
+    try {
+      const updated = await setEventThumbnail(scope.schoolId, request.params.id, { mimeType: uploaded.mimetype, data });
+      return updated ? ok(updated) : reply.status(404).send(fail("not_found"));
+    } catch (err) {
+      if (err instanceof UnsupportedFileTypeError) return reply.status(400).send(fail(err.message));
+      throw err;
+    }
+  });
+
+  fastify.delete<{ Params: { id: string } }>("/:id/thumbnail", { preHandler: MANAGE }, async (request, reply) => {
+    const scope = ownerScope(request, reply);
+    if (!scope) return;
+    const updated = await setEventThumbnail(scope.schoolId, request.params.id, null);
+    return updated ? ok(updated) : reply.status(404).send(fail("not_found"));
+  });
+
+  fastify.post<{ Params: { id: string } }>("/:id/share", { preHandler: MANAGE }, async (request, reply) => {
+    const scope = ownerScope(request, reply);
+    if (!scope) return;
+    const updated = await enableEventSharing(scope.schoolId, request.params.id);
+    return updated ? ok(updated) : reply.status(404).send(fail("not_found"));
+  });
+
+  fastify.delete<{ Params: { id: string } }>("/:id/share", { preHandler: MANAGE }, async (request, reply) => {
+    const scope = ownerScope(request, reply);
+    if (!scope) return;
+    const updated = await disableEventSharing(scope.schoolId, request.params.id);
+    return updated ? ok(updated) : reply.status(404).send(fail("not_found"));
+  });
 
   fastify.delete<{ Params: { id: string } }>("/:id", { preHandler: MANAGE }, async (request, reply) => {
     const scope = ownerScope(request, reply);

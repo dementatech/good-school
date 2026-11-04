@@ -27,7 +27,7 @@ export function ComingSoon({ featureLabel }: { featureLabel?: string }) {
           )}
         </p>
         <div className="mt-6 inline-flex items-center gap-2 rounded-full bg-accent-light text-accent-dark px-3 py-1 text-xs font-medium">
-          <span className="w-1.5 h-1.5 rounded-full bg-accent-dark" />
+          <span className="w-1.5 h-1.5 rounded-full bg-accent" />
           In development
         </div>
       </div>

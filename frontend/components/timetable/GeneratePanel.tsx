@@ -147,7 +147,7 @@ export function GeneratePanel({
               type="checkbox"
               checked={keepExisting}
               onChange={(e) => setKeepExisting(e.target.checked)}
-              className="rounded border-[#E5E5E5]"
+              className="rounded border-border"
             />
             Keep lessons already on the timetable and fill around them
           </label>

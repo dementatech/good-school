@@ -17,7 +17,7 @@ export const Card: React.FC<CardProps> = ({ children, className = '', hover = fa
     // break-inside-avoid only matters for paged media (print/PDF) — it's a
     // no-op on screen, so it's safe as an unconditional default rather than
     // something every print-aware page has to opt into per card.
-    className={`bg-white rounded-card border border-[#EAEAEA] shadow-card p-4 sm:p-5 lg:p-6 break-inside-avoid ${hover ? 'hover:shadow-card-hover hover:border-[#E5E5E5] transition-all duration-200' : ''} ${className}`}
+    className={`bg-white rounded-card border border-border shadow-card p-4 sm:p-5 lg:p-6 break-inside-avoid ${hover ? 'hover:shadow-card-hover hover:border-border transition-all duration-200' : ''} ${className}`}
     whileHover={hover ? { y: -2 } : {}}
     transition={{ duration: 0.2 }}
   >

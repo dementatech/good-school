@@ -146,13 +146,13 @@ export function SupportPage() {
       <Card>
         <form onSubmit={submit} className="space-y-4">
           <fieldset>
-            <legend className="text-xs font-medium text-[#666666] tracking-wide mb-2">What is this about?</legend>
+            <legend className="text-xs font-medium text-text-muted tracking-wide mb-2">What is this about?</legend>
             <div className="grid gap-2 sm:grid-cols-3">
               {KIND_OPTIONS.map(({ kind: k, icon: Icon, hint }) => (
                 <label
                   key={k}
                   className={`flex cursor-pointer gap-2 rounded-xl border-2 p-3 text-sm transition-colors ${
-                    kind === k ? 'border-primary-700 bg-primary-50' : 'border-[#E5E5E5] hover:border-[#D4D4D4]'
+                    kind === k ? 'border-primary-700 bg-primary-50' : 'border-border hover:border-border-strong'
                   }`}
                 >
                   <input
@@ -184,7 +184,7 @@ export function SupportPage() {
           />
 
           <div className="space-y-1.5">
-            <label htmlFor="support-description" className="text-xs font-medium text-[#666666] tracking-wide">
+            <label htmlFor="support-description" className="text-xs font-medium text-text-muted tracking-wide">
               {kind === 'problem' ? 'What happened, and what did you expect?' : 'Details'}
             </label>
             <textarea
@@ -230,7 +230,7 @@ export function SupportPage() {
                 <button
                   type="button"
                   onClick={() => open(t.id)}
-                  className="w-full text-left rounded-xl border border-[#EAEAEA] bg-white px-4 py-3 hover:border-[#D4D4D4] transition-colors"
+                  className="w-full text-left rounded-xl border border-border bg-white px-4 py-3 hover:border-border-strong transition-colors"
                 >
                   <span className="flex flex-wrap items-center gap-2">
                     <Badge variant={STATUS_VARIANT[t.status]}>{STATUS_LABEL[t.status]}</Badge>

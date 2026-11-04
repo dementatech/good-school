@@ -128,11 +128,11 @@ export function ImageUpload({
 
   return (
     <div className="space-y-1.5">
-      <span className="text-xs font-medium text-[#666666] tracking-wide">{label}</span>
+      <span className="text-xs font-medium text-text-muted tracking-wide">{label}</span>
 
       <div className="flex items-center gap-3">
         <div
-          className="relative rounded-2xl overflow-hidden bg-[#FAFAFA] border-2 border-[#E5E5E5] shrink-0 flex items-center justify-center"
+          className="relative rounded-2xl overflow-hidden bg-bg-subtle border-2 border-border shrink-0 flex items-center justify-center"
           style={{ width: size, height: size }}
         >
           {shown ? (
@@ -141,14 +141,14 @@ export function ImageUpload({
             // eslint-disable-next-line @next/next/no-img-element
             <img src={shown} alt="" className="w-full h-full object-cover" />
           ) : kind === 'profile' ? (
-            <User className="w-1/3 h-1/3 text-[#A3A3A3]" aria-hidden />
+            <User className="w-1/3 h-1/3 text-text-faint" aria-hidden />
           ) : (
-            <Camera className="w-1/3 h-1/3 text-[#A3A3A3]" aria-hidden />
+            <Camera className="w-1/3 h-1/3 text-text-faint" aria-hidden />
           )}
 
           {busy && (
             <div className="absolute inset-0 bg-white/70 flex items-center justify-center">
-              <Loader2 className="w-5 h-5 text-[#02465B] animate-spin" aria-hidden />
+              <Loader2 className="w-5 h-5 text-primary-700 animate-spin" aria-hidden />
               <span className="sr-only">Uploading</span>
             </div>
           )}
@@ -169,10 +169,10 @@ export function ImageUpload({
           />
           <label
             htmlFor={`upload-${kind}-${entityId}`}
-            className={`inline-flex items-center gap-1.5 rounded-xl border-2 border-[#E5E5E5] bg-white px-3 py-2 text-sm font-medium text-[#02465B] transition-colors ${
+            className={`inline-flex items-center gap-1.5 rounded-xl border-2 border-border bg-white px-3 py-2 text-sm font-medium text-primary-700 transition-colors ${
               disabled || busy
                 ? 'opacity-50 cursor-not-allowed'
-                : 'cursor-pointer hover:border-[#02465B]/40'
+                : 'cursor-pointer hover:border-primary-700/40'
             }`}
           >
             <Camera className="w-4 h-4" aria-hidden />
@@ -191,7 +191,7 @@ export function ImageUpload({
             </button>
           )}
 
-          <span className="text-xs text-[#A3A3A3]">JPEG, PNG or WebP · max 5MB</span>
+          <span className="text-xs text-text-faint">JPEG, PNG or WebP · max 5MB</span>
         </div>
       </div>
 
