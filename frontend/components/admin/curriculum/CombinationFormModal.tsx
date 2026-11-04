@@ -147,7 +147,7 @@ export function CombinationFormModal({
           ]}
         />
 
-        <div className="rounded-lg bg-[#FAFAFA] px-3 py-2 text-sm">
+        <div className="rounded-lg bg-bg-subtle px-3 py-2 text-sm">
           <span className="text-text-faint">
             Code is assigned automatically. The name follows the subjects —{' '}
           </span>

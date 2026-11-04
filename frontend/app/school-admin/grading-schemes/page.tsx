@@ -103,12 +103,12 @@ export default function SchoolAdminGradingSchemesPage() {
       </div>
 
       {activeSection && (
-        <label className="flex items-center gap-2 text-sm text-[#12333F]">
+        <label className="flex items-center gap-2 text-sm text-primary-900">
           <input
             type="checkbox"
             checked={levels?.showPositions[activeSection] ?? activeSection !== 'KINDERGARTEN'}
             onChange={(e) => void setShowPositions(e.target.checked)}
-            className="rounded border-[#E5E5E5]"
+            className="rounded border-border"
           />
           Show each pupil&apos;s position (class ranking) on {SECTION_LABEL[activeSection]} report cards
         </label>

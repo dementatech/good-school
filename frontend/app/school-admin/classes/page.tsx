@@ -346,7 +346,7 @@ export default function SchoolAdminClassesPage() {
                   const clsStreams = streams.filter((s) => s.classId === cls.id);
                   const draft = newStream[cls.id] ?? { name: '', capacity: '' };
                   return (
-                    <div key={cls.id} className="rounded-xl border border-[#EAEAEA] p-3">
+                    <div key={cls.id} className="rounded-xl border border-border p-3">
                       <div className="flex flex-wrap items-center gap-2 justify-between">
                         {renaming?.classId === cls.id ? (
                           <form
@@ -381,7 +381,7 @@ export default function SchoolAdminClassesPage() {
                         ) : (
                           <div className="flex items-center gap-2">
                             <Layers className="w-4 h-4 text-primary-700" aria-hidden />
-                            <span className="font-medium text-[#12333F]">{cls.stageName}</span>
+                            <span className="font-medium text-primary-900">{cls.stageName}</span>
                             {cls.stageName !== cls.stageDefaultName ? (
                               <span className="text-xs text-text-faint">({cls.stageDefaultName})</span>
                             ) : (
@@ -403,7 +403,7 @@ export default function SchoolAdminClassesPage() {
                           <select
                             value={cls.classTeacherId ?? ''}
                             onChange={(e) => void setClassTeacher(cls, e.target.value || null)}
-                            className="border border-border rounded-lg px-2 py-1 text-xs text-[#12333F] max-w-[12rem]"
+                            className="border border-border rounded-lg px-2 py-1 text-xs text-primary-900 max-w-[12rem]"
                           >
                             <option value="">Not assigned</option>
                             {teachers.map((t) => (
@@ -427,7 +427,7 @@ export default function SchoolAdminClassesPage() {
                         {clsStreams.map((stream) => (
                           <span
                             key={stream.id}
-                            className="inline-flex items-center gap-1.5 rounded-lg bg-[#FAFAFA] px-2 py-1 text-xs text-[#12333F]"
+                            className="inline-flex items-center gap-1.5 rounded-lg bg-bg-subtle px-2 py-1 text-xs text-primary-900"
                           >
                             {stream.name}
                             {stream.capacity != null && (
@@ -570,22 +570,22 @@ function BulkStreams({ classes, onDone }: { classes: SchoolClass[]; onDone: () =
         </div>
       </div>
       <div className="flex flex-wrap gap-x-4 gap-y-2">
-        <label className="flex items-center gap-1.5 text-sm font-medium text-[#12333F]">
+        <label className="flex items-center gap-1.5 text-sm font-medium text-primary-900">
           <input
             type="checkbox"
             checked={allPicked}
             onChange={() => setPicked(allPicked ? new Set() : new Set(classes.map((c) => c.id)))}
-            className="rounded border-[#E5E5E5]"
+            className="rounded border-border"
           />
           All classes
         </label>
         {classes.map((c) => (
-          <label key={c.id} className="flex items-center gap-1.5 text-sm text-[#12333F]">
+          <label key={c.id} className="flex items-center gap-1.5 text-sm text-primary-900">
             <input
               type="checkbox"
               checked={picked.has(c.id)}
               onChange={() => toggle(c.id)}
-              className="rounded border-[#E5E5E5]"
+              className="rounded border-border"
             />
             {c.stageName}
           </label>

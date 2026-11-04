@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/Input';
 import { Button } from '@/components/ui/Button';
 import { useToast } from '@/components/ui/ToastProvider';
 import { submitJson } from '@/lib/api/envelope';
-import { DEFAULT_PRIMARY, isHex } from '@/lib/theme/school-theme';
+import { DEFAULT_PRIMARY, displayPrimary, isHex } from '@/lib/theme/school-theme';
 import { SchoolLogo } from './SchoolLogo';
 import {
   GENDERS,
@@ -170,7 +170,7 @@ export function SchoolFormModal({
   const logoPreview = logoObjectUrl ?? (removeLogo ? null : (school?.logoUrl ?? null));
 
   // Brand colour — a separate PATCH /schools/:id/theme, also after the row exists.
-  const initialPrimary = school?.primaryColor ?? DEFAULT_PRIMARY;
+  const initialPrimary = displayPrimary(school?.primaryColor);
   const [primaryColor, setPrimaryColor] = useState(initialPrimary);
   const primaryChanged = primaryColor.toLowerCase() !== initialPrimary.toLowerCase();
 
@@ -485,7 +485,7 @@ export function SchoolFormModal({
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-2">
               {LEVEL_OPTIONS.map(([key, label]) => (
-                <label key={key} className="flex items-center gap-2 text-sm text-[#12333F]">
+                <label key={key} className="flex items-center gap-2 text-sm text-primary-900">
                   <input
                     type="checkbox"
                     checked={form[key]}
@@ -496,7 +496,7 @@ export function SchoolFormModal({
                       const clears = on ? (SECONDARY_KEYS.includes(key) ? JUNIOR_KEYS : SECONDARY_KEYS) : [];
                       setForm((f) => ({ ...f, [key]: on, ...Object.fromEntries(clears.map((k) => [k, false])) }));
                     }}
-                    className="rounded border-[#E5E5E5]"
+                    className="rounded border-border"
                   />
                   {label}
                 </label>

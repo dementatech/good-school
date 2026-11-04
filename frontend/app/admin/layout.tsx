@@ -9,7 +9,7 @@ import {
   School, Users, CalendarDays,
   ClipboardList, CalendarClock,
   UserCircle,
-  LifeBuoy, Inbox,
+  LifeBuoy, Inbox, Library,
 } from 'lucide-react';
 import type { Role } from '@/lib/auth/session';
 
@@ -30,6 +30,7 @@ const SYSTEM_NAV = [
   { href: '/admin/system/events', label: 'Global Events', icon: CalendarClock },
   { href: '/admin/system/schools', label: 'Schools', icon: School },
   { href: '/admin/system/accounts', label: 'Accounts', icon: Users },
+  { href: '/admin/system/library', label: 'Library Approvals', icon: Library },
 ];
 
 // Own-account settings — kept out of NAV and pinned beside Sign out, since it

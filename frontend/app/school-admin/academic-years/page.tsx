@@ -237,12 +237,12 @@ export default function SchoolAdminAcademicYearsPage() {
               onChange={(e) => setForm({ ...form, endDate: e.target.value })}
               required
             />
-            <label className="sm:col-span-3 flex items-center gap-2 text-sm text-[#12333F]">
+            <label className="sm:col-span-3 flex items-center gap-2 text-sm text-primary-900">
               <input
                 type="checkbox"
                 checked={form.makeCurrent}
                 onChange={(e) => setForm({ ...form, makeCurrent: e.target.checked })}
-                className="rounded border-[#E5E5E5]"
+                className="rounded border-border"
               />
               Make this the current academic year
             </label>

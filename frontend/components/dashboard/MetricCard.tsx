@@ -4,36 +4,56 @@ import { ArrowUpRight, type LucideIcon } from 'lucide-react';
 import { Card } from '@/components/kit/card';
 import { Skeleton } from '@/components/kit/skeleton';
 
+/** The icon tile's colour. `success` and `warning` report a state, so use them only for that. */
+export type MetricTone = 'primary' | 'navy' | 'accent' | 'success' | 'warning';
+
+const TONE_CLASSES: Record<MetricTone, string> = {
+  primary: 'bg-primary-700 text-white',
+  navy: 'bg-primary-900 text-white',
+  // White fails contrast on the orange, so its icon is navy.
+  accent: 'bg-accent text-primary-900',
+  success: 'bg-success text-white',
+  warning: 'bg-warning text-white',
+};
+
 /** A single headline number. Links to the page behind it when `href` is set. */
 export function MetricCard({
   icon: Icon,
   label,
   value,
+  note,
+  tone = 'primary',
   href,
   loading = false,
 }: {
   icon: LucideIcon;
   label: string;
   value: ReactNode;
+  /** One short line of context under the number. */
+  note?: ReactNode;
+  tone?: MetricTone;
   href?: string;
   loading?: boolean;
 }) {
   const card = (
     <Card className="h-full gap-3 p-4 sm:p-5 transition-shadow group-hover:shadow-card-hover">
-      <div className="flex items-start justify-between gap-2">
-        <p className="text-xs sm:text-sm text-muted-foreground">{label}</p>
-        {href && (
-          <ArrowUpRight className="size-4 text-text-faint shrink-0 transition-colors group-hover:text-primary-600" aria-hidden />
-        )}
-      </div>
       <div className="flex items-center gap-2.5">
-        <span className="hidden xs:flex size-8 rounded-full border border-border text-text-secondary items-center justify-center shrink-0">
+        <span className={`size-8 rounded-lg flex items-center justify-center shrink-0 ${TONE_CLASSES[tone]}`}>
           <Icon className="size-4" aria-hidden />
         </span>
+        <p className="flex-1 min-w-0 text-xs sm:text-sm text-muted-foreground">{label}</p>
+        {href && (
+          <ArrowUpRight className="hidden xs:block size-4 text-text-faint shrink-0 transition-colors group-hover:text-primary-700" aria-hidden />
+        )}
+      </div>
+      <div>
         {loading ? (
-          <Skeleton className="h-8 w-16" />
+          <Skeleton className="h-9 w-20" />
         ) : (
-          <p className="text-2xl font-bold text-primary-900 tabular-nums">{value}</p>
+          <>
+            <p className="text-2xl sm:text-3xl font-bold text-primary-900 tabular-nums leading-tight">{value}</p>
+            {note && <p className="mt-1 text-xs text-muted-foreground">{note}</p>}
+          </>
         )}
       </div>
     </Card>

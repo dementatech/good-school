@@ -373,12 +373,12 @@ export function StaffFormModal({
                       )}
                       <div className="flex flex-wrap gap-x-4 gap-y-2 max-h-40 overflow-y-auto pr-1">
                         {phaseSubjects.map((s) => (
-                          <label key={s.id} className="flex items-center gap-2 text-sm text-[#12333F]">
+                          <label key={s.id} className="flex items-center gap-2 text-sm text-primary-900">
                             <input
                               type="checkbox"
                               checked={specializationIds.includes(s.id)}
                               onChange={() => toggleSpecialization(s.id)}
-                              className="rounded border-[#E5E5E5]"
+                              className="rounded border-border"
                             />
                             {s.name}
                           </label>

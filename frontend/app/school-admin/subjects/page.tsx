@@ -230,7 +230,7 @@ export default function SchoolAdminSubjectsPage() {
           type="checkbox"
           checked={r.isOffered}
           onChange={(e) => void setOffering(r.subjectId, e.target.checked, e.target.checked ? r.isCompulsory : false)}
-          className="rounded border-[#E5E5E5]"
+          className="rounded border-border"
         />
       ),
     },
@@ -245,7 +245,7 @@ export default function SchoolAdminSubjectsPage() {
           checked={r.isCompulsory}
           disabled={!r.isOffered}
           onChange={(e) => void setOffering(r.subjectId, true, e.target.checked)}
-          className="rounded border-[#E5E5E5] disabled:opacity-40"
+          className="rounded border-border disabled:opacity-40"
         />
       ),
     },

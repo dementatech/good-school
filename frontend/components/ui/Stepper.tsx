@@ -20,17 +20,17 @@ export const Stepper: React.FC<StepperProps> = ({ steps, currentStep, onStepClic
           <div className={`
             w-7 h-7 sm:w-9 sm:h-9 rounded-xl flex items-center justify-center text-xs sm:text-sm font-medium transition-all duration-300
             ${index < currentStep ? 'bg-[#4A9C6D] text-white' :
-              index === currentStep ? 'bg-[#02465B] text-white shadow-lg shadow-[#02465B]/20' :
-              'bg-[#E8F0F5] text-[#8DA5B0]'}
+              index === currentStep ? 'bg-primary-700 text-white shadow-lg shadow-primary-700/20' :
+              'bg-primary-100 text-text-faint'}
           `}>
             {index < currentStep ? <CheckCircle className="w-3.5 h-3.5 sm:w-4 sm:h-4" /> : index + 1}
           </div>
-          <span className={`text-xs sm:text-sm hidden sm:inline ${index === currentStep ? 'font-medium text-[#02465B]' : 'text-[#8DA5B0]'}`}>
+          <span className={`text-xs sm:text-sm hidden sm:inline ${index === currentStep ? 'font-medium text-primary-700' : 'text-text-faint'}`}>
             {step}
           </span>
         </button>
         {index < steps.length - 1 && (
-          <div className="w-4 sm:w-8 h-px bg-[#E5E5E5] mx-0.5" />
+          <div className="w-4 sm:w-8 h-px bg-border mx-0.5" />
         )}
       </div>
     ))}

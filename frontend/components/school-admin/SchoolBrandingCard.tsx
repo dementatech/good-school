@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/Button';
 import { useToast } from '@/components/ui/ToastProvider';
 import { useAuth } from '@/components/auth/AuthContext';
 import { submitJson } from '@/lib/api/envelope';
-import { applyPrimary, DEFAULT_PRIMARY, isHex } from '@/lib/theme/school-theme';
+import { applyPrimary, DEFAULT_PRIMARY, displayPrimary, isHex } from '@/lib/theme/school-theme';
 import { SchoolLogo } from '@/components/admin/schools/SchoolLogo';
 
 /**
@@ -28,8 +28,8 @@ export function SchoolBrandingCard({
 }) {
   const toast = useToast();
   const { refresh } = useAuth();
-  const [color, setColor] = useState(primaryColor || DEFAULT_PRIMARY);
-  const [saved, setSaved] = useState(primaryColor || DEFAULT_PRIMARY);
+  const [color, setColor] = useState(displayPrimary(primaryColor));
+  const [saved, setSaved] = useState(displayPrimary(primaryColor));
   const [saving, setSaving] = useState(false);
   const dirty = color.toLowerCase() !== saved.toLowerCase();
 
@@ -86,7 +86,7 @@ export function SchoolBrandingCard({
 
   async function save() {
     if (!isHex(color)) {
-      toast.error('Enter a hex colour like #1e3a8a.');
+      toast.error('Enter a hex colour like #2e77ae.');
       return;
     }
     setSaving(true);

@@ -478,7 +478,7 @@ export function EnterMarksPanel({
               return (
                 <div
                   key={p.studentId}
-                  className={`flex items-center justify-between gap-3 py-1.5 border-b border-[#FAFAFA] last:border-0 ${locked ? 'opacity-60' : ''}`}
+                  className={`flex items-center justify-between gap-3 py-1.5 border-b border-bg-subtle last:border-0 ${locked ? 'opacity-60' : ''}`}
                 >
                   <div className="min-w-0 flex items-center gap-2">
                     <button

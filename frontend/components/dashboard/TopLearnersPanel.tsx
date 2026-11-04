@@ -95,7 +95,7 @@ export function TopLearnersPanel({
             <li key={p.studentUserId} className="rounded-xl bg-bg-canvas p-3 text-center min-w-0">
               <Avatar className="size-14 mx-auto">
                 {p.photoUrl && <AvatarImage src={p.photoUrl} alt="" />}
-                <AvatarFallback className="bg-primary-100 text-primary-700 font-bold">{initialsOf(p.studentName)}</AvatarFallback>
+                <AvatarFallback className="bg-primary-100 text-primary-900 font-bold">{initialsOf(p.studentName)}</AvatarFallback>
               </Avatar>
               {current?.showPositions && p.rank !== null && (
                 <Badge variant="secondary" className="mt-2">

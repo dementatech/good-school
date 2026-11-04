@@ -419,7 +419,7 @@ export function QuestionsEditor({ systemId, apiBase, detailHref }: QuestionsEdit
       <button
         type="button"
         onClick={() => router.push(`${detailHref}/${systemId}`)}
-        className="inline-flex items-center gap-1.5 text-sm text-[#666666] hover:text-[#02465B]"
+        className="inline-flex items-center gap-1.5 text-sm text-text-muted hover:text-primary-700"
       >
         <ArrowLeft className="w-4 h-4" aria-hidden />
         {title || systemId}
@@ -448,7 +448,7 @@ export function QuestionsEditor({ systemId, apiBase, detailHref }: QuestionsEdit
             below and decides what "Add question" tags the new row with, so
             building a section end-to-end never touches the section field by
             hand past the first question. */}
-        <div className="flex gap-1 mb-4 border-b border-[#EAEAEA] overflow-x-auto">
+        <div className="flex gap-1 mb-4 border-b border-border overflow-x-auto">
           {SECTION_TABS.map((tab) => (
             <button
               key={tab.value}
@@ -456,13 +456,13 @@ export function QuestionsEditor({ systemId, apiBase, detailHref }: QuestionsEdit
               onClick={() => setActiveSection(tab.value)}
               className={`px-3 py-1.5 text-sm font-medium border-b-2 -mb-px whitespace-nowrap transition-colors ${
                 activeSection === tab.value
-                  ? 'border-[#02465B] text-[#02465B]'
-                  : 'border-transparent text-[#666666] hover:text-[#02465B]'
+                  ? 'border-primary-700 text-primary-700'
+                  : 'border-transparent text-text-muted hover:text-primary-700'
               }`}
             >
               {tab.label}
               {sectionCounts[tab.value] ? (
-                <span className="ml-1.5 text-xs text-[#A3A3A3]">({sectionCounts[tab.value]})</span>
+                <span className="ml-1.5 text-xs text-text-faint">({sectionCounts[tab.value]})</span>
               ) : null}
             </button>
           ))}
@@ -479,7 +479,7 @@ export function QuestionsEditor({ systemId, apiBase, detailHref }: QuestionsEdit
             const anchor = group.members[0];
             return (
               <div key={anchor.id} className="space-y-2">
-                <div className="rounded-xl border-2 border-[#EAEAEA] p-3 space-y-3">
+                <div className="rounded-xl border-2 border-border p-3 space-y-3">
                   <GroupImageField
                     assessmentId={assessmentUuid}
                     anchorPosition={anchor.position}
@@ -515,18 +515,18 @@ export function QuestionsEditor({ systemId, apiBase, detailHref }: QuestionsEdit
                       <div
                         key={q.id}
                         ref={q.globalIndex === newlyAddedIndex ? newlyAddedRef : undefined}
-                        className="space-y-2 pt-2 border-t border-[#EAEAEA] first:border-t-0 first:pt-0"
+                        className="space-y-2 pt-2 border-t border-border first:border-t-0 first:pt-0"
                       >
                         <div className="flex items-center gap-2">
                           <button
                             type="button"
                             onClick={() => toggleExpanded(q.id!)}
                             aria-label={isOpen ? `Collapse ${q.code}` : `Expand ${q.code}`}
-                            className="shrink-0 text-[#666666]"
+                            className="shrink-0 text-text-muted"
                           >
                             {isOpen ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
                           </button>
-                          <span className="text-xs font-medium text-[#666666] w-12 shrink-0">
+                          <span className="text-xs font-medium text-text-muted w-12 shrink-0">
                             {formatQuestionLabel(q.code, mi === 0)}
                           </span>
                           {isOpen ? (
@@ -537,7 +537,7 @@ export function QuestionsEditor({ systemId, apiBase, detailHref }: QuestionsEdit
                               onChange={(e) => updateQuestion(q.globalIndex, { questionText: e.target.value })}
                               placeholder="Question text"
                               aria-label={`${q.code} text`}
-                              className="flex-1 rounded-lg border-2 border-[#E5E5E5] px-3 py-1.5 text-sm disabled:bg-[#FAFAFA] focus:border-[#02465B] focus:outline-none"
+                              className="flex-1 rounded-lg border-2 border-border px-3 py-1.5 text-sm disabled:bg-bg-subtle focus:border-primary-700 focus:outline-none"
                             />
                           ) : (
                             <button
@@ -633,7 +633,7 @@ export function QuestionsEditor({ systemId, apiBase, detailHref }: QuestionsEdit
 
                             {!stem && NEEDS_OPTIONS.includes(q.questionType) && (
                               <div className="space-y-1.5">
-                                <span className="text-xs font-medium text-[#666666]">
+                                <span className="text-xs font-medium text-text-muted">
                                   Choices
                                   {q.questionType === 'checkbox' && ' — tick every correct one'}
                                 </span>
@@ -658,7 +658,7 @@ export function QuestionsEditor({ systemId, apiBase, detailHref }: QuestionsEdit
                                             : chosen.filter((a) => a !== option.trim());
                                           updateQuestion(q.globalIndex, { correctAnswer: next.join(CHECKBOX_SEP) });
                                         }}
-                                        className="rounded border-[#E5E5E5] shrink-0"
+                                        className="rounded border-border shrink-0"
                                       />
                                     )}
                                     <input
@@ -684,7 +684,7 @@ export function QuestionsEditor({ systemId, apiBase, detailHref }: QuestionsEdit
                                       }}
                                       placeholder={`Choice ${oi + 1}`}
                                       aria-label={`${q.code} choice ${oi + 1}`}
-                                      className="flex-1 rounded-lg border-2 border-[#E5E5E5] px-3 py-1.5 text-sm disabled:bg-[#FAFAFA] focus:border-[#02465B] focus:outline-none"
+                                      className="flex-1 rounded-lg border-2 border-border px-3 py-1.5 text-sm disabled:bg-bg-subtle focus:border-primary-700 focus:outline-none"
                                     />
                                     {!locked && q.options.length > 2 && (
                                       <button
@@ -718,7 +718,7 @@ export function QuestionsEditor({ systemId, apiBase, detailHref }: QuestionsEdit
                                   <button
                                     type="button"
                                     onClick={() => updateQuestion(q.globalIndex, { options: [...q.options, ''] })}
-                                    className="text-xs text-[#02465B] hover:underline"
+                                    className="text-xs text-primary-700 hover:underline"
                                   >
                                     + Add choice
                                   </button>
@@ -731,7 +731,7 @@ export function QuestionsEditor({ systemId, apiBase, detailHref }: QuestionsEdit
                                 be written quickly. */}
                             {!stem && HAND_MARKED.includes(q.questionType) && (
                               <div className="space-y-1.5">
-                                <label htmlFor={`model-${q.globalIndex}`} className="text-xs font-medium text-[#666666]">
+                                <label htmlFor={`model-${q.globalIndex}`} className="text-xs font-medium text-text-muted">
                                   Model answer / mark split (optional — printed on the answer key)
                                 </label>
                                 <textarea
@@ -741,7 +741,7 @@ export function QuestionsEditor({ systemId, apiBase, detailHref }: QuestionsEdit
                                   disabled={locked}
                                   onChange={(e) => updateQuestion(q.globalIndex, { modelAnswer: e.target.value })}
                                   placeholder="e.g. Mouse (1 mark). Used to move the pointer or select items (1 mark)."
-                                  className="w-full rounded-lg border-2 border-[#E5E5E5] px-3 py-1.5 text-sm disabled:bg-[#FAFAFA] focus:border-[#02465B] focus:outline-none"
+                                  className="w-full rounded-lg border-2 border-border px-3 py-1.5 text-sm disabled:bg-bg-subtle focus:border-primary-700 focus:outline-none"
                                 />
                               </div>
                             )}
@@ -752,7 +752,7 @@ export function QuestionsEditor({ systemId, apiBase, detailHref }: QuestionsEdit
                                   <button
                                     type="button"
                                     onClick={() => addRelatedQuestion(q.globalIndex)}
-                                    className="text-xs text-[#02465B] hover:underline"
+                                    className="text-xs text-primary-700 hover:underline"
                                   >
                                     + Related question
                                   </button>
@@ -761,7 +761,7 @@ export function QuestionsEditor({ systemId, apiBase, detailHref }: QuestionsEdit
                                   <button
                                     type="button"
                                     onClick={() => addSubQuestion(q.globalIndex)}
-                                    className="text-xs text-[#02465B] hover:underline"
+                                    className="text-xs text-primary-700 hover:underline"
                                   >
                                     + Sub-part
                                   </button>
@@ -770,7 +770,7 @@ export function QuestionsEditor({ systemId, apiBase, detailHref }: QuestionsEdit
                                   <button
                                     type="button"
                                     onClick={() => addSubSubQuestion(q.globalIndex)}
-                                    className="text-xs text-[#02465B] hover:underline"
+                                    className="text-xs text-primary-700 hover:underline"
                                   >
                                     + Roman sub-part
                                   </button>

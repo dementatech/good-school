@@ -45,7 +45,7 @@ export function FeedbackForm({ contentId }: { contentId: string }) {
       <div className="flex items-center gap-1">
         {[1, 2, 3, 4, 5].map((n) => (
           <button key={n} type="button" onClick={() => setRating(n)} aria-label={`${n} star`}>
-            <Star className={`w-5 h-5 ${n <= rating ? 'fill-accent-dark text-accent-dark' : 'text-text-muted'}`} />
+            <Star className={`w-5 h-5 ${n <= rating ? 'fill-accent text-accent' : 'text-text-muted'}`} />
           </button>
         ))}
       </div>
@@ -54,7 +54,7 @@ export function FeedbackForm({ contentId }: { contentId: string }) {
         onChange={(e) => setComment(e.target.value)}
         rows={2}
         placeholder="Optional comment"
-        className="w-full rounded-xl border-2 border-[#E5E5E5] bg-white px-4 py-2.5 text-sm focus:border-primary-700 focus:outline-none focus:ring-2 focus:ring-primary-700/10"
+        className="w-full rounded-xl border-2 border-border bg-white px-4 py-2.5 text-sm focus:border-primary-700 focus:outline-none focus:ring-2 focus:ring-primary-700/10"
       />
       <Button variant="outline" onClick={submit} isLoading={submitting} disabled={!rating && !comment}>
         Send feedback

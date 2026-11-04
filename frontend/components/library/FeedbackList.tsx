@@ -37,7 +37,7 @@ export function FeedbackList({ contentId }: { contentId: string }) {
             {item.rating && (
               <div className="flex items-center gap-0.5">
                 {[1, 2, 3, 4, 5].map((n) => (
-                  <Star key={n} className={`w-3.5 h-3.5 ${n <= item.rating! ? 'fill-accent-dark text-accent-dark' : 'text-text-faint'}`} />
+                  <Star key={n} className={`w-3.5 h-3.5 ${n <= item.rating! ? 'fill-accent text-accent' : 'text-text-faint'}`} />
                 ))}
               </div>
             )}

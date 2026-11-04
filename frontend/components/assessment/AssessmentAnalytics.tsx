@@ -317,11 +317,11 @@ export function AssessmentAnalytics({ systemId, role, apiBase, markingHref }: As
         pdfValue: (r) => (r.percentage === null ? 'pending' : `${Math.round(r.percentage)}%`),
         render: (r) =>
           r.percentage === null ? (
-            <span className="text-[#A3A3A3]">pending</span>
+            <span className="text-text-faint">pending</span>
           ) : (
             <div>
-              <div className="font-semibold text-[#12333F]">{r.percentage}%</div>
-              <div className="text-xs text-[#666666]">
+              <div className="font-semibold text-primary-900">{r.percentage}%</div>
+              <div className="text-xs text-text-muted">
                 {r.totalScore} / {r.maxScore ?? '—'}
               </div>
             </div>
@@ -343,7 +343,7 @@ export function AssessmentAnalytics({ systemId, role, apiBase, markingHref }: As
       <button
         type="button"
         onClick={() => router.push(listHref)}
-        className="inline-flex items-center gap-1.5 text-sm text-[#666666] hover:text-[#02465B]"
+        className="inline-flex items-center gap-1.5 text-sm text-text-muted hover:text-primary-700"
       >
         <ArrowLeft className="w-4 h-4" aria-hidden />
         All assessments
@@ -541,14 +541,14 @@ export function AssessmentAnalytics({ systemId, role, apiBase, markingHref }: As
 
       {/* ── Tabs ─────────────────────────────────────────────── */}
       {cap.canManage && (
-        <div className="flex gap-1 border-b border-[#EAEAEA]">
+        <div className="flex gap-1 border-b border-border">
           {(['analytics', 'setup'] as const).map((t) => (
             <button
               key={t}
               type="button"
               onClick={() => setTab(t)}
               className={`px-3 py-1.5 text-sm font-medium border-b-2 -mb-px capitalize transition-colors ${
-                tab === t ? 'border-[#02465B] text-[#02465B]' : 'border-transparent text-[#666666] hover:text-[#02465B]'
+                tab === t ? 'border-primary-700 text-primary-700' : 'border-transparent text-text-muted hover:text-primary-700'
               }`}
             >
               {t}
@@ -647,12 +647,12 @@ export function AssessmentAnalytics({ systemId, role, apiBase, markingHref }: As
                 </h2>
                 <div className="flex items-center gap-2">
                   {cap.isOwner && results.length > 0 && !release.releasedAt && (
-                    <label className="flex items-center gap-1.5 text-xs text-[#666666] mr-1">
+                    <label className="flex items-center gap-1.5 text-xs text-text-muted mr-1">
                       <input
                         type="checkbox"
                         checked={emailOnRelease}
                         onChange={(e) => setEmailOnRelease(e.target.checked)}
-                        className="rounded border-[#E5E5E5]"
+                        className="rounded border-border"
                       />
                       Email scripts to learners and parents
                     </label>

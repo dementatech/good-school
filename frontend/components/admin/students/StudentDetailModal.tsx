@@ -270,30 +270,30 @@ function AddGuardianForm({ student, onDone }: { student: Student; onDone: () => 
         options={GUARDIAN_ROLES.map((r) => ({ value: r, label: r }))}
       />
       <div className="flex flex-wrap gap-4">
-        <label className="flex items-center gap-2 text-sm text-[#12333F]">
+        <label className="flex items-center gap-2 text-sm text-primary-900">
           <input
             type="checkbox"
             checked={isPrimaryContact}
             onChange={(e) => setIsPrimaryContact(e.target.checked)}
-            className="rounded border-[#E5E5E5]"
+            className="rounded border-border"
           />
           Primary contact
         </label>
-        <label className="flex items-center gap-2 text-sm text-[#12333F]">
+        <label className="flex items-center gap-2 text-sm text-primary-900">
           <input
             type="checkbox"
             checked={isFeeResponsible}
             onChange={(e) => setIsFeeResponsible(e.target.checked)}
-            className="rounded border-[#E5E5E5]"
+            className="rounded border-border"
           />
           Fee responsible
         </label>
-        <label className="flex items-center gap-2 text-sm text-[#12333F]">
+        <label className="flex items-center gap-2 text-sm text-primary-900">
           <input
             type="checkbox"
             checked={isEmergencyContact}
             onChange={(e) => setIsEmergencyContact(e.target.checked)}
-            className="rounded border-[#E5E5E5]"
+            className="rounded border-border"
           />
           Emergency contact
         </label>

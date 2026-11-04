@@ -32,7 +32,7 @@ function IconTooltip({ anchor, label }: { anchor: HTMLElement; label: string }) 
   return createPortal(
     <div
       role="tooltip"
-      className="fixed z-[100] px-2.5 py-1.5 rounded-lg bg-[#0f172a] text-white text-xs font-medium shadow-lg pointer-events-none whitespace-nowrap"
+      className="fixed z-[100] px-2.5 py-1.5 rounded-lg bg-primary-900 text-white text-xs font-medium shadow-lg pointer-events-none whitespace-nowrap"
       style={{ top: rect.top + rect.height / 2, left: rect.right + 8, transform: 'translateY(-50%)' }}
     >
       {label}
@@ -146,7 +146,7 @@ function NavGroupNode({
         className={
           onFlyout
             ? `flex items-center gap-2.5 rounded-md px-2.5 py-2 text-sm transition-colors ${
-                active ? 'bg-primary-50 text-primary-900 font-medium' : 'text-[#334155] hover:bg-primary-50'
+                active ? 'bg-primary-50 text-primary-900 font-medium' : 'text-text-secondary hover:bg-primary-50'
               }`
             : `flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors ${
                 active ? 'bg-primary-50 text-primary-700 font-medium' : 'text-text-secondary hover:bg-primary-50 hover:text-primary-700'
@@ -170,7 +170,7 @@ function NavGroupNode({
           type="button"
           aria-label={item.label}
           className={`w-full flex items-center justify-center rounded-lg px-0 py-2.5 text-sm transition-colors ${
-            groupActive ? 'bg-primary-700 text-white shadow-sm' : 'text-primary-600 hover:bg-primary-50'
+            groupActive ? 'bg-primary-700 text-white shadow-sm' : 'text-primary-700 hover:bg-primary-50'
           }`}
         >
           <Icon className="w-4.5 h-4.5 shrink-0" aria-hidden />

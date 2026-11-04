@@ -155,7 +155,7 @@ export default function PaperSubmissionPage() {
   }
 
   if (authLoading || loading) {
-    return <div className="p-8 text-center text-[#666666]">Loading…</div>;
+    return <div className="p-8 text-center text-text-muted">Loading…</div>;
   }
 
   const alreadyOnline = submission?.mode === 'online';
@@ -165,7 +165,7 @@ export default function PaperSubmissionPage() {
       <button
         type="button"
         onClick={() => router.push('/student/list')}
-        className="inline-flex items-center gap-1.5 text-sm text-[#666666] hover:text-[#02465B]"
+        className="inline-flex items-center gap-1.5 text-sm text-text-muted hover:text-primary-700"
       >
         <ArrowLeft className="w-4 h-4" aria-hidden />
         Back to assessments
@@ -177,7 +177,7 @@ export default function PaperSubmissionPage() {
           Answer this paper on paper, then photograph every page and upload them here.
         </p>
         {closesAt && (
-          <p className="text-sm text-[#8A6A16] mt-2">
+          <p className="text-sm text-accent-dark mt-2">
             Everything must be uploaded before {new Date(closesAt).toLocaleString()}.
           </p>
         )}
@@ -194,7 +194,7 @@ export default function PaperSubmissionPage() {
 
       {alreadyOnline ? (
         <Card>
-          <p className="text-sm text-[#12333F]">
+          <p className="text-sm text-primary-900">
             You already answered this assessment on screen, so there is nothing to upload. Each
             assessment can only be sat once.
           </p>
@@ -211,9 +211,9 @@ export default function PaperSubmissionPage() {
           {submission?.scans.length ? (
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-4">
               {submission.scans.map((scan) => (
-                <div key={scan.id} className="relative rounded-xl border border-[#EAEAEA] overflow-hidden">
+                <div key={scan.id} className="relative rounded-xl border border-border overflow-hidden">
                   {scan.url.endsWith('.pdf') ? (
-                    <div className="h-28 flex items-center justify-center bg-[#FAFAFA] text-xs text-[#666666]">
+                    <div className="h-28 flex items-center justify-center bg-bg-subtle text-xs text-text-muted">
                       PDF
                     </div>
                   ) : (
@@ -221,7 +221,7 @@ export default function PaperSubmissionPage() {
                     <img src={scan.url} alt={`Page ${scan.pageNumber}`} className="h-28 w-full object-cover" />
                   )}
                   <div className="flex items-center justify-between px-2 py-1.5 bg-white">
-                    <span className="text-xs text-[#12333F]">Page {scan.pageNumber}</span>
+                    <span className="text-xs text-primary-900">Page {scan.pageNumber}</span>
                     <button
                       type="button"
                       onClick={() => void removePage(scan.pageNumber)}
@@ -258,8 +258,8 @@ export default function PaperSubmissionPage() {
           />
           <label
             htmlFor="scan-input"
-            className={`inline-flex items-center gap-2 rounded-xl border-2 border-[#E5E5E5] bg-white px-4 py-2.5 text-sm font-medium text-[#02465B] ${
-              busyPage !== null ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer hover:border-[#02465B]/40'
+            className={`inline-flex items-center gap-2 rounded-xl border-2 border-border bg-white px-4 py-2.5 text-sm font-medium text-primary-700 ${
+              busyPage !== null ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer hover:border-primary-700/40'
             }`}
           >
             {busyPage !== null ? (

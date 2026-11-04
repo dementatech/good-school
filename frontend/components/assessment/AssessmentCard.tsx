@@ -113,7 +113,7 @@ export function AssessmentCard({
           </div>
         </div>
         <p className="text-xs text-text-muted mb-3">{assessment.systemId}</p>
-        <div className="space-y-1 text-xs text-[#666666]">
+        <div className="space-y-1 text-xs text-text-muted">
           <p>{describeAudience(assessment.targets, schools, levels)}</p>
           <p>{formatWindow(assessment)}</p>
           <div className="flex flex-wrap gap-1">

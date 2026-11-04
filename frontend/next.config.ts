@@ -6,6 +6,9 @@ const backendUrl = process.env.BACKEND_URL ?? "http://localhost:4000";
 
 const nextConfig: NextConfig = {
   output: "standalone",
+  // `next dev` only: lets pages opened through a localhost.run tunnel load dev
+  // assets and HMR, for testing on a phone.
+  allowedDevOrigins: ["*.lhr.life", "*.localhost.run"],
   async rewrites() {
     return [
       {

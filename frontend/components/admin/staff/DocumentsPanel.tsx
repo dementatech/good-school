@@ -104,7 +104,7 @@ export function DocumentsPanel({ staffId }: { staffId: string }) {
             placeholder="e.g. Bachelor's degree certificate"
           />
         </div>
-        <label className="inline-flex h-11 items-center justify-center gap-1.5 rounded-xl border-2 border-[#E5E5E5] px-4 text-sm font-medium text-primary-700 cursor-pointer hover:bg-bg-subtle whitespace-nowrap">
+        <label className="inline-flex h-11 items-center justify-center gap-1.5 rounded-xl border-2 border-border px-4 text-sm font-medium text-primary-700 cursor-pointer hover:bg-bg-subtle whitespace-nowrap">
           <Upload className="w-4 h-4" aria-hidden />
           {uploading ? 'Uploading…' : 'Upload file'}
           <input

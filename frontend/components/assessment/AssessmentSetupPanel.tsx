@@ -371,7 +371,7 @@ export function AssessmentSetupPanel({ systemId, apiBase, onSaved }: AssessmentS
             collaborators.map((c) => (
               <span
                 key={c.id}
-                className="inline-flex items-center gap-1 rounded-lg bg-[#FAFAFA] px-2 py-1 text-xs text-[#12333F]"
+                className="inline-flex items-center gap-1 rounded-lg bg-bg-subtle px-2 py-1 text-xs text-primary-900"
               >
                 {c.name}
                 {c.systemId ? ` · ${c.systemId}` : ''}
@@ -380,7 +380,7 @@ export function AssessmentSetupPanel({ systemId, apiBase, onSaved }: AssessmentS
                     type="button"
                     onClick={() => void removeCollaborator(c.id)}
                     aria-label={`Remove ${c.name}`}
-                    className="text-[#666666] hover:text-[#C26565]"
+                    className="text-text-muted hover:text-[#C26565]"
                   >
                     <Trash2 className="w-3 h-3" aria-hidden />
                   </button>
@@ -424,14 +424,14 @@ export function AssessmentSetupPanel({ systemId, apiBase, onSaved }: AssessmentS
             assessment.targets.map((t) => (
               <span
                 key={t.id}
-                className="inline-flex items-center gap-1 rounded-lg bg-[#FAFAFA] px-2 py-1 text-xs text-[#12333F]"
+                className="inline-flex items-center gap-1 rounded-lg bg-bg-subtle px-2 py-1 text-xs text-primary-900"
               >
                 {targetLabel(t)}
                 <button
                   type="button"
                   onClick={() => void removeTarget(t.id)}
                   aria-label={`Remove target ${targetLabel(t)}`}
-                  className="text-[#666666] hover:text-[#C26565]"
+                  className="text-text-muted hover:text-[#C26565]"
                 >
                   <Trash2 className="w-3 h-3" aria-hidden />
                 </button>
@@ -498,7 +498,7 @@ export function AssessmentSetupPanel({ systemId, apiBase, onSaved }: AssessmentS
         <p className="text-xs text-text-muted mb-3">
           Printed at the top of the question paper. Leave blank for the standard wording.
         </p>
-        <label htmlFor="instructions" className="text-xs font-medium text-[#666666]">
+        <label htmlFor="instructions" className="text-xs font-medium text-text-muted">
           One instruction per line
         </label>
         <textarea
@@ -506,7 +506,7 @@ export function AssessmentSetupPanel({ systemId, apiBase, onSaved }: AssessmentS
           rows={4}
           value={instructions}
           onChange={(e) => setInstructions(e.target.value)}
-          className="mt-1.5 w-full rounded-xl border-2 border-[#E5E5E5] px-3 py-2 text-sm focus:border-[#02465B] focus:outline-none"
+          className="mt-1.5 w-full rounded-xl border-2 border-border px-3 py-2 text-sm focus:border-primary-700 focus:outline-none"
         />
         <div className="mt-2">
           <Button variant="outline" onClick={() => void patchAssessment({ instructions }, 'Instructions saved.')}>

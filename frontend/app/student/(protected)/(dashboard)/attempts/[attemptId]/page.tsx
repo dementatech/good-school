@@ -200,7 +200,7 @@ export default function PracticeAttemptPage() {
                     <img
                       src={v.imageUrl}
                       alt=""
-                      className="mt-3 max-h-56 max-w-full w-auto rounded-xl object-contain bg-[#FAFAFA]"
+                      className="mt-3 max-h-56 max-w-full w-auto rounded-xl object-contain bg-bg-subtle"
                     />
                   )}
 

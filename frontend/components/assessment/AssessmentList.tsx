@@ -65,17 +65,17 @@ export function AssessmentList() {
   };
 
   if (loading) {
-    return <div className="p-8 text-center text-[#666666]">Loading assessments...</div>;
+    return <div className="p-8 text-center text-text-muted">Loading assessments...</div>;
   }
 
   if (error) {
-    return <div className="p-8 text-center text-[#C0392B]">{error}</div>;
+    return <div className="p-8 text-center text-error">{error}</div>;
   }
 
   if (assessments.length === 0) {
     return (
       <div className="p-8 text-center">
-        <p className="text-[#666666]">No assessments available for your school and class.</p>
+        <p className="text-text-muted">No assessments available for your school and class.</p>
         <Button className="mt-4" variant="outline" onClick={() => router.push('/student/dashboard')}>
           Go Back
         </Button>
@@ -85,21 +85,21 @@ export function AssessmentList() {
 
   return (
     <div className="max-w-4xl mx-auto px-4 py-8">
-      <h1 className="text-2xl font-bold text-[#011E28] mb-6">Available Assessments</h1>
+      <h1 className="text-2xl font-bold text-primary-900 mb-6">Available Assessments</h1>
       <div className="grid gap-4">
         {assessments.map((a) => (
           <Card key={a.id} hover className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-5">
             <div>
-              <h3 className="text-lg font-semibold text-[#011E28]">{a.title}</h3>
-              <p className="text-sm text-[#666666]">{a.description}</p>
-              <div className="flex items-center gap-1 mt-1 text-xs text-[#A3A3A3]">
+              <h3 className="text-lg font-semibold text-primary-900">{a.title}</h3>
+              <p className="text-sm text-text-muted">{a.description}</p>
+              <div className="flex items-center gap-1 mt-1 text-xs text-text-faint">
                 <Clock className="w-3.5 h-3.5" />
                 {a.timeLimit} minutes
                 {/* Anything listed here is already open — the server only
                     returns assessments inside their window — so the useful
                     thing to show is the deadline, not availability. */}
                 {a.closesAt && (
-                  <span className="ml-2 text-[#C4952A]">
+                  <span className="ml-2 text-accent-dark">
                     (Closes {new Date(a.closesAt).toLocaleString()})
                   </span>
                 )}

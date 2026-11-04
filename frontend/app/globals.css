@@ -5,73 +5,79 @@
    Lock colors to palette — immune to dark mode
 ───────────────────────────────────────────────  */
 
-/* ── Primary scale (BLUE — brand accent, #1e3a8a) ── */
+/* ── Primary scale (Blue Spirit: #2E77AE brand, #0D2137 ink, #E0EAF5 tint) ── */
 /* NON-inline on purpose: `bg-primary-*` / `text-primary-*` / `border-primary-*`
    compile to `var(--color-primary-N)`, not the literal hex, so a school's
    custom brand colour can override the 50–700 stops at runtime on :root
    (see components/theme/SchoolThemeApplier.tsx + lib/theme/school-theme.ts).
-   800/900 stay here only — 900 is heading text, kept near-black regardless of
+   800/900 stay here only — 900 is heading text, kept dark navy regardless of
    brand; 700 is the main brand colour (buttons, active nav, sidebar fill). */
 @theme {
-  --color-primary-900: #171717;
-  --color-primary-800: #172554;
-  --color-primary-700: #1e3a8a;
-  --color-primary-600: #1e40af;
-  --color-primary-500: #1d4ed8;
-  --color-primary-400: #2563eb;
-  --color-primary-200: #93c5fd;
-  --color-primary-100: #dbeafe;
-  --color-primary-50:  #eff6ff;
+  --color-primary-900: #0D2137;
+  --color-primary-800: #235E8B;
+  --color-primary-700: #2E77AE;
+  --color-primary-600: #4385b6;
+  --color-primary-500: #5c95c0;
+  --color-primary-400: #79a8cb;
+  --color-primary-200: #abc9df;
+  --color-primary-100: #E0EAF5;
+  --color-primary-50:  #eef4f9;
 }
 
 @theme inline {
-  /* Neutral surfaces + near-black text (Vercel-like); blue is the ACCENT
-     only — the primary scale above. */
+  /* White surfaces + navy text; blue is the primary scale above, orange the
+     accent scale below. */
   --color-background: #FFFFFF;
-  --color-foreground: #171717;
+  --color-foreground: #0D2137;
 
   /* ── shadcn/ui kit (components/kit), mapped onto the app's palette. `primary`
        follows the school's brand colour. There's no `accent` here: it's the
-       app's gold below, so the kit uses `muted` for hover surfaces. ── */
+       app's orange below, so the kit uses `muted` for hover surfaces. ── */
   --color-card: #FFFFFF;
-  --color-card-foreground: #171717;
+  --color-card-foreground: #0D2137;
   --color-popover: #FFFFFF;
-  --color-popover-foreground: #171717;
+  --color-popover-foreground: #0D2137;
   --color-primary: var(--color-primary-700);
   --color-primary-foreground: #FFFFFF;
-  --color-secondary: #F1F4F9;
-  --color-secondary-foreground: #171717;
-  --color-muted: #F1F4F9;
-  --color-muted-foreground: #666666;
+  --color-secondary: #E0EAF5;
+  --color-secondary-foreground: #0D2137;
+  --color-muted: #eef4f9;
+  --color-muted-foreground: #52657A;
   --color-destructive: #C0392B;
-  --color-input: #E0E0E0;
+  --color-input: #C9D6E4;
   --color-ring: var(--color-primary-500);
 
-  /* ── Accent scale (gold) ── */
-  --color-accent-dark:    #C4952A;
-  --color-accent:         #F5CA93;
-  --color-accent-mid:     #F7D6A9;
-  --color-accent-light:   #FEF3DC;
-  --color-accent-lighter: #FFFBF3;
+  /* ── Accent scale (orange, #FF8E2B). White text fails contrast on `accent`:
+       put navy on it, and use `accent-dark` for orange text on white. ── */
+  --color-accent-dark:    #B85C00;
+  --color-accent:         #FF8E2B;
+  --color-accent-mid:     #FFB877;
+  --color-accent-light:   #FFF0E2;
+  --color-accent-lighter: #FFF8F1;
 
-  /* ── Background scale (neutral) ── */
+  /* ── Background scale (cool neutral) ── */
   --color-bg:        #FFFFFF;
   --color-bg-card:   #FFFFFF;
-  --color-bg-muted:  #F5F5F5;
-  --color-bg-subtle: #FAFAFA;
-  /* Portal shell backdrop — a cool gray canvas so white Cards (rounded-card +
+  --color-bg-muted:  #F1F6FA;
+  --color-bg-subtle: #F7FAFC;
+  /* Portal shell backdrop — a pale blue canvas so white Cards (rounded-card +
      shadow-card) read as floating panels, like the dashboard reference mockups. */
-  --color-bg-canvas: #EEF2F8;
+  --color-bg-canvas: #E0EAF5;
 
-  /* ── Borders (neutral) ── */
-  --color-border:        #EAEAEA;
-  --color-border-strong: #E0E0E0;
+  /* ── Borders (cool neutral) ── */
+  --color-border:        #DCE5EF;
+  --color-border-strong: #C9D6E4;
 
-  /* ── Text scale (neutral grays) ── */
-  --color-text-primary:   #171717;
-  --color-text-secondary: #404040;
-  --color-text-muted:     #666666;
-  --color-text-faint:     #A3A3A3;
+  /* ── Text scale (navy-tinted) ── */
+  --color-text-primary:   #0D2137;
+  --color-text-secondary: #33475B;
+  --color-text-muted:     #52657A;
+  --color-text-faint:     #8A9BAD;
+
+  /* ── Chart ── */
+  /* `primary-700` is too dark to read on the navy FeaturePanel; this is the same
+     series (boys) stepped lighter for that surface. Validated against #0D2137. */
+  --color-chart-blue-on-navy: #3F93DB;
 
   /* ── Semantic ── */
   --color-success:    #1A7A4A;
@@ -118,16 +124,38 @@
 @media (prefers-color-scheme: dark) {
   :root {
     --background: #FFFFFF;
-    --foreground: #171717;
+    --foreground: #0D2137;
   }
 }
 
 body {
   background-color: #FFFFFF;
-  color: #171717;
+  color: #0D2137;
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+}
+
+/* No zooming and no sideways drift of the page on a phone. Scrolling stays, and
+   inner areas that scroll sideways (tables, charts) still do. */
+html,
+body {
+  touch-action: pan-x pan-y;
+  overflow-x: clip;
+  overscroll-behavior-x: none;
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+/* iOS zooms into any field under 16px when it's focused. Deliberately outside a
+   layer so it beats Tailwind's text-sm/text-xs utilities on every field. */
+@media (hover: none) and (pointer: coarse) {
+  input,
+  select,
+  textarea,
+  [contenteditable="true"] {
+    font-size: 16px;
+  }
 }
 
 /* Scrollable but with no visible scrollbar — used on slide-over panels. */

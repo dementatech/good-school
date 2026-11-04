@@ -29,10 +29,10 @@ export function StudentAvatar({
   const cls = SIZE_CLASSES[size];
   if (photoUrl) {
     // eslint-disable-next-line @next/next/no-img-element
-    return <img src={photoUrl} alt="" className={`${cls} object-cover border border-[#EAEAEA] shrink-0`} />;
+    return <img src={photoUrl} alt="" className={`${cls} object-cover border border-border shrink-0`} />;
   }
   return (
-    <span className={`${cls} bg-[#FAFAFA] text-[#666666] font-medium flex items-center justify-center shrink-0`}>
+    <span className={`${cls} bg-bg-subtle text-text-muted font-medium flex items-center justify-center shrink-0`}>
       {initials(name) || '—'}
     </span>
   );

@@ -82,22 +82,22 @@ export default function ParentNotificationsPage() {
         ) : items.length === 0 ? (
           <p className="text-sm text-text-muted">Nothing yet.</p>
         ) : (
-          <div className="divide-y divide-[#FAFAFA]">
+          <div className="divide-y divide-bg-subtle">
             {items.map((n) => (
               <button
                 key={n.id}
                 type="button"
                 onClick={() => void openItem(n)}
-                className={`w-full text-left px-2 py-3 hover:bg-[#FAFAFA] transition-colors ${
-                  n.isRead ? '' : 'bg-[#FAFAFA]/60'
+                className={`w-full text-left px-2 py-3 hover:bg-bg-subtle transition-colors ${
+                  n.isRead ? '' : 'bg-bg-subtle/60'
                 }`}
               >
                 <span className="flex items-start gap-2">
-                  {!n.isRead && <span className="w-1.5 h-1.5 rounded-full bg-[#02465B] mt-1.5 shrink-0" aria-hidden />}
+                  {!n.isRead && <span className="w-1.5 h-1.5 rounded-full bg-primary-700 mt-1.5 shrink-0" aria-hidden />}
                   <span className="min-w-0">
-                    <span className="block text-sm font-medium text-[#12333F]">{n.title}</span>
-                    {n.body && <span className="block text-xs text-[#666666] mt-0.5">{n.body}</span>}
-                    <span className="block text-[10px] text-[#A3A3A3] mt-1">
+                    <span className="block text-sm font-medium text-primary-900">{n.title}</span>
+                    {n.body && <span className="block text-xs text-text-muted mt-0.5">{n.body}</span>}
+                    <span className="block text-[10px] text-text-faint mt-1">
                       {new Date(n.createdAt).toLocaleString()}
                     </span>
                   </span>

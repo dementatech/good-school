@@ -199,7 +199,7 @@ export default function AdminLessonsPage() {
                             <span
                               key={a.studentId}
                               className={`text-xs px-2 py-1 rounded-lg ${
-                                a.present ? 'bg-[#F5F5F5] text-[#0489AE]' : 'bg-[#C0392B]/10 text-[#C0392B]'
+                                a.present ? 'bg-bg-muted text-primary-700' : 'bg-error/10 text-error'
                               }`}
                             >
                               {a.name}

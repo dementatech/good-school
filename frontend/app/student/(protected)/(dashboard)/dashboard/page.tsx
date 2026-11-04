@@ -11,7 +11,7 @@ export default function StudentDashboardPage() {
         listUrl="/api/v1/exams/me"
         detailUrl={(examId) => `/api/v1/exams/me/${examId}`}
         resultsHref={(examId) => (examId ? `/student/results/${examId}` : '/student/results')}
-        sidePanel={<ComingUpPanel />}
+        sidePanel={<ComingUpPanel href="/student/calendar" />}
       />
     </DashboardPage>
   );

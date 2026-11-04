@@ -100,7 +100,7 @@ export default function DosOverview() {
                 ))}
               </ul>
             </Panel>
-            <ComingUpPanel />
+            <ComingUpPanel href="/dos/calendar" />
           </>
         }
       />

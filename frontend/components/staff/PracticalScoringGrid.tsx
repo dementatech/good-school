@@ -355,7 +355,7 @@ export function PracticalScoringGrid({
   /* ── Render ────────────────────────────────────────────────────────────── */
   if (loading) {
     return (
-      <div className="flex items-center justify-center py-20 text-[#666666]">
+      <div className="flex items-center justify-center py-20 text-text-muted">
         <Loader2 className="w-5 h-5 animate-spin mr-2" aria-hidden />
         Opening the register…
       </div>
@@ -365,8 +365,8 @@ export function PracticalScoringGrid({
   if (loadError) {
     return (
       <div className="max-w-md mx-auto py-16 text-center">
-        <p className="text-sm text-[#C0392B] mb-4">{loadError}</p>
-        <button type="button" onClick={onBack} className="text-sm font-semibold text-[#02465B] cursor-pointer">
+        <p className="text-sm text-error mb-4">{loadError}</p>
+        <button type="button" onClick={onBack} className="text-sm font-semibold text-primary-700 cursor-pointer">
           Back to lessons
         </button>
       </div>
@@ -378,15 +378,15 @@ export function PracticalScoringGrid({
   if (session.scoredAt) {
     return (
       <div className="max-w-md mx-auto py-16 text-center">
-        <div className="w-12 h-12 rounded-full bg-[#E8F7EF] flex items-center justify-center mx-auto mb-4">
-          <Check className="w-6 h-6 text-[#1A7A4A]" aria-hidden />
+        <div className="w-12 h-12 rounded-full bg-success-bg flex items-center justify-center mx-auto mb-4">
+          <Check className="w-6 h-6 text-success" aria-hidden />
         </div>
-        <h2 className="text-lg font-semibold text-[#171717] mb-1">Practical scoring complete</h2>
-        <p className="text-sm text-[#666666] mb-6">
+        <h2 className="text-lg font-semibold text-primary-900 mb-1">Practical scoring complete</h2>
+        <p className="text-sm text-text-muted mb-6">
           {learners.length} learners, all {PRACTICAL_ASPECTS.length} skills. It now counts towards their
           practical score for the term.
         </p>
-        <button type="button" onClick={onBack} className="text-sm font-semibold text-[#02465B] cursor-pointer">
+        <button type="button" onClick={onBack} className="text-sm font-semibold text-primary-700 cursor-pointer">
           Back to lessons
         </button>
       </div>
@@ -396,11 +396,11 @@ export function PracticalScoringGrid({
   if (learners.length === 0) {
     return (
       <div className="max-w-md mx-auto py-16 text-center">
-        <h2 className="text-lg font-semibold text-[#171717] mb-1">Nobody was marked present</h2>
-        <p className="text-sm text-[#666666] mb-6">
+        <h2 className="text-lg font-semibold text-primary-900 mb-1">Nobody was marked present</h2>
+        <p className="text-sm text-text-muted mb-6">
           Practical skills are scored from the register, so there is nobody to score for this lesson.
         </p>
-        <button type="button" onClick={onBack} className="text-sm font-semibold text-[#02465B] cursor-pointer">
+        <button type="button" onClick={onBack} className="text-sm font-semibold text-primary-700 cursor-pointer">
           Back to lessons
         </button>
       </div>
@@ -415,15 +415,15 @@ export function PracticalScoringGrid({
           type="button"
           onClick={onBack}
           aria-label="Back to lessons"
-          className="p-1.5 -ml-1.5 rounded-lg hover:bg-[#F5F5F5] cursor-pointer"
+          className="p-1.5 -ml-1.5 rounded-lg hover:bg-bg-muted cursor-pointer"
         >
-          <ArrowLeft className="w-4 h-4 text-[#404040]" aria-hidden />
+          <ArrowLeft className="w-4 h-4 text-text-secondary" aria-hidden />
         </button>
         <div className="min-w-0 flex-1">
-          <p className="text-sm font-semibold text-[#171717] truncate">
+          <p className="text-sm font-semibold text-primary-900 truncate">
             Period {session.period} · {session.sessionDate}
           </p>
-          <p className="text-xs text-[#A3A3A3]">{learners.length} learners present</p>
+          <p className="text-xs text-text-faint">{learners.length} learners present</p>
         </div>
         <SyncBadge syncing={syncing} failed={syncFailed} outstanding={outstandingCells} />
       </div>
@@ -433,18 +433,18 @@ export function PracticalScoringGrid({
       {/* Offline notice: never a modal, never disables the grid. The teacher
           keeps working; the outbox is what makes that safe. */}
       {syncFailed && (
-        <div className="mt-4 flex items-start gap-2.5 rounded-lg bg-[#FEF3DC] border border-[#F7D6A9] px-3 py-2.5">
-          <CloudOff className="w-4 h-4 text-[#C47B0A] mt-0.5 shrink-0" aria-hidden />
+        <div className="mt-4 flex items-start gap-2.5 rounded-lg bg-warning-bg border border-accent-mid px-3 py-2.5">
+          <CloudOff className="w-4 h-4 text-warning mt-0.5 shrink-0" aria-hidden />
           <div className="min-w-0">
-            <p className="text-xs font-semibold text-[#C47B0A]">Working offline</p>
-            <p className="text-xs text-[#C47B0A]/90">
+            <p className="text-xs font-semibold text-warning">Working offline</p>
+            <p className="text-xs text-warning/90">
               Your scoring is saved on this device and will sync when you reconnect.
             </p>
           </div>
           <button
             type="button"
             onClick={() => void flush()}
-            className="ml-auto shrink-0 text-xs font-semibold text-[#C47B0A] underline cursor-pointer"
+            className="ml-auto shrink-0 text-xs font-semibold text-warning underline cursor-pointer"
           >
             Retry
           </button>
@@ -453,13 +453,13 @@ export function PracticalScoringGrid({
 
       {/* The question for this pass */}
       <div className="mt-5 mb-4">
-        <p className="text-xs font-semibold uppercase tracking-wide text-[#A3A3A3] mb-1">
+        <p className="text-xs font-semibold uppercase tracking-wide text-text-faint mb-1">
           Skill {pass + 1} of {aspects.length}
         </p>
-        <h2 className="text-lg font-semibold text-[#171717] leading-snug">
+        <h2 className="text-lg font-semibold text-primary-900 leading-snug">
           {labelFor(aspect)}
         </h2>
-        <p className="text-sm text-[#666666] mt-1">
+        <p className="text-sm text-text-muted mt-1">
           {scoredThisPass} of {learners.length} scored
         </p>
       </div>
@@ -467,13 +467,13 @@ export function PracticalScoringGrid({
       {/* Search never touches scoring state — it filters the rendered list only,
           so a tap can never be lost by typing. */}
       <div className="relative mb-2">
-        <Search className="w-4 h-4 text-[#A3A3A3] absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" aria-hidden />
+        <Search className="w-4 h-4 text-text-faint absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" aria-hidden />
         <input
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder="Search by name or ID…"
           aria-label="Search the roster by name or ID"
-          className="w-full pl-10 pr-3 py-2.5 text-sm rounded-lg border border-[#EAEAEA] bg-[#FAFAFA] focus:bg-white focus:border-[#0489AE] focus:outline-none"
+          className="w-full pl-10 pr-3 py-2.5 text-sm rounded-lg border border-border bg-bg-subtle focus:bg-white focus:border-primary-700 focus:outline-none"
         />
       </div>
 
@@ -489,31 +489,31 @@ export function PracticalScoringGrid({
           />
         ))}
         {visible.length === 0 && (
-          <p className="py-8 text-center text-sm text-[#A3A3A3]">No learner matches “{query}”.</p>
+          <p className="py-8 text-center text-sm text-text-faint">No learner matches “{query}”.</p>
         )}
       </div>
 
       {/* Footer */}
-      <div className="fixed bottom-0 left-0 right-0 border-t border-[#EAEAEA] bg-white/95 backdrop-blur px-4 py-3">
+      <div className="fixed bottom-0 left-0 right-0 border-t border-border bg-white/95 backdrop-blur px-4 py-3">
         <div className="max-w-2xl mx-auto space-y-2">
           {unscoredThisPass > 0 && (
             <button
               type="button"
               onClick={affirmRemainder}
-              className="w-full py-2.5 rounded-lg border border-[#E0E0E0] text-sm font-semibold text-[#404040] hover:bg-[#F5F5F5] cursor-pointer"
+              className="w-full py-2.5 rounded-lg border border-border-strong text-sm font-semibold text-text-secondary hover:bg-bg-muted cursor-pointer"
             >
               Mark the remaining {unscoredThisPass} as Moderate
             </button>
           )}
 
-          {completeError && <p className="text-xs text-[#C0392B]">{completeError}</p>}
+          {completeError && <p className="text-xs text-error">{completeError}</p>}
 
           <div className="flex items-center gap-2">
             <button
               type="button"
               onClick={() => setPass((p) => Math.max(0, p - 1))}
               disabled={pass === 0}
-              className="px-4 py-2.5 rounded-lg text-sm font-semibold text-[#404040] disabled:opacity-40 disabled:cursor-not-allowed hover:bg-[#F5F5F5] cursor-pointer"
+              className="px-4 py-2.5 rounded-lg text-sm font-semibold text-text-secondary disabled:opacity-40 disabled:cursor-not-allowed hover:bg-bg-muted cursor-pointer"
             >
               Back
             </button>
@@ -525,8 +525,8 @@ export function PracticalScoringGrid({
                 className={cn(
                   'flex-1 py-2.5 rounded-lg text-sm font-semibold cursor-pointer',
                   passComplete
-                    ? 'bg-[#02465B] text-white hover:bg-[#02303F]'
-                    : 'bg-[#F5F5F5] text-[#404040] hover:bg-[#EAEAEA]'
+                    ? 'bg-primary-700 text-white hover:bg-primary-800'
+                    : 'bg-bg-muted text-text-secondary hover:bg-border'
                 )}
               >
                 {passComplete ? 'Next skill' : `Next skill (${unscoredThisPass} unscored)`}
@@ -536,7 +536,7 @@ export function PracticalScoringGrid({
                 type="button"
                 onClick={() => void complete()}
                 disabled={!allPassesComplete || completing}
-                className="flex-1 py-2.5 rounded-lg text-sm font-semibold bg-[#02465B] text-white hover:bg-[#02303F] disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+                className="flex-1 py-2.5 rounded-lg text-sm font-semibold bg-primary-700 text-white hover:bg-primary-800 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
               >
                 {completing ? 'Finishing…' : 'Finish scoring'}
               </button>
@@ -563,12 +563,12 @@ function BandRow({
   onPick: (band: PracticalBand) => void
 }) {
   return (
-    <div className="flex items-center justify-between gap-3 py-2.5 px-1 border-b border-[#EAEAEA] last:border-0">
+    <div className="flex items-center justify-between gap-3 py-2.5 px-1 border-b border-border last:border-0">
       <div className="min-w-0 flex-1">
-        <p className={cn('text-sm truncate', selected ? 'text-[#171717] font-medium' : 'text-[#404040]')}>
+        <p className={cn('text-sm truncate', selected ? 'text-primary-900 font-medium' : 'text-text-secondary')}>
           {name}
         </p>
-        {systemId && <p className="text-xs text-[#A3A3A3]">{systemId}</p>}
+        {systemId && <p className="text-xs text-text-faint">{systemId}</p>}
       </div>
       <div className="flex gap-1 shrink-0" role="radiogroup" aria-label={`Band for ${name}`}>
         {PRACTICAL_BANDS.map((band) => {
@@ -585,7 +585,7 @@ function BandRow({
                 'px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-colors duration-150 cursor-pointer',
                 active
                   ? BAND_ACTIVE[band.code]
-                  : 'bg-[#F5F5F5] text-[#666666] hover:bg-[#EAEAEA]'
+                  : 'bg-bg-muted text-text-muted hover:bg-border'
               )}
             >
               {BAND_SHORT[band.code]}
@@ -605,9 +605,9 @@ const BAND_SHORT: Record<PracticalBand, string> = {
 }
 
 const BAND_ACTIVE: Record<PracticalBand, string> = {
-  outstanding: 'bg-[#E8F7EF] text-[#1A7A4A]',
-  moderate: 'bg-[#D6F0F7] text-[#02465B]',
-  needs_support: 'bg-[#FEF3DC] text-[#C47B0A]',
+  outstanding: 'bg-success-bg text-success',
+  moderate: 'bg-primary-100 text-primary-700',
+  needs_support: 'bg-warning-bg text-warning',
 }
 
 function SyncBadge({
@@ -621,7 +621,7 @@ function SyncBadge({
 }) {
   if (syncing) {
     return (
-      <span className="shrink-0 flex items-center gap-1.5 text-xs text-[#A3A3A3]">
+      <span className="shrink-0 flex items-center gap-1.5 text-xs text-text-faint">
         <Loader2 className="w-3.5 h-3.5 animate-spin" aria-hidden />
         Saving
       </span>
@@ -629,14 +629,14 @@ function SyncBadge({
   }
   if (failed || outstanding > 0) {
     return (
-      <span className="shrink-0 flex items-center gap-1.5 text-xs font-medium text-[#C47B0A]">
+      <span className="shrink-0 flex items-center gap-1.5 text-xs font-medium text-warning">
         <RefreshCw className="w-3.5 h-3.5" aria-hidden />
         {outstanding} not saved
       </span>
     )
   }
   return (
-    <span className="shrink-0 flex items-center gap-1.5 text-xs text-[#1A7A4A]">
+    <span className="shrink-0 flex items-center gap-1.5 text-xs text-success">
       <Check className="w-3.5 h-3.5" aria-hidden />
       Saved
     </span>

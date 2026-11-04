@@ -184,7 +184,7 @@ export function SupportInbox() {
               <button
                 type="button"
                 onClick={() => open(t.id)}
-                className="w-full text-left rounded-xl border border-[#EAEAEA] bg-white px-4 py-3 hover:border-[#D4D4D4] transition-colors"
+                className="w-full text-left rounded-xl border border-border bg-white px-4 py-3 hover:border-border-strong transition-colors"
               >
                 <span className="flex flex-wrap items-center gap-2">
                   <Badge variant={STATUS_VARIANT[t.status]}>{STATUS_LABEL[t.status]}</Badge>
@@ -286,7 +286,7 @@ function StatusPanel({ ticket, onUpdated }: { ticket: TicketDetail; onUpdated: (
       <p className="text-xs text-text-muted mb-3">
         {ticket.resolvedAt ? `Resolved ${fmtDateTime(ticket.resolvedAt)}` : `Updated ${fmtDateTime(ticket.updatedAt)}`}
       </p>
-      <label htmlFor={`status-note-${ticket.id}`} className="text-xs font-medium text-[#666666] tracking-wide">
+      <label htmlFor={`status-note-${ticket.id}`} className="text-xs font-medium text-text-muted tracking-wide">
         Note to the reporter (optional)
       </label>
       <textarea
