@@ -17,7 +17,8 @@ import {
 import { createEventBodySchema, listEventsQuerySchema, updateEventBodySchema } from "./schemas.js";
 import { listUserIdsForSchool } from "../../schools/index.js";
 import { pushToUser } from "../../realtime/index.js";
-import { UnsupportedFileTypeError } from "../../../shared/media.js";
+import { IMAGE_MIME_TO_EXT, UnsupportedFileTypeError } from "../../../shared/media.js";
+import { optimiseDisplayImage } from "../../../shared/image.js";
 
 // Any signed-in member of a school (plus super_admin, for the global
 // calendar) can read; only a school_admin (their own school) or super_admin
@@ -105,9 +106,19 @@ export async function eventsRoutes(fastify: FastifyInstance) {
     if (!scope) return;
     const uploaded = await request.file();
     if (!uploaded) return reply.status(400).send(fail("No file uploaded"));
-    const data = await uploaded.toBuffer();
+    // Checked before decoding, so only the three picture types ever reach the decoder.
+    if (!IMAGE_MIME_TO_EXT[uploaded.mimetype]) {
+      return reply.status(400).send(fail("Only JPEG, PNG, or WebP images are accepted"));
+    }
+    let picture: { mimeType: string; data: Buffer };
     try {
-      const updated = await setEventThumbnail(scope.schoolId, request.params.id, { mimeType: uploaded.mimetype, data });
+      // Shrunk once here so the calendar, public page and link preview all load quickly.
+      picture = await optimiseDisplayImage(await uploaded.toBuffer());
+    } catch {
+      return reply.status(400).send(fail("That file couldn't be read as a picture"));
+    }
+    try {
+      const updated = await setEventThumbnail(scope.schoolId, request.params.id, picture);
       return updated ? ok(updated) : reply.status(404).send(fail("not_found"));
     } catch (err) {
       if (err instanceof UnsupportedFileTypeError) return reply.status(400).send(fail(err.message));

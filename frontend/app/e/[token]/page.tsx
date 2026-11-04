@@ -26,7 +26,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const requestHeaders = await headers();
   const host = requestHeaders.get('x-forwarded-host') ?? requestHeaders.get('host');
   const protocol = requestHeaders.get('x-forwarded-proto') ?? 'https';
-  const image = host ? [{ url: `${protocol}://${host}${publicEventPath(token)}/preview.png`, width: 1200, height: 630, alt: event.title }] : undefined;
+  const image = host ? [{ url: `${protocol}://${host}${publicEventPath(token)}/preview.jpg`, width: 1200, height: 630, type: 'image/jpeg', alt: event.title }] : undefined;
   return {
     title: event.title,
     description,
