@@ -6,7 +6,8 @@ import { PortalGate } from '@/components/auth/PortalGate';
 import { SchoolThemeApplier } from '@/components/theme/SchoolThemeApplier';
 import { Select } from '@/components/ui/Select';
 import { ParentChildrenProvider, useParentChildren } from '@/components/parent/ParentChildrenContext';
-import { LayoutDashboard, Award, ClipboardCheck, BookOpen, Bell, LifeBuoy } from 'lucide-react';
+import { LayoutDashboard, Award, ClipboardCheck, BookOpen, Bell, LifeBuoy, MessageSquare } from 'lucide-react';
+import { useUnreadMessageCount } from '@/lib/communications/useUnreadMessageCount';
 import type { Role } from '@/lib/auth/session';
 
 const PARENT_ROLES: Role[] = ['parent'];
@@ -16,6 +17,7 @@ const NAV = [
   { href: '/parent/results', label: 'Results', icon: Award },
   { href: '/parent/attendance', label: 'Attendance', icon: ClipboardCheck },
   { href: '/parent/lessons', label: 'Lessons', icon: BookOpen },
+  { href: '/parent/communications', label: 'Messages', icon: MessageSquare },
   { href: '/parent/notifications', label: 'Notifications', icon: Bell },
   { href: '/parent/support', label: 'Help & Support', icon: LifeBuoy },
 ];
@@ -36,9 +38,14 @@ function ChildSwitcher() {
 }
 
 function ParentShell({ children: nodes }: { children: React.ReactNode }) {
+  const unread = useUnreadMessageCount();
+  const nav = React.useMemo(
+    () => NAV.map((item) => (item.href === '/parent/communications' ? { ...item, badge: unread } : item)),
+    [unread],
+  );
 
   return (
-    <PortalShell nav={NAV} dashboardHref="/parent/dashboard" topbarAction={<ChildSwitcher />}>
+    <PortalShell nav={nav} dashboardHref="/parent/dashboard" topbarAction={<ChildSwitcher />}>
       {nodes}
     </PortalShell>
   );

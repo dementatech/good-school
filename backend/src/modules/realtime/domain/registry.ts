@@ -55,11 +55,36 @@ setInterval(() => {
 // deployment would need this as Redis pub/sub instead.
 const connections = new Map<string, Set<WebSocket>>();
 
+type PresenceListener = (userId: string, online: boolean) => void;
+const presenceListeners = new Set<PresenceListener>();
+
+/** Called when a user's first tab connects or their last one closes, so a
+ *  module can tell other people (chat's online dots). A listener that throws
+ *  never affects the socket. */
+export function onPresenceChange(listener: PresenceListener): void {
+  presenceListeners.add(listener);
+}
+
+function emitPresence(userId: string, online: boolean): void {
+  for (const listener of presenceListeners) {
+    try {
+      listener(userId, online);
+    } catch {
+      // Best-effort.
+    }
+  }
+}
+
+export function isOnline(userId: string): boolean {
+  return connections.has(userId);
+}
+
 export function subscribe(userId: string, socket: WebSocket): void {
   let set = connections.get(userId);
   if (!set) {
     set = new Set();
     connections.set(userId, set);
+    emitPresence(userId, true);
   }
   set.add(socket);
 }
@@ -68,7 +93,10 @@ export function unsubscribe(userId: string, socket: WebSocket): void {
   const set = connections.get(userId);
   if (!set) return;
   set.delete(socket);
-  if (set.size === 0) connections.delete(userId);
+  if (set.size === 0) {
+    connections.delete(userId);
+    emitPresence(userId, false);
+  }
 }
 
 /** Best-effort: an offline user (or a dead socket that hasn't been cleaned

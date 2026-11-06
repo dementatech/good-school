@@ -105,8 +105,9 @@ export const FEATURES: Record<FeatureKey, FeatureMeta> = {
   student_portal: { label: "Student Portal", ready: false },
   parent_portal: { label: "Parent Portal", ready: false },
   notifications: { label: "Notifications", ready: true },
-  // School-admin <-> teacher messaging, plus admin -> all-teachers and
-  // teacher -> his own class broadcasts. Backed by /api/v1/communications.
+  // Realtime chat for every school role: private chats, custom groups, the
+  // staff room, class and parents groups, and school announcements.
+  // Backed by /api/v1/communications.
   communications: { label: "Communication", ready: true },
   account_settings: { label: "My Account", ready: false },
   // A staff member's own profile + self-service academic document upload
@@ -195,6 +196,7 @@ const ROUTE_FEATURES: { prefix: string; key: FeatureKey }[] = [
   { prefix: "/dos/kindergarten", key: "early_years" },
 
   { prefix: "/parent/notifications", key: "notifications" },
+  { prefix: "/parent/communications", key: "communications" },
   { prefix: "/parent/results", key: "exams" },
   { prefix: "/parent/attendance", key: "parent_portal" },
   { prefix: "/parent/lessons", key: "parent_portal" },
@@ -203,6 +205,7 @@ const ROUTE_FEATURES: { prefix: string; key: FeatureKey }[] = [
 
   { prefix: "/student/library", key: "student_portal" },
   { prefix: "/student/results", key: "exams" },
+  { prefix: "/student/communications", key: "communications" },
   { prefix: "/student/list", key: "student_portal" },
   { prefix: "/student/take", key: "student_portal" },
   { prefix: "/student/paper", key: "student_portal" },

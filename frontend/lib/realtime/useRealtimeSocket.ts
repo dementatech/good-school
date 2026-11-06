@@ -3,10 +3,49 @@
 import { useEffect, useRef } from 'react';
 import { submitJson } from '@/lib/api/envelope';
 
-export interface RealtimeMessageEvent {
-  type: 'message';
-  conversationId: string;
-  message: { id: string; senderUserId: string; body: string; createdAt: string };
+import type { ChatMessage, RoomKind } from '@/lib/communications/types';
+
+/** A new chat message, sent to every member of the room (the sender's other tabs too). */
+export interface RealtimeChatMessageEvent {
+  type: 'chat_message';
+  roomId: string;
+  roomKind: RoomKind;
+  /** Play a sound: a private chat or an announcement, not muted, not mine. */
+  notify: boolean;
+  message: ChatMessage;
+}
+
+/** An edit, delete or reaction change. */
+export interface RealtimeChatMessageUpdatedEvent {
+  type: 'chat_message_updated';
+  roomId: string;
+  message: ChatMessage;
+}
+
+/** Name, settings or members changed, or I was added or removed: refetch. */
+export interface RealtimeChatRoomUpdatedEvent {
+  type: 'chat_room_updated';
+  roomId: string;
+}
+
+export interface RealtimeChatReadEvent {
+  type: 'chat_read';
+  roomId: string;
+  userId: string;
+  lastReadAt: string;
+}
+
+export interface RealtimeChatTypingEvent {
+  type: 'chat_typing';
+  roomId: string;
+  userId: string;
+  name: string;
+}
+
+export interface RealtimeChatPresenceEvent {
+  type: 'chat_presence';
+  userId: string;
+  online: boolean;
 }
 
 export interface RealtimeNotificationEvent {
@@ -39,7 +78,12 @@ export interface RealtimeCalendarEvent {
  * any JSON-serializable payload keyed by `type`.
  */
 export type RealtimeEvent =
-  | RealtimeMessageEvent
+  | RealtimeChatMessageEvent
+  | RealtimeChatMessageUpdatedEvent
+  | RealtimeChatRoomUpdatedEvent
+  | RealtimeChatReadEvent
+  | RealtimeChatTypingEvent
+  | RealtimeChatPresenceEvent
   | RealtimeNotificationEvent
   | RealtimeForceSignoutEvent
   | RealtimeCalendarEvent;

@@ -54,18 +54,23 @@ useRealtimeSocket((event) => {
 
 | `type` | Pushed from | Consumed by | Payload |
 |---|---|---|---|
-| `message` | `communications/api/routes.ts` (`POST /conversations/:id/messages`) | Open conversation thread (`school-admin`/`staff` communications pages), `useUnreadMessageCount` (badge), `AuthContext` (sound) | `{ conversationId, message: { id, senderUserId, body, createdAt } }` |
+| `chat_message` | `communications/api/routes.ts` (`deliver`, on every new chat message) | `ChatApp`/`ChatThread` (list + open thread), `useUnreadMessageCount` (badge), `AuthContext` (sound when `notify`) | `{ roomId, roomKind, notify, message: ChatMessage }` |
+| `chat_message_updated` | `communications/api/routes.ts` (edit, delete, reaction) | `ChatApp`, `ChatThread` | `{ roomId, message: ChatMessage }` |
+| `chat_room_updated` | `communications/api/routes.ts` (group created, renamed, members or settings changed, muted) | `ChatApp` (refetch list and open room), `useUnreadMessageCount` | `{ roomId }` |
+| `chat_read` | `communications/api/routes.ts` (`POST /rooms/:id/read`; rooms of 300 members or fewer, else only the reader's own tabs) | `ChatThread` (read ticks), `ChatApp` (clears the badge in other tabs) | `{ roomId, userId, lastReadAt }` |
+| `chat_typing` | `communications/api/routes.ts` (`POST /rooms/:id/typing`; rooms of 300 or fewer) | `ChatApp` (fades after 5 s) | `{ roomId, userId, name }` |
+| `chat_presence` | `communications/index.ts` (`onPresenceChange`: first tab opens / last tab closes), sent to that person's private-chat partners | `ChatApp` (online dots) | `{ userId, online }` |
 | `notification` | `notifications/index.ts` (`notifyUser` — every module's entry point for "tell this user something happened") | `NotificationBell`, open results pages (`exam_results_published`), `AuthContext` (sound) | `{ notification: { id, type, title, body, link, isRead, createdAt } }` — `notification.type` is the finer-grained kind (`admin_broadcast`, `class_broadcast`, `direct_message`, `exam_results_published`, ...) |
 | `force_signout` | `admin/api/routes.ts` (account disabled), `schools/api/routes.ts` (school suspended) | `AuthContext` — calls `logout()` immediately | `{ reason }` (`"account_disabled"` \| `"school_suspended"`) |
 | `calendar_event` | `events/api/routes.ts` (`POST /events`, school-scoped only — a super_admin's global event doesn't fan out, see the code comment for why) | `DashboardRightRail` (reminders list) | `{ event: { id, title, eventDate } }` |
 
-All four interfaces live together in `frontend/lib/realtime/useRealtimeSocket.ts` as the `RealtimeEvent` union — that file is the source of truth for exact shapes, not this table.
+All of these interfaces live together in `frontend/lib/realtime/useRealtimeSocket.ts` as the `RealtimeEvent` union — that file is the source of truth for exact shapes, not this table.
 
 ---
 
 ## 5. `notifyUser()` already gives you this for free
 
-If what you're building is "tell a user something happened" and it belongs in the notification bell / is worth persisting for later, **don't call `pushToUser` directly — call `notifyUser`/`notifyUsers`** (`backend/src/modules/notifications/index.ts`). It writes the durable DB row (so it's still there if the user's offline right now) *and* calls `pushToUser` with a `notification` event for instant delivery, *and* best-effort Web Push for a closed tab. Every exam-results-published, broadcast, and direct-message notification already works this way — see `backend/src/modules/exams/api/routes.ts` (`POST /:id/publish`) for the pattern.
+If what you're building is "tell a user something happened" and it belongs in the notification bell / is worth persisting for later, **don't call `pushToUser` directly — call `notifyUser`/`notifyUsers`** (`backend/src/modules/notifications/index.ts`). It writes the durable DB row (so it's still there if the user's offline right now) *and* calls `pushToUser` with a `notification` event for instant delivery, *and* best-effort Web Push for a closed tab. Every exam-results-published, chat announcement and private-chat notification already works this way — see `backend/src/modules/exams/api/routes.ts` (`POST /:id/publish`) for the pattern.
 
 Reach for `pushToUser` directly only when the event **isn't** a notification-bell-worthy thing — `force_signout` and `calendar_event` are both this: transient, only useful to someone with a tab open right now, not something that belongs in a persisted notification list.
 
