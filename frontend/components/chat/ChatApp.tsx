@@ -32,6 +32,8 @@ export function ChatApp() {
   const myRole = user?.role;
   const isStaff = STAFF_ROLES.has(myRole ?? '');
   const isSchoolAdmin = myRole === 'school_admin';
+  // The Dementa support team: only their per-school support chats, no new chats or groups.
+  const isSupportTeam = myRole === 'super_admin';
 
   const [rooms, setRooms] = useState<RoomSummary[]>([]);
   const [loading, setLoading] = useState(true);
@@ -293,7 +295,7 @@ export function ChatApp() {
           typingByRoom={typingByRoom}
           onlineIds={online}
           onSelect={select}
-          onNewChat={() => setNewChat(true)}
+          onNewChat={isSupportTeam ? null : () => setNewChat(true)}
           onNewGroup={isStaff ? () => setNewGroup(true) : null}
           oversight={
             isSchoolAdmin
@@ -328,10 +330,12 @@ export function ChatApp() {
             <span className="inline-flex size-16 items-center justify-center rounded-full bg-primary-100 text-primary-700">
               <MessagesSquare className="size-8" />
             </span>
-            <h2 className="text-lg font-semibold text-primary-900">Your school&apos;s chats</h2>
+            <h2 className="text-lg font-semibold text-primary-900">{isSupportTeam ? 'School support chats' : 'Your school\u2019s chats'}</h2>
             <p className="max-w-sm text-sm text-text-muted">
-              Pick a chat on the left, or start a new one.{' '}
-              {isStaff
+              {isSupportTeam
+                ? 'Every school has a support chat with its school admins. Search for a school on the left to open it.'
+                : 'Pick a chat on the left, or start a new one. '}
+              {isSupportTeam ? '' : isStaff
                 ? 'Class groups, the staff room and school announcements are set up for you.'
                 : 'Your class groups and school announcements are set up for you.'}
             </p>

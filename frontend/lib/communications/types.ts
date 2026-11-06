@@ -1,7 +1,7 @@
 // Shapes returned by /api/v1/communications. Mirrors
 // backend/src/modules/communications/domain/{rooms,messages}.repository.ts.
 
-export type RoomKind = 'direct' | 'group' | 'staff_room' | 'announcements' | 'class' | 'class_parents';
+export type RoomKind = 'direct' | 'group' | 'staff_room' | 'announcements' | 'class' | 'class_parents' | 'support';
 
 export interface Person {
   userId: string;
@@ -106,4 +106,5 @@ export const KIND_LABEL: Record<RoomKind, string> = {
   announcements: 'Announcements',
   class: 'Class group',
   class_parents: 'Parents group',
+  support: 'Support chat',
 };

@@ -5,7 +5,7 @@ import { findPeople, isStaff, type Person } from "./people.js";
 // only ever sees rooms they belong to. The one exception is a school admin's
 // oversight view (listSchoolRooms / accessFor), which is read-only.
 
-export type RoomKind = "direct" | "group" | "staff_room" | "announcements" | "class" | "class_parents";
+export type RoomKind = "direct" | "group" | "staff_room" | "announcements" | "class" | "class_parents" | "support";
 
 export class ChatError extends Error {
   constructor(
@@ -95,6 +95,7 @@ interface SummaryRow extends RoomRow {
   lm_deleted_at: string | null;
   lm_created_at: string | null;
   other_user_id: string | null;
+  school_name: string | null;
 }
 
 /** $1 = the viewing user. Expects `r` (chat_room) and `m` (their chat_member row, may be null). */
@@ -110,6 +111,7 @@ const SUMMARY_COLUMNS = `
   lm.attachment_name as lm_attachment_name, lm.attachment_ref is not null as lm_has_attachment,
   lm.is_voice_note as lm_is_voice,
   lm.deleted_at as lm_deleted_at, lm.created_at as lm_created_at,
+  (select sc.name from schools sc where sc.id = r.school_id) as school_name,
   case when r.kind = 'direct' then (
     select o.user_id from chat_member o where o.room_id = r.id and o.user_id <> $1 limit 1
   ) end as other_user_id`;
@@ -133,7 +135,13 @@ async function toSummaries(rows: SummaryRow[]): Promise<RoomSummary[]> {
       id: r.id,
       schoolId: r.school_id,
       kind: r.kind,
-      title: r.kind === "direct" ? (other?.name ?? "Former member") : (r.title ?? "Group"),
+      title:
+        r.kind === "direct"
+          ? (other?.name ?? "Former member")
+          : // The support team sees which school; the school sees "Dementa Support".
+            r.kind === "support" && r.my_role === "admin"
+            ? (r.school_name ?? "School")
+            : (r.title ?? "Group"),
       description: r.description,
       onlyAdminsPost: r.only_admins_post,
       archived,

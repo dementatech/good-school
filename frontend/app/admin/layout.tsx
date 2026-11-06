@@ -10,8 +10,10 @@ import {
   ClipboardList, CalendarClock,
   UserCircle,
   LifeBuoy, Inbox, Library,
+  MessageSquare,
 } from 'lucide-react';
 import type { Role } from '@/lib/auth/session';
+import { useUnreadMessageCount } from '@/lib/communications/useUnreadMessageCount';
 
 // The old /admin/students and /admin/users roster pages are gone: they were the
 // pre-Supabase-Auth surface, built on the dropped `students`/`users` tables and
@@ -42,6 +44,8 @@ const SYSTEM_NAV = [
 // that inbox too, but can still report to the owner.
 const SUPPORT_NAV = { href: '/admin/support', label: 'Help & Support', icon: LifeBuoy };
 const INBOX_NAV = { href: '/admin/system/support', label: 'Support Inbox', icon: Inbox };
+// Live chat with each school's admins; the support team only.
+const CHAT_NAV = { href: '/admin/communications', label: 'School Chats', icon: MessageSquare };
 
 const ACCOUNT_NAV = [
   { href: '/admin/account', label: 'My Account', icon: UserCircle },
@@ -51,7 +55,13 @@ const ADMIN_ROLES: Role[] = ['admin', 'super_admin'];
 
 function AdminShell({ children }: { children: React.ReactNode }) {
   const { user } = useAuth();
-  const nav = user?.isPlatformOwner ? NAV : [...NAV, SUPPORT_NAV];
+  const supportTeam = user?.role === 'super_admin' && Boolean(user.isPlatformOwner || user.isSupportAgent);
+  const unread = useUnreadMessageCount(supportTeam);
+  const nav = [
+    ...NAV,
+    ...(supportTeam ? [{ ...CHAT_NAV, badge: unread }] : []),
+    ...(user?.isPlatformOwner ? [] : [SUPPORT_NAV]),
+  ];
   const systemNav =
     user?.role !== 'super_admin'
       ? []

@@ -1,6 +1,6 @@
 'use client';
 
-import { Megaphone, School, Users, UsersRound } from 'lucide-react';
+import { LifeBuoy, Megaphone, School, Users, UsersRound } from 'lucide-react';
 import { initials } from '@/lib/communications/format';
 import type { RoomKind } from '@/lib/communications/types';
 
@@ -64,6 +64,7 @@ const KIND_ICON: Partial<Record<RoomKind, typeof Users>> = {
   announcements: Megaphone,
   class: School,
   class_parents: Users,
+  support: LifeBuoy,
 };
 
 export function RoomAvatar({
@@ -83,7 +84,8 @@ export function RoomAvatar({
 }) {
   if (kind === 'direct') return <PersonAvatar name={title} photoUrl={photoUrl} online={online} size={size} seed={seed} />;
   const Icon = KIND_ICON[kind] ?? Users;
-  const tone = kind === 'announcements' ? 'bg-accent text-primary-900' : 'bg-primary-700 text-white';
+  const tone =
+    kind === 'announcements' ? 'bg-accent text-primary-900' : kind === 'support' ? 'bg-primary-900 text-accent' : 'bg-primary-700 text-white';
   return (
     <span aria-hidden className={`inline-flex shrink-0 items-center justify-center rounded-full ${tone} ${SIZES[size]}`}>
       <Icon className={size === 'lg' ? 'size-7' : size === 'sm' ? 'size-4' : 'size-5'} />

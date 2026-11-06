@@ -26,7 +26,9 @@ export async function ensureSchoolSynced(schoolId: string): Promise<void> {
   if (Date.now() - last < RESYNC_MS) return;
   let running = inFlight.get(schoolId);
   if (!running) {
-    running = syncSchoolRooms(schoolId).finally(() => inFlight.delete(schoolId));
+    running = syncSchoolRooms(schoolId)
+      .then(() => syncSupportRooms(schoolId))
+      .finally(() => inFlight.delete(schoolId));
     inFlight.set(schoolId, running);
   }
   await running;
@@ -186,6 +188,80 @@ export async function syncSchoolRooms(schoolId: string): Promise<void> {
 
     await client.query("commit");
     lastSynced.set(schoolId, Date.now());
+  } catch (err) {
+    await client.query("rollback").catch(() => {});
+    throw err;
+  } finally {
+    client.release();
+  }
+}
+
+// ── Support chats ──────────────────────────────────────────────────────────
+//
+// One `support` room per school: its school admins, plus the Dementa support
+// team (platform owner and support agents, the people who work the support
+// inbox), who run it. Synced for one school when someone there opens chat,
+// and for every school when a support team member does, so the team can
+// reach a school whose admins have never opened chat.
+
+let lastAllSupportSync = 0;
+let supportInFlight: Promise<void> | null = null;
+
+/** Every school's support room, at most once a minute. */
+export async function ensureAllSupportRoomsSynced(): Promise<void> {
+  if (Date.now() - lastAllSupportSync < RESYNC_MS) return;
+  if (!supportInFlight) {
+    supportInFlight = syncSupportRooms(null)
+      .then(() => {
+        lastAllSupportSync = Date.now();
+      })
+      .finally(() => {
+        supportInFlight = null;
+      });
+  }
+  await supportInFlight;
+}
+
+/** One school's support room (or every school's, when `schoolId` is null). */
+export async function syncSupportRooms(schoolId: string | null): Promise<void> {
+  const client = await pool.connect();
+  try {
+    await client.query("begin");
+    await client.query(
+      `insert into chat_room (school_id, kind, title, description)
+       select s.id, 'support', 'Dementa Support',
+              'Your school''s chat with the Dementa support team. Every school admin at your school can see it.'
+         from schools s
+        where ($1::uuid is null or s.id = $1) and coalesce(s.onboarding_status, 'active') <> 'churned'
+       on conflict (school_id, kind) where kind in ('staff_room','announcements','support') do nothing`,
+      [schoolId],
+    );
+    await client.query(`create temp table support_desired (room_id uuid, user_id uuid, role text) on commit drop`);
+    await client.query(
+      `insert into support_desired (room_id, user_id, role)
+       with rooms as (
+         select id, school_id from chat_room where kind = 'support' and ($1::uuid is null or school_id = $1)
+       )
+       select r.id, u.id, 'member' from rooms r
+         join users u on u.school_id = r.school_id and u.role = 'school_admin' and u.is_active
+       union
+       select r.id, u.id, 'admin' from rooms r
+         cross join users u where (u.is_platform_owner or u.is_support_agent) and u.is_active`,
+      [schoolId],
+    );
+    await client.query(
+      `insert into chat_member (room_id, user_id, role, last_read_at)
+       select room_id, user_id, role, now() from support_desired
+       on conflict (room_id, user_id) do update set role = excluded.role where chat_member.role <> excluded.role`,
+    );
+    await client.query(
+      `delete from chat_member m
+        using chat_room r
+        where m.room_id = r.id and r.kind = 'support' and ($1::uuid is null or r.school_id = $1)
+          and not exists (select 1 from support_desired d where d.room_id = m.room_id and d.user_id = m.user_id)`,
+      [schoolId],
+    );
+    await client.query("commit");
   } catch (err) {
     await client.query("rollback").catch(() => {});
     throw err;

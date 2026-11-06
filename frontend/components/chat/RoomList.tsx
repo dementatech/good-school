@@ -23,7 +23,7 @@ interface Props {
   typingByRoom: Record<string, string[]>;
   onlineIds: Set<string>;
   onSelect: (id: string) => void;
-  onNewChat: () => void;
+  onNewChat: (() => void) | null;
   onNewGroup: (() => void) | null;
   /** School admins only: switch to the read-only list of every chat in the school. */
   oversight: { active: boolean; toggle: () => void; query: string; setQuery: (q: string) => void } | null;
@@ -89,7 +89,7 @@ export function RoomList({
               <Users className="size-5" />
             </button>
           )}
-          {!oversight?.active && (
+          {!oversight?.active && onNewChat && (
             <button
               type="button"
               onClick={onNewChat}

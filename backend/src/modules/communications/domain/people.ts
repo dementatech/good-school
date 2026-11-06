@@ -21,6 +21,7 @@ export const PERSON_SQL = `
          coalesce(nullif(trim(concat_ws(' ', s.first_name, s.last_name)), ''),
                   nullif(trim(concat_ws(' ', st.first_name, st.last_name)), ''),
                   nullif(trim(concat_ws(' ', g.first_name, g.last_name)), ''),
+                  case when u.role = 'super_admin' then 'Dementa Support · ' || initcap(split_part(u.email, '@', 1)) end,
                   u.email, u.system_id, 'Unknown user') as name,
          coalesce(s.photo_path, st.photo_path, u.photo_path) as photo_path,
          case when s.photo_path is not null then s.photo_provider

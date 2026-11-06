@@ -8,7 +8,7 @@ import { useRealtimeSocket } from '@/lib/realtime/useRealtimeSocket';
  * excluded): the Communication nav item's badge. Refreshes on any realtime
  * chat event, with a 60-second poll as a cheap fallback.
  */
-export function useUnreadMessageCount(): number {
+export function useUnreadMessageCount(enabled = true): number {
   const [count, setCount] = useState(0);
 
   const load = useCallback(async () => {
@@ -22,16 +22,17 @@ export function useUnreadMessageCount(): number {
   }, []);
 
   useEffect(() => {
+    if (!enabled) return;
     void (async () => {
       await load();
     })();
     const timer = setInterval(() => void load(), 60_000);
     return () => clearInterval(timer);
-  }, [load]);
+  }, [load, enabled]);
 
   useRealtimeSocket((event) => {
     if (event.type === 'chat_message' || event.type === 'chat_read' || event.type === 'chat_room_updated') void load();
-  });
+  }, enabled);
 
-  return count;
+  return enabled ? count : 0;
 }

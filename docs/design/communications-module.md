@@ -16,8 +16,11 @@ Everything is a `chat_room` with `chat_member` rows. The `kind` decides how a ro
 | `announcements` | Everyone at the school: staff, learners, parents (automatic) | School admins | **Admins only, always** |
 | `class` | One per class, or per stream where the class has streams, in the current year: its learners plus subject teachers (automatic) | Class and stream teacher | Everyone, or admins only |
 | `class_parents` | The same grouping: the learners' parents (automatic) | Class and stream teacher | Everyone, or admins only |
+| `support` | One per school: its school admins plus the Dementa support team (platform owner and support agents, the people who work the support inbox), automatic | The support team | Everyone, always two-way |
 
 **Automatic rooms** (`domain/auto-rooms.ts`) follow staff accounts, enrollment, teacher assignments and guardian links. Nothing hooks those writes. Instead, a school is re-synced lazily when someone opens chat, at most once a minute per school (`ensureSchoolSynced`). Call `markSchoolStale(schoolId)` (exported from the module) to force the next open to re-sync. New members join with everything marked read. Class rooms from an earlier year are archived (read-only), not deleted. Automatic rooms can't be renamed, and their members can't be edited by hand. Room admins can switch on "only admins can post".
+
+**Support chats** (`syncSupportRooms`). The support team opens **School Chats** in the admin portal, where every school is listed by name. A school's admins see the same room as **Dementa Support** in their chat list. Support staff appear as "Dementa Support · Name". Other super admins have no chats. Messages in a support chat notify like a private chat (bell and push, type `support_chat`). When a support team member opens chat, every school's support room is synced at most once a minute. That way the team can reach a school whose admins have never opened chat.
 
 **Parents have no `school_id`.** Their schools come from their children (`people.ts` `chatSchoolIds`). That is why access is always checked through membership, never through `authUser.school_id`.
 
