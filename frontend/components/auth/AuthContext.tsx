@@ -37,6 +37,8 @@ interface AuthContextType {
   refresh: () => Promise<void>;
 }
 
+const CHAT_NOTIFICATION_TYPES = new Set(['direct_message', 'chat_announcement']);
+
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -133,8 +135,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   // backend/src/modules/schools/api/routes.ts for where that gets pushed.
   useRealtimeSocket((event) => {
     if (event.type === 'force_signout') logout();
-    else if (event.type === 'message') playMessageSound();
-    else if (event.type === 'notification') playNotificationSound();
+    else if (event.type === 'chat_message') {
+      if (event.notify) playMessageSound();
+    }
+    // A chat message already played its own sound above; don't beep twice.
+    else if (event.type === 'notification' && !CHAT_NOTIFICATION_TYPES.has(event.notification.type)) {
+      playNotificationSound();
+    }
   }, isAuthenticated);
 
   return (

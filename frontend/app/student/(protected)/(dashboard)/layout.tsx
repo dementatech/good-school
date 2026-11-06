@@ -2,7 +2,8 @@
 
 import { PortalShell } from '@/components/dashboard/PortalShell';
 import React from 'react';
-import { LayoutDashboard, Award, LifeBuoy } from 'lucide-react';
+import { LayoutDashboard, Award, LifeBuoy, MessageSquare } from 'lucide-react';
+import { useUnreadMessageCount } from '@/lib/communications/useUnreadMessageCount';
 
 /**
  * Shell for the "browsing" student screens only (dashboard, assessment list)
@@ -14,13 +15,19 @@ import { LayoutDashboard, Award, LifeBuoy } from 'lucide-react';
 const NAV = [
   { href: '/student/dashboard', label: 'Dashboard', icon: LayoutDashboard, exact: true },
   { href: '/student/results', label: 'My Results', icon: Award },
+  { href: '/student/communications', label: 'Messages', icon: MessageSquare },
   { href: '/student/support', label: 'Help & Support', icon: LifeBuoy },
 ];
 
 export default function StudentDashboardLayout({ children }: { children: React.ReactNode }) {
+  const unread = useUnreadMessageCount();
+  const nav = React.useMemo(
+    () => NAV.map((item) => (item.href === '/student/communications' ? { ...item, badge: unread } : item)),
+    [unread],
+  );
 
   return (
-    <PortalShell nav={NAV} dashboardHref="/student/dashboard">
+    <PortalShell nav={nav} dashboardHref="/student/dashboard">
       {children}
     </PortalShell>
   );
