@@ -18,6 +18,7 @@ export interface LastMessage {
   body: string;
   hasAttachment: boolean;
   attachmentName: string | null;
+  isVoice?: boolean;
   deleted: boolean;
   createdAt: string;
 }
@@ -60,6 +61,10 @@ export interface Attachment {
   mimeType: string;
   size: number | null;
   isImage: boolean;
+  isVoice: boolean;
+  durationMs: number | null;
+  /** Bar heights 0-100. */
+  waveform: number[] | null;
 }
 
 export interface ReplyPreview {
@@ -68,6 +73,7 @@ export interface ReplyPreview {
   senderName: string | null;
   body: string;
   attachmentName: string | null;
+  isVoice?: boolean;
   deleted: boolean;
 }
 

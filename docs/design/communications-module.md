@@ -34,7 +34,19 @@ The school chose the **staff-supervised** rule:
 
 ## 3. Messages
 
-Text up to 4,000 characters, one attachment per message, quote replies, edit (own only), soft delete ("This message was deleted"; the file is removed from storage), and six fixed reactions (`REACTION_EMOJI`). Attachments: JPEG, PNG or WebP pictures (shrunk to JPEG by `shared/image.ts`), PDF, Word, Excel, PowerPoint, TXT and CSV. The limit is 5 MB, the global multipart limit in `server.ts`. Files go through `shared/media.ts` (Cloudinary or local disk) and are served from unguessable public URLs, the same as other uploads.
+Text up to 4,000 characters, one attachment per message, quote replies, edit (own only), soft delete ("This message was deleted"; the file is removed from storage), and six fixed reactions (`REACTION_EMOJI`). Attachments: JPEG, PNG or WebP pictures (shrunk to JPEG by `shared/image.ts`), voice notes and audio files, PDF, Word, Excel, PowerPoint, TXT and CSV. The limit is 5 MB, the global multipart limit in `server.ts`. Files go through `shared/media.ts` (Cloudinary or local disk) and are served from unguessable public URLs, the same as other uploads.
+
+### Voice notes
+
+The mic button shows in place of Send while the message box is empty (`Composer.tsx`, `lib/communications/useVoiceRecorder.ts`):
+
+- **Hold** to record. Let go to send. **Slide left** to cancel, **slide up** to lock hands-free.
+- **Tap** to record hands-free. You get delete, pause/resume and send.
+- Recordings under half a second are dropped as slips. The limit is 15 minutes, and the 5 MB upload cap must also be met (about 20 minutes at 32 kbps).
+
+The recorder samples the microphone level about 12 times a second. That drives the live waveform while recording, and it's squeezed into 48 bars that are stored with the message (`attachment_waveform`, 0–100 each, migration `1700000076000`). The player (`VoiceNotePlayer.tsx`) draws those bars without downloading the file. Tap or drag the bars to seek. It plays at 1×, 1.5× or 2×, and only one note plays at a time. The length is stored too (`attachment_duration_ms`), because browser recordings often carry no duration.
+
+Chrome, Firefox and Android record WebM/Opus; Safari and iPhone record MP4/AAC. Both play back everywhere current. The microphone only works over HTTPS (or on localhost). Uploading an ordinary audio file (MP3, M4A, OGG, AAC) sends it as a playable file, not a voice note.
 
 ## 4. Delivery and notifications
 

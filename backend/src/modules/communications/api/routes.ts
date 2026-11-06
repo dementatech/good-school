@@ -71,6 +71,33 @@ const FILE_MIME_TO_EXT: Record<string, string> = {
   "text/csv": "csv",
 };
 
+// Voice notes. Browsers record WebM/Opus (Chrome, Firefox, Android) or MP4/AAC
+// (Safari, iPhone); plain uploads of the other common audio files work too.
+const AUDIO_MIME_TO_EXT: Record<string, string> = {
+  "audio/webm": "webm",
+  "audio/ogg": "ogg",
+  "audio/mp4": "m4a",
+  "audio/x-m4a": "m4a",
+  "audio/aac": "aac",
+  "audio/mpeg": "mp3",
+};
+const ALL_MIME_TO_EXT = { ...FILE_MIME_TO_EXT, ...AUDIO_MIME_TO_EXT };
+const MAX_VOICE_MS = 15 * 60_000;
+const WAVEFORM_BARS = 64;
+
+/** The voice-note fields from the upload, cleaned up. Null if this isn't a voice note. */
+function voiceFields(file: MultipartFile, isAudio: boolean): { durationMs: number; waveform: number[] } | null {
+  if (!isAudio || fieldValue(file, "voice") !== "1") return null;
+  const duration = Math.round(Number(fieldValue(file, "durationMs")));
+  const durationMs = Number.isFinite(duration) ? Math.min(Math.max(duration, 0), MAX_VOICE_MS) : 0;
+  const waveform = (fieldValue(file, "waveform") ?? "")
+    .split(",")
+    .slice(0, WAVEFORM_BARS)
+    .map((v) => Math.round(Number(v)))
+    .map((v) => (Number.isFinite(v) ? Math.min(Math.max(v, 0), 100) : 0));
+  return { durationMs, waveform };
+}
+
 /** Where each role reads its messages, for notification links. */
 const PORTAL_FOR_ROLE: Record<string, string> = {
   school_admin: "/school-admin/communications",
@@ -85,6 +112,7 @@ function me(request: FastifyRequest): JwtPayload {
 
 function preview(message: ChatMessage): string {
   if (message.body.trim()) return message.body.slice(0, 140);
+  if (message.attachment?.isVoice) return "🎤 Voice message";
   if (message.attachment) return message.attachment.isImage ? "📷 Photo" : `📎 ${message.attachment.name}`;
   return "";
 }
@@ -322,8 +350,9 @@ export async function communicationsRoutes(fastify: FastifyInstance) {
     },
   );
 
-  // Multipart (5 MB, 1 file; see server.ts). Send `caption` and `replyToId`
-  // fields BEFORE the file part, or they won't be read.
+  // Multipart (5 MB, 1 file; see server.ts). Send `caption`, `replyToId`, and
+  // for a voice note `voice=1`, `durationMs` and `waveform` (comma-separated
+  // 0-100), BEFORE the file part, or they won't be read.
   fastify.post<{ Params: { id: string } }>("/rooms/:id/attachments", { preHandler: CHAT_USER }, async (request, reply) => {
     const user = me(request);
     const access = await accessFor(request.params.id, user);
@@ -331,9 +360,14 @@ export async function communicationsRoutes(fastify: FastifyInstance) {
 
     const uploaded = await request.file();
     if (!uploaded) return reply.status(400).send(fail("No file uploaded"));
-    const isImage = IMAGE_TYPES.has(uploaded.mimetype);
-    if (!isImage && !FILE_MIME_TO_EXT[uploaded.mimetype]) {
-      return reply.status(400).send(fail("Send a picture (JPEG, PNG, WebP), a PDF, or a Word, Excel, PowerPoint or text file."));
+    // "audio/webm;codecs=opus" -> "audio/webm"
+    const baseMime = uploaded.mimetype.split(";")[0].trim().toLowerCase();
+    const isImage = IMAGE_TYPES.has(baseMime);
+    const isAudio = Boolean(AUDIO_MIME_TO_EXT[baseMime]);
+    if (!isImage && !ALL_MIME_TO_EXT[baseMime]) {
+      return reply
+        .status(400)
+        .send(fail("Send a picture (JPEG, PNG, WebP), a voice note or audio file, a PDF, or a Word, Excel, PowerPoint or text file."));
     }
     let data: Buffer;
     try {
@@ -341,7 +375,7 @@ export async function communicationsRoutes(fastify: FastifyInstance) {
     } catch {
       return reply.status(413).send(fail("That file is too big. The limit is 5 MB."));
     }
-    let mimeType = uploaded.mimetype;
+    let mimeType = baseMime;
     let name = (uploaded.filename || "file").slice(0, 200);
     if (isImage) {
       try {
@@ -353,13 +387,16 @@ export async function communicationsRoutes(fastify: FastifyInstance) {
     }
     const caption = (fieldValue(uploaded, "caption") ?? "").slice(0, 4000);
     const replyToId = fieldValue(uploaded, "replyToId") || null;
-    const stored = await storeFile("chat", mimeType, data, FILE_MIME_TO_EXT);
+    const voice = voiceFields(uploaded, isAudio);
+    if (voice && !caption.trim()) name = `Voice message ${new Date().toISOString().slice(0, 16).replace("T", " ")}.${ALL_MIME_TO_EXT[mimeType]}`;
+    const stored = await storeFile("chat", mimeType, data, ALL_MIME_TO_EXT);
     const message = await postMessage({
       roomId: access.room.id,
       senderUserId: user.user_id,
       body: caption,
       replyToId,
       attachment: { ...stored, name, size: data.length },
+      voice,
     });
     await deliver(access, message, user.user_id);
     return reply.status(201).send(ok(message));
