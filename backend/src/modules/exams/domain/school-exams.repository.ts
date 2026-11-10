@@ -384,8 +384,11 @@ export async function publishSchoolExam(schoolId: string, id: string): Promise<P
       // of blocking the merge, producing a wrong partial score — publish
       // isn't gated on mark-sheet submission, so a partly-entered variant
       // subject is a real case, not hypothetical.
+      // An exam marked before the subject got papers holds one whole-subject
+      // mark (no paper) — grade that, not a merge of papers never entered.
+      const byPaper = variants.length > 0 && rows.every((r) => r.subject_variant_id !== null);
       const merged =
-        variants.length > 0
+        byPaper
           ? mergeVariantScore(
               variants.map((v) => {
                 const r = rows.find((x) => x.subject_variant_id === v.id);

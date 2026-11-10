@@ -454,6 +454,20 @@ interface ResolvedSlot {
   stream: { id: string; name: string } | null;
 }
 
+// Has this exam already recorded this subject as one whole mark (no paper)?
+// Papers can be added to a subject after marks exist (subjects.repository.ts);
+// an exam that already holds whole-subject marks keeps marking it as one for
+// every class, so its marks, grades and rankings stay comparable. Every other
+// exam marks it paper by paper.
+async function hasWholeSubjectMarks(examId: string, subjectId: string): Promise<boolean> {
+  const { rowCount } = await pool.query(
+    `select 1 from exam_result
+      where school_exam_id = $1 and subject_id = $2 and subject_variant_id is null limit 1`,
+    [examId, subjectId],
+  );
+  return (rowCount ?? 0) > 0;
+}
+
 // Confirms the (subject, class, stream) triple is a real teaching slot for this
 // exam's academic year, and returns its display names plus the subject's
 // variant configuration (empty unless it has one).
@@ -468,13 +482,13 @@ async function resolveSlot(exam: ExamContext, slot: SlotRef): Promise<ResolvedSl
     class_name: string;
     stream_id: string | null;
     stream_name: string | null;
-    max_mark: number;
+    offering_max_mark: number;
   }>(
     `select sta.subject_id, sub.code as subject_code, sub.name as subject_name, sub.has_variant,
-            case when sub.has_variant then 100 else coalesce(
+            coalesce(
               (select o.max_mark from subject_offering o
                 where o.school_id = sta.school_id and o.subject_id = sta.subject_id
-                  and o.academic_year_id = sta.academic_year_id), 100) end as max_mark,
+                  and o.academic_year_id = sta.academic_year_id), 100) as offering_max_mark,
             (select coalesce(json_agg(json_build_object(
                      'id', sv.id, 'name', sv.name, 'code', sv.code,
                      'contributionPercent', sv.contribution_percent
@@ -495,14 +509,15 @@ async function resolveSlot(exam: ExamContext, slot: SlotRef): Promise<ResolvedSl
   );
   if (!rows[0]) throw new UnknownSlotError();
   const r = rows[0];
+  const byPaper = r.has_variant && !(await hasWholeSubjectMarks(exam.id, r.subject_id));
   return {
     subject: {
       id: r.subject_id,
       code: r.subject_code,
       name: r.subject_name,
-      hasVariant: r.has_variant,
-      variants: r.variants,
-      maxMark: r.max_mark,
+      hasVariant: byPaper,
+      variants: byPaper ? r.variants : [],
+      maxMark: byPaper ? 100 : r.offering_max_mark,
     },
     klass: { id: r.class_id, name: r.class_name },
     stream: r.stream_id ? { id: r.stream_id, name: r.stream_name ?? "" } : null,
@@ -1144,7 +1159,9 @@ export async function getStudentExamResult(
     const computedGrade = subjectRows.find((r) => r.computed_grade !== null)?.computed_grade ?? null;
     const comment = subjectRows.find((r) => r.comment !== null)?.comment ?? null;
 
-    if (!first.has_variant) {
+    // Go by the marks stored, not the subject's current papers: an exam
+    // marked before papers were added holds one whole-subject mark.
+    if (!first.has_variant || subjectRows.some((r) => r.subject_variant_id === null)) {
       return {
         subjectId: first.subject_id,
         subjectName: first.subject_name,
