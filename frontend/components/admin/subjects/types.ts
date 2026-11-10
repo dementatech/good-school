@@ -35,6 +35,7 @@ export interface SubjectOffering {
   subjectName: string;
   subjectCategory: string;
   subjectIsGeneralPaper: boolean;
+  subjectUnebCode: string | null;
   subjectPhase: SubjectPhase;
   isOffered: boolean;
   isCompulsory: boolean;
@@ -56,6 +57,7 @@ export interface SchoolCombinationMember {
   subjectCode: string;
   subjectShortName: string;
   subjectName: string;
+  subjectUnebCode: string | null;
   role: CombinationRole;
 }
 

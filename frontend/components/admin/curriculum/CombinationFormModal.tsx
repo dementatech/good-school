@@ -3,15 +3,17 @@
 import { useMemo, useState } from 'react';
 import { Modal } from '@/components/ui/Modal';
 import { Input } from '@/components/ui/Input';
-import { Select } from '@/components/ui/Select';
 import { Button } from '@/components/ui/Button';
 import { useToast } from '@/components/ui/ToastProvider';
 import { combinationDisplayName } from '@/lib/combination-name';
+import { PRINCIPALS_PER_COMBINATION } from '@/lib/uneb';
 import { submitJson, type Combination, type Subject } from './types';
+import { SubsidiaryRuleField, effectiveSubsidiaryIds } from './SubsidiaryRuleField';
 
-// docs/design/subject-selection-module.md §3.1/§3.3: core (principal) subjects
-// and the one subsidiary are picked separately, and General Paper is never a
-// pick — it's automatic for every A-Level student. Code is system-assigned
+// docs/design/subject-selection-module.md §3.1/§3.3: exactly 3 principal
+// subjects, then the subsidiary the UNEB rule calls for (lib/uneb.ts) — or,
+// where the student may choose, the options on offer. General Paper is never
+// a pick — it's automatic for every A-Level student. Code is system-assigned
 // (C001, ...). The NAME is not editable — it's derived from the member
 // subjects on every read, so it always tracks their current names/short names.
 export function CombinationFormModal({
@@ -34,8 +36,8 @@ export function CombinationFormModal({
   const [coreIds, setCoreIds] = useState<string[]>(
     initial?.subjects.filter((m) => m.role === 'principal').map((m) => m.subjectId) ?? [],
   );
-  const [subsidiaryId, setSubsidiaryId] = useState(
-    initial?.subjects.find((m) => m.role === 'subsidiary')?.subjectId ?? '',
+  const [subsidiaryIds, setSubsidiaryIds] = useState<string[]>(
+    initial?.subjects.filter((m) => m.role === 'subsidiary').map((m) => m.subjectId) ?? [],
   );
   const [description, setDescription] = useState(initial?.description ?? '');
   const [saving, setSaving] = useState(false);
@@ -56,30 +58,36 @@ export function CombinationFormModal({
     [coreOptions, subsidiaryOptions],
   );
 
+  const principalCodes = coreIds.map((id) => subjectById[id]?.unebCode ?? null);
+  const ruleOptions = subsidiaryOptions.map((s) => ({ id: s.id, name: s.name, unebCode: s.unebCode }));
+  const chosenSubsidiaries = effectiveSubsidiaryIds(principalCodes, ruleOptions, subsidiaryIds);
+  const coreCountOk = coreIds.length === PRINCIPALS_PER_COMBINATION;
+
   const preview = useMemo(
     () =>
       combinationDisplayName(
         coreIds.map((id) => subjectById[id]?.name ?? ''),
-        subsidiaryId && subjectById[subsidiaryId] ? [subjectById[subsidiaryId].shortName] : [],
+        chosenSubsidiaries.map((id) => subjectById[id]?.shortName ?? ''),
       ),
-    [coreIds, subsidiaryId, subjectById],
+    [coreIds, chosenSubsidiaries, subjectById],
   );
 
   function toggleCore(id: string) {
-    setCoreIds((ids) => (ids.includes(id) ? ids.filter((i) => i !== id) : [...ids, id]));
-    if (subsidiaryId === id) setSubsidiaryId('');
+    setCoreIds((ids) =>
+      ids.includes(id) ? ids.filter((i) => i !== id) : ids.length < PRINCIPALS_PER_COMBINATION ? [...ids, id] : ids,
+    );
   }
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
-    if (coreIds.length === 0) {
-      toast.error('Choose at least one core subject.');
+    if (!coreCountOk) {
+      toast.error(`Choose exactly ${PRINCIPALS_PER_COMBINATION} principal subjects.`);
       return;
     }
     setSaving(true);
     const members = [
       ...coreIds.map((subjectId) => ({ subjectId, role: 'principal' as const })),
-      ...(subsidiaryId ? [{ subjectId: subsidiaryId, role: 'subsidiary' as const }] : []),
+      ...chosenSubsidiaries.map((subjectId) => ({ subjectId, role: 'subsidiary' as const })),
     ];
     const payload = {
       description: description.trim() || null,
@@ -111,7 +119,9 @@ export function CombinationFormModal({
     >
       <form onSubmit={submit} className="space-y-4">
         <div>
-          <p className="text-xs font-medium text-text-muted tracking-wide mb-1.5">Core subjects</p>
+          <p className="text-xs font-medium text-text-muted tracking-wide mb-1.5">
+            Principal subjects ({coreIds.length}/{PRINCIPALS_PER_COMBINATION})
+          </p>
           <div className="flex flex-wrap gap-2 max-h-40 overflow-y-auto pr-1">
             {coreOptions.map((s) => (
               <label
@@ -119,7 +129,9 @@ export function CombinationFormModal({
                 className={`cursor-pointer rounded-lg px-2.5 py-1.5 text-sm border ${
                   coreIds.includes(s.id)
                     ? 'bg-primary-700 text-white border-primary-700'
-                    : 'border-border text-text-secondary'
+                    : coreCountOk
+                      ? 'border-border text-text-faint opacity-50'
+                      : 'border-border text-text-secondary'
                 }`}
               >
                 <input
@@ -132,20 +144,24 @@ export function CombinationFormModal({
               </label>
             ))}
           </div>
-          {coreIds.length === 0 && (
-            <p className="text-xs text-[#C26565] mt-1.5">Choose at least one core subject.</p>
+          {!coreCountOk && (
+            <p className="text-xs text-[#C26565] mt-1.5">
+              Choose exactly {PRINCIPALS_PER_COMBINATION} principal subjects.
+            </p>
           )}
         </div>
 
-        <Select
-          label="Subsidiary subject (optional)"
-          value={subsidiaryId}
-          onChange={(e) => setSubsidiaryId(e.target.value)}
-          options={[
-            { value: '', label: 'None' },
-            ...subsidiaryOptions.map((s) => ({ value: s.id, label: s.name })),
-          ]}
-        />
+        <div>
+          <p className="text-xs font-medium text-text-muted tracking-wide mb-1.5">Subsidiary</p>
+          <SubsidiaryRuleField
+            principalCount={coreIds.length}
+            principalCodes={principalCodes}
+            options={ruleOptions}
+            value={subsidiaryIds}
+            onChange={setSubsidiaryIds}
+            missingRequiredHint="No subject in this curriculum has that UNEB code yet — set it on the subsidiary subject first."
+          />
+        </div>
 
         <div className="rounded-lg bg-bg-subtle px-3 py-2 text-sm">
           <span className="text-text-faint">
@@ -161,7 +177,7 @@ export function CombinationFormModal({
         />
 
         <div className="flex gap-2 pt-1">
-          <Button type="submit" isLoading={saving} disabled={coreIds.length === 0}>
+          <Button type="submit" isLoading={saving} disabled={!coreCountOk}>
             {initial ? 'Save changes' : 'Add combination'}
           </Button>
           <Button type="button" variant="outline" onClick={onClose}>

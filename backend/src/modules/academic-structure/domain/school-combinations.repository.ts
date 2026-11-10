@@ -3,6 +3,7 @@ import { pool } from "../../../shared/db/index.js";
 import { derivedNameSql } from "../../../shared/combination-name.js";
 import type { CombinationRole } from "./combinations.repository.js";
 import { nextSequentialCode } from "./sequential-code.js";
+import { applyUnebCombinationRules } from "./combination-rules.js";
 
 // A school's own A-Level combinations — either adopted from the platform
 // catalog (`subject_combination`, super_admin's "constants") or fully
@@ -16,6 +17,7 @@ export interface SchoolCombinationMember {
   subjectCode: string;
   subjectShortName: string;
   subjectName: string;
+  subjectUnebCode: string | null;
   role: CombinationRole;
 }
 
@@ -77,7 +79,7 @@ const SELECT_SCHOOL_COMBINATION = `
          coalesce(
            jsonb_agg(jsonb_build_object(
              'subjectId', s.id, 'subjectCode', s.code, 'subjectShortName', s.short_name,
-             'subjectName', s.name, 'role', cs.role
+             'subjectName', s.name, 'subjectUnebCode', s.uneb_code, 'role', cs.role
            ) order by cs.sort_order, s.name) filter (where cs.subject_id is not null),
            '[]'
          ) as subjects,
@@ -137,10 +139,6 @@ async function replaceMembers(
       "Pick the subjects that make up this combination — it can't be empty.",
     );
   }
-  if (!members.some((m) => m.role === "principal")) {
-    throw new InvalidSchoolCombinationError("A combination needs at least one principal subject.");
-  }
-
   const ids = members.map((m) => m.subjectId);
   const found = await client.query<{
     id: string;
@@ -173,6 +171,9 @@ async function replaceMembers(
   // predates that. `school_combination` doesn't carry curriculum_id itself,
   // so it's derived from any member subject here (they share one curriculum).
   const curriculumId = found.rows[0]?.curriculum_id;
+  if (found.rows.some((r) => r.curriculum_id !== curriculumId)) {
+    throw new InvalidSchoolCombinationError("All of a combination's subjects must come from the same curriculum.");
+  }
   if (curriculumId) {
     const gp = await client.query(
       `select 1 from subject where curriculum_id = $1 and is_general_paper and status = 'approved' and is_active`,
@@ -183,6 +184,16 @@ async function replaceMembers(
         "This curriculum has no approved General Paper subject yet — add one before creating combinations.",
       );
     }
+  }
+
+  if (curriculumId) {
+    // Exactly 3 principals + the UNEB subsidiary rule (shared/uneb.ts).
+    members = await applyUnebCombinationRules(
+      client,
+      curriculumId,
+      members,
+      (message) => new InvalidSchoolCombinationError(message),
+    );
   }
 
   await client.query(`delete from school_combination_subject where school_combination_id = $1`, [

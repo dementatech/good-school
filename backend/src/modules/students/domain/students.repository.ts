@@ -238,7 +238,7 @@ export async function createStudent(
       await setPaymentCode(client, schoolId, userId, input.paymentCode, actingUserId);
     }
 
-    const activeEnrollment = await createEnrollment(client, schoolId, userId, input.enrollment);
+    const activeEnrollment = await createEnrollment(client, schoolId, userId, input.enrollment, actingUserId);
 
     // Tracks match-or-create outcome per row so the frontend can surface
     // "linked to existing guardian" vs. "new guardian created" after submit
@@ -530,13 +530,15 @@ export {
   SubjectNotOfferedError,
 } from "./student-subjects.repository.js";
 
-export type { StudentCombinationRecord } from "./student-combinations.repository.js";
+export type { StudentCombinationRecord, BulkAssignOutcome } from "./student-combinations.repository.js";
 export {
   getCurrentCombination,
   listCombinationHistory,
   selectCombination,
   reassignCombination,
+  bulkAssignCombination,
   InvalidSubsidiaryError,
+  NotALevelStudentError,
   ActiveCombinationExistsError,
   UnknownReferenceError as UnknownCombinationReferenceError,
 } from "./student-combinations.repository.js";

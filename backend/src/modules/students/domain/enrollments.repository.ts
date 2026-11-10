@@ -1,6 +1,7 @@
 import type { SchoolLevel } from "../../../shared/levels.js";
 import type { PoolClient } from "pg";
 import { pool } from "../../../shared/db/index.js";
+import { attachCompulsorySubjects } from "./student-subjects.repository.js";
 
 // A student's enrollment history — one row per school year (or transfer/
 // repeat), never overwritten. See docs/design/student-enrollment.md §1, §4.
@@ -193,6 +194,7 @@ export async function createEnrollment(
   schoolId: string,
   studentUserId: string,
   input: EnrollmentInput,
+  actingUserId: string | null,
 ): Promise<EnrollmentRecord> {
   await assertEnrollmentTargetBelongsToSchool(client, schoolId, input);
   if (input.entryType === "re_admission_s5") {
@@ -229,7 +231,14 @@ export async function createEnrollment(
     `${SELECT_ENROLLMENT} where se.id = $1`,
     [result.rows[0].id],
   );
-  return mapRow(created.rows[0]);
+  const enrollment = mapRow(created.rows[0]);
+
+  // O-Level compulsory subjects come with the enrollment itself, so no
+  // admission path (wizard, import, repeat/transfer) can leave them out.
+  if (enrollment.stagePhase === "O_LEVEL") {
+    await attachCompulsorySubjects(client, schoolId, studentUserId, input.academicYearId, actingUserId);
+  }
+  return enrollment;
 }
 
 export async function withdrawEnrollment(

@@ -39,6 +39,7 @@ import {
   deleteCombination,
   InvalidCombinationError,
   listCombinations,
+  seedStandardCombinations,
   updateCombination,
   type CombinationInput,
 } from "../domain/combinations.repository.js";
@@ -329,6 +330,11 @@ export async function academicStructureRoutes(fastify: FastifyInstance) {
         if (request.body.category === "core") {
           return reply.status(400).send(fail("Only a platform admin can add a core subject."));
         }
+        // The combination rules key off UNEB codes, so only the platform
+        // catalog sets them.
+        if (request.body.unebCode) {
+          return reply.status(400).send(fail("Only a platform admin can set a UNEB code."));
+        }
         if (!(await canSeeLevel(request, request.body.phase))) {
           return reply.status(400).send(fail("Unknown level."));
         }
@@ -459,6 +465,20 @@ export async function academicStructureRoutes(fastify: FastifyInstance) {
         }
         throw err;
       }
+    },
+  );
+
+  // Adds the standard Ugandan combinations (PCM, HEG, ...) to the catalog,
+  // matched to subjects by UNEB code. Idempotent; reports what it skipped.
+  fastify.post<{ Querystring: { curriculumId?: string } }>(
+    "/combinations/seed-standard",
+    { preHandler: REFERENCE },
+    async (request, reply) => {
+      if (!request.query.curriculumId) {
+        return reply.status(400).send(fail("curriculumId query param required"));
+      }
+      const result = await seedStandardCombinations(request.query.curriculumId);
+      return result ? ok(result) : reply.status(404).send(fail("curriculum_not_found"));
     },
   );
 

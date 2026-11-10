@@ -11,11 +11,13 @@ import {
   InvalidEntryTypeError,
   InvalidGuardianInputError,
   InvalidSubsidiaryError,
+  NotALevelStudentError,
   PriorExamNotApplicableError,
   SubjectNotOfferedError,
   UnknownCombinationReferenceError,
   UnknownReferenceError,
   addStudentSubject,
+  bulkAssignCombination,
   deletePriorExam,
   listPriorExams,
   recordPriorExam,
@@ -57,6 +59,7 @@ import {
   priorExamBodySchema,
   resetPasswordsBodySchema,
   selectCombinationBodySchema,
+  bulkAssignCombinationBodySchema,
   studentIdentityBodySchema,
   withdrawBodySchema,
 } from "./schemas.js";
@@ -134,6 +137,7 @@ export async function studentsRoutes(fastify: FastifyInstance) {
           err instanceof SubjectNotOfferedError ||
           err instanceof UnknownCombinationReferenceError ||
           err instanceof InvalidSubsidiaryError ||
+          err instanceof NotALevelStudentError ||
           err instanceof DuplicatePaymentCodeError ||
           err instanceof DuplicatePriorExamError
         ) {
@@ -270,7 +274,7 @@ export async function studentsRoutes(fastify: FastifyInstance) {
       const client = await pool.connect();
       try {
         await client.query("BEGIN");
-        const enrollment = await createEnrollment(client, schoolId, request.params.id, request.body);
+        const enrollment = await createEnrollment(client, schoolId, request.params.id, request.body, request.authUser!.user_id);
         await client.query("COMMIT");
         return reply.status(201).send(ok(enrollment));
       } catch (err) {
@@ -509,13 +513,50 @@ export async function studentsRoutes(fastify: FastifyInstance) {
   fastify.get<{ Params: { id: string }; Querystring: { academicYearId?: string } }>(
     "/:id/combination",
     { preHandler: ADMIN },
-    async (request) => ok(await getCurrentCombination(request.params.id, request.query.academicYearId)),
+    async (request, reply) => {
+      const schoolId = schoolOf(request, reply);
+      if (!schoolId) return;
+      return ok(await getCurrentCombination(schoolId, request.params.id, request.query.academicYearId));
+    },
   );
 
   fastify.get<{ Params: { id: string } }>(
     "/:id/combinations",
     { preHandler: ADMIN },
-    async (request) => ok(await listCombinationHistory(request.params.id)),
+    async (request, reply) => {
+      const schoolId = schoolOf(request, reply);
+      if (!schoolId) return;
+      return ok(await listCombinationHistory(schoolId, request.params.id));
+    },
+  );
+
+  // One combination for many A-Level students at once (e.g. a whole S5
+  // stream admitted without one). Per-student results — assigned, skipped
+  // (already has one) or error — never all-or-nothing.
+  fastify.post<{
+    Body: {
+      academicYearId: string;
+      schoolCombinationId: string;
+      subsidiarySubjectId?: string | null;
+      studentUserIds: string[];
+    };
+  }>(
+    "/combinations/bulk",
+    { preHandler: ADMIN, schema: { body: bulkAssignCombinationBodySchema } },
+    async (request, reply) => {
+      const schoolId = schoolOf(request, reply);
+      if (!schoolId) return;
+      return ok(
+        await bulkAssignCombination({
+          schoolId,
+          academicYearId: request.body.academicYearId,
+          schoolCombinationId: request.body.schoolCombinationId,
+          subsidiarySubjectId: request.body.subsidiarySubjectId,
+          studentUserIds: request.body.studentUserIds,
+          confirmedBy: request.authUser!.user_id,
+        }),
+      );
+    },
   );
 
   fastify.post<{
@@ -544,7 +585,11 @@ export async function studentsRoutes(fastify: FastifyInstance) {
         );
         return reply.status(201).send(ok(combination));
       } catch (err) {
-        if (err instanceof UnknownCombinationReferenceError || err instanceof InvalidSubsidiaryError) {
+        if (
+          err instanceof UnknownCombinationReferenceError ||
+          err instanceof InvalidSubsidiaryError ||
+          err instanceof NotALevelStudentError
+        ) {
           return reply.status(400).send(fail(err.message));
         }
         if (err instanceof ActiveCombinationExistsError) {
@@ -581,7 +626,11 @@ export async function studentsRoutes(fastify: FastifyInstance) {
         );
         return reply.status(201).send(ok(combination));
       } catch (err) {
-        if (err instanceof UnknownCombinationReferenceError || err instanceof InvalidSubsidiaryError) {
+        if (
+          err instanceof UnknownCombinationReferenceError ||
+          err instanceof InvalidSubsidiaryError ||
+          err instanceof NotALevelStudentError
+        ) {
           return reply.status(400).send(fail(err.message));
         }
         throw err;

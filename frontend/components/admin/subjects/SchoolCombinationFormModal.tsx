@@ -8,6 +8,8 @@ import { Button } from '@/components/ui/Button';
 import { useToast } from '@/components/ui/ToastProvider';
 import { fetchList, submitJson } from '@/lib/api/envelope';
 import { combinationDisplayName } from '@/lib/combination-name';
+import { PRINCIPALS_PER_COMBINATION } from '@/lib/uneb';
+import { SubsidiaryRuleField, effectiveSubsidiaryIds } from '@/components/admin/curriculum/SubsidiaryRuleField';
 import type { CatalogCombination, SchoolCombination, SubjectOffering } from './types';
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
@@ -53,8 +55,8 @@ export function SchoolCombinationFormModal({
   const [coreIds, setCoreIds] = useState<string[]>(
     combination?.subjects.filter((s) => s.role === 'principal').map((s) => s.subjectId) ?? [],
   );
-  const [subsidiaryId, setSubsidiaryId] = useState(
-    combination?.subjects.find((s) => s.role === 'subsidiary')?.subjectId ?? '',
+  const [subsidiaryIds, setSubsidiaryIds] = useState<string[]>(
+    combination?.subjects.filter((s) => s.role === 'subsidiary').map((s) => s.subjectId) ?? [],
   );
   const [description, setDescription] = useState(combination?.description ?? '');
   const [minClassSize, setMinClassSize] = useState(combination?.minClassSize?.toString() ?? '');
@@ -87,26 +89,38 @@ export function SchoolCombinationFormModal({
     (s) => s.subjectCategory === 'subsidiary' && !s.subjectIsGeneralPaper,
   );
 
+  const principalCodes = coreIds.map((id) => offeringById[id]?.subjectUnebCode ?? null);
+  const ruleOptions = subsidiaryOptions.map((s) => ({
+    id: s.subjectId,
+    name: s.subjectName,
+    unebCode: s.subjectUnebCode,
+  }));
+  const chosenSubsidiaries = effectiveSubsidiaryIds(principalCodes, ruleOptions, subsidiaryIds);
+  const coreCountOk = coreIds.length === PRINCIPALS_PER_COMBINATION;
+
   const preview = useMemo(
     () =>
       combinationDisplayName(
         coreIds.map((id) => offeringById[id]?.subjectName ?? ''),
-        subsidiaryId && offeringById[subsidiaryId]
-          ? [offeringById[subsidiaryId].subjectShortName]
-          : [],
+        chosenSubsidiaries.map((id) => offeringById[id]?.subjectShortName ?? ''),
       ),
-    [coreIds, subsidiaryId, offeringById],
+    [coreIds, chosenSubsidiaries, offeringById],
   );
 
   function toggleCore(id: string) {
-    setCoreIds((ids) => (ids.includes(id) ? ids.filter((i) => i !== id) : [...ids, id]));
-    if (subsidiaryId === id) setSubsidiaryId('');
+    setCoreIds((ids) =>
+      ids.includes(id) ? ids.filter((i) => i !== id) : ids.length < PRINCIPALS_PER_COMBINATION ? [...ids, id] : ids,
+    );
   }
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
-    if (mode === 'custom' && coreIds.length === 0) {
-      toast.error('Choose at least one core subject.');
+    if (mode === 'custom' && !coreCountOk) {
+      toast.error(`Choose exactly ${PRINCIPALS_PER_COMBINATION} principal subjects.`);
+      return;
+    }
+    if (mode === 'catalog' && !isEdit && !catalogId) {
+      toast.error('Pick a combination from the catalog.');
       return;
     }
     setSaving(true);
@@ -119,7 +133,7 @@ export function SchoolCombinationFormModal({
             minClassSize: minClassSize ? Number(minClassSize) : null,
             subjects: [
               ...coreIds.map((subjectId) => ({ subjectId, role: 'principal' as const })),
-              ...(subsidiaryId ? [{ subjectId: subsidiaryId, role: 'subsidiary' as const }] : []),
+              ...chosenSubsidiaries.map((subjectId) => ({ subjectId, role: 'subsidiary' as const })),
             ],
           };
 
@@ -171,7 +185,7 @@ export function SchoolCombinationFormModal({
           </Section>
         ) : (
           <>
-            <Section title="Core subjects">
+            <Section title={`Principal subjects (${coreIds.length}/${PRINCIPALS_PER_COMBINATION})`}>
               <div className="flex flex-wrap gap-2 max-h-40 overflow-y-auto pr-1">
                 {coreOptions.length === 0 && (
                   <p className="text-xs text-text-faint">No Science/Art A-Level subjects offered yet — set those up first.</p>
@@ -182,7 +196,9 @@ export function SchoolCombinationFormModal({
                     className={`cursor-pointer rounded-lg px-2.5 py-1.5 text-sm border ${
                       coreIds.includes(s.subjectId)
                         ? 'bg-primary-700 text-white border-primary-700'
-                        : 'border-border text-text-secondary'
+                        : coreCountOk
+                          ? 'border-border text-text-faint opacity-50'
+                          : 'border-border text-text-secondary'
                     }`}
                   >
                     <input
@@ -195,20 +211,19 @@ export function SchoolCombinationFormModal({
                   </label>
                 ))}
               </div>
-              {mode === 'custom' && coreIds.length === 0 && (
-                <p className="text-xs text-[#C26565]">Choose at least one core subject.</p>
+              {mode === 'custom' && !coreCountOk && (
+                <p className="text-xs text-[#C26565]">Choose exactly {PRINCIPALS_PER_COMBINATION} principal subjects.</p>
               )}
             </Section>
 
             <Section title="Subsidiary subject">
-              <Select
-                label="Subsidiary (optional)"
-                value={subsidiaryId}
-                onChange={(e) => setSubsidiaryId(e.target.value)}
-                options={[
-                  { value: '', label: 'None' },
-                  ...subsidiaryOptions.map((s) => ({ value: s.subjectId, label: s.subjectName })),
-                ]}
+              <SubsidiaryRuleField
+                principalCount={coreIds.length}
+                principalCodes={principalCodes}
+                options={ruleOptions}
+                value={subsidiaryIds}
+                onChange={setSubsidiaryIds}
+                missingRequiredHint="It isn't marked offered at your school yet — it will be added to the combination anyway."
               />
             </Section>
 

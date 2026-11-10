@@ -17,6 +17,7 @@ export interface SubjectOfferingRecord {
   subjectName: string;
   subjectCategory: string;
   subjectIsGeneralPaper: boolean;
+  subjectUnebCode: string | null;
   subjectPhase: SubjectPhase;
   isOffered: boolean;
   isCompulsory: boolean;
@@ -46,6 +47,7 @@ interface SubjectOfferingRow {
   subject_name: string;
   subject_category: string;
   subject_is_general_paper: boolean;
+  subject_uneb_code: string | null;
   subject_phase: SubjectPhase;
   is_offered: boolean;
   is_compulsory: boolean;
@@ -59,6 +61,7 @@ const SELECT_OFFERING = `
   select o.id, o.school_id, o.academic_year_id, o.subject_id,
          s.code as subject_code, s.short_name as subject_short_name, s.name as subject_name,
          s.category as subject_category, s.is_general_paper as subject_is_general_paper,
+         s.uneb_code as subject_uneb_code,
          s.phase as subject_phase, o.is_offered, o.is_compulsory, o.max_mark,
          s.school_id is not null as subject_is_school_owned, o.created_at, o.updated_at
   from subject_offering o
@@ -76,6 +79,7 @@ function mapRow(row: SubjectOfferingRow): SubjectOfferingRecord {
     subjectName: row.subject_name,
     subjectCategory: row.subject_category,
     subjectIsGeneralPaper: row.subject_is_general_paper,
+    subjectUnebCode: row.subject_uneb_code,
     subjectPhase: row.subject_phase,
     isOffered: row.is_offered,
     isCompulsory: row.is_compulsory,
@@ -138,8 +142,15 @@ function isAlwaysOnCategory(category: string, isGeneralPaper: boolean): boolean 
 // first visit to this page, not just something enforced reactively.
 // Only for the levels the school actually runs — a secondary school must
 // never have primary core subjects pushed onto it, and vice versa.
-async function seedAlwaysOnOfferings(schoolId: string, academicYearId: string): Promise<void> {
-  await pool.query(
+// Exported (via index.ts) so student enrollment can run it inside its own
+// transaction before attaching compulsory subjects — otherwise a year nobody
+// has opened the Subjects page for has no compulsory offerings to attach.
+export async function seedAlwaysOnOfferings(
+  schoolId: string,
+  academicYearId: string,
+  db: Pick<typeof pool, "query"> = pool,
+): Promise<void> {
+  await db.query(
     `insert into subject_offering (school_id, subject_id, academic_year_id, is_offered, is_compulsory)
      select $1, s.id, $2, true, true
      from subject s
