@@ -8,6 +8,7 @@ import { Select } from '@/components/ui/Select';
 import { useToast } from '@/components/ui/ToastProvider';
 import { fetchList, submitJson } from '@/lib/api/envelope';
 import { useSchoolLevels } from '@/lib/levels';
+import { subsidiaryRuleFor, unebSubjectName } from '@/lib/uneb';
 import type { SchoolCombination, SubjectOffering } from '../subjects/types';
 import type { EnrollmentRecord, StudentCombination, StudentSubject } from './types';
 
@@ -33,10 +34,13 @@ export function CombinationPicker({
   academicYearId,
   value,
   onChange,
+  showOverrideNote = true,
 }: {
   academicYearId: string;
   value: CombinationChoice;
   onChange: (next: CombinationChoice) => void;
+  /** Off for bulk assignment, where a per-student note doesn't apply. */
+  showOverrideNote?: boolean;
 }) {
   const toast = useToast();
   const [offered, setOffered] = useState<SchoolCombination[]>([]);
@@ -51,6 +55,11 @@ export function CombinationPicker({
 
   const selected = offered.find((c) => c.id === value.schoolCombinationId);
   const subsidiaryOptions = selected?.subjects.filter((s) => s.role === 'subsidiary') ?? [];
+  // Where UNEB fixes the subsidiary the server picks it — no choice to show.
+  const rule = selected
+    ? subsidiaryRuleFor(selected.subjects.filter((s) => s.role === 'principal').map((s) => s.subjectUnebCode))
+    : null;
+  const requiredSub = rule?.required ? subsidiaryOptions.find((s) => s.subjectUnebCode === rule.required) : undefined;
 
   return (
     <div className="space-y-3">
@@ -65,7 +74,19 @@ export function CombinationPicker({
           ...offered.map((c) => ({ value: c.id, label: `${c.code} — ${c.name}` })),
         ]}
       />
-      {subsidiaryOptions.length > 1 && (
+      {rule?.required && (
+        <p className="text-sm">
+          <span className="text-text-muted">Subsidiary:</span>{' '}
+          <span className="font-medium">{requiredSub?.subjectName ?? unebSubjectName(rule.required)}</span>
+          <span className="block text-xs text-text-faint">UNEB rule: {rule.reason}.</span>
+          {!requiredSub && (
+            <span className="block text-xs text-warning">
+              This combination doesn&apos;t include it — edit the combination before assigning students.
+            </span>
+          )}
+        </p>
+      )}
+      {!rule?.required && subsidiaryOptions.length > 1 && (
         <Select
           label="Subsidiary"
           value={value.subsidiarySubjectId ?? ''}
@@ -76,18 +97,20 @@ export function CombinationPicker({
           ]}
         />
       )}
-      <label className="block text-sm">
-        <span className="text-xs font-medium text-text-muted">
-          Eligibility override note <span className="text-text-faint">(optional)</span>
-        </span>
-        <textarea
-          value={value.overrideReason ?? ''}
-          onChange={(e) => onChange({ ...value, overrideReason: e.target.value || null })}
-          rows={2}
-          placeholder="If the student's UCE grades fall short of a principal subject, note why you're proceeding."
-          className="mt-1 w-full rounded-lg border border-border bg-bg-card px-3 py-2 text-sm"
-        />
-      </label>
+      {showOverrideNote && (
+        <label className="block text-sm">
+          <span className="text-xs font-medium text-text-muted">
+            Eligibility override note <span className="text-text-faint">(optional)</span>
+          </span>
+          <textarea
+            value={value.overrideReason ?? ''}
+            onChange={(e) => onChange({ ...value, overrideReason: e.target.value || null })}
+            rows={2}
+            placeholder="If the student's UCE grades fall short of a principal subject, note why you're proceeding."
+            className="mt-1 w-full rounded-lg border border-border bg-bg-card px-3 py-2 text-sm"
+          />
+        </label>
+      )}
     </div>
   );
 }

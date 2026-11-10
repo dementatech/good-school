@@ -240,3 +240,15 @@ export const selectCombinationBodySchema = {
   },
   additionalProperties: false,
 } as const;
+
+export const bulkAssignCombinationBodySchema = {
+  type: "object",
+  required: ["academicYearId", "schoolCombinationId", "studentUserIds"],
+  properties: {
+    academicYearId: { type: "string" },
+    schoolCombinationId: { type: "string" },
+    subsidiarySubjectId: { type: ["string", "null"] },
+    studentUserIds: { type: "array", items: { type: "string" }, minItems: 1, maxItems: 500 },
+  },
+  additionalProperties: false,
+} as const;

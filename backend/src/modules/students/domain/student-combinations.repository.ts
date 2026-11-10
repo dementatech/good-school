@@ -2,6 +2,7 @@ import type { Pool, PoolClient } from "pg";
 import { pool } from "../../../shared/db/index.js";
 import { derivedNameSql } from "../../../shared/combination-name.js";
 import { isBelowCredit } from "./prior-exams.repository.js";
+import { subsidiaryRuleFor, unebSubjectName } from "../../../shared/uneb.js";
 
 type Db = Pool | PoolClient;
 
@@ -150,6 +151,13 @@ export class InvalidSubsidiaryError extends Error {
   }
 }
 
+export class NotALevelStudentError extends Error {
+  constructor() {
+    super("This student has no active A-Level enrollment at this school for that academic year.");
+    this.name = "NotALevelStudentError";
+  }
+}
+
 export class ActiveCombinationExistsError extends Error {
   constructor() {
     super("Student already has a combination this year — reassign instead of adding a second one.");
@@ -158,14 +166,15 @@ export class ActiveCombinationExistsError extends Error {
 }
 
 export async function getCurrentCombination(
+  schoolId: string,
   studentUserId: string,
   academicYearId?: string,
 ): Promise<StudentCombinationRecord | null> {
-  const params: unknown[] = [studentUserId];
-  let clause = `where sc2.student_user_id = $1 and sc2.status <> 'reassigned'`;
+  const params: unknown[] = [studentUserId, schoolId];
+  let clause = `where sc2.student_user_id = $1 and sc2.school_id = $2 and sc2.status <> 'reassigned'`;
   if (academicYearId) {
     params.push(academicYearId);
-    clause += ` and sc2.academic_year_id = $2`;
+    clause += ` and sc2.academic_year_id = $3`;
   }
   const { rows } = await pool.query<StudentCombinationRow>(
     `${SELECT_STUDENT_COMBINATION} ${clause} group by sc2.id, c.code order by sc2.selected_at desc limit 1`,
@@ -180,11 +189,14 @@ export async function getCurrentCombination(
   return mapRow(rows[0], warnings);
 }
 
-export async function listCombinationHistory(studentUserId: string): Promise<StudentCombinationRecord[]> {
+export async function listCombinationHistory(
+  schoolId: string,
+  studentUserId: string,
+): Promise<StudentCombinationRecord[]> {
   const { rows } = await pool.query<StudentCombinationRow>(
-    `${SELECT_STUDENT_COMBINATION} where sc2.student_user_id = $1
+    `${SELECT_STUDENT_COMBINATION} where sc2.student_user_id = $1 and sc2.school_id = $2
      group by sc2.id, c.code order by sc2.selected_at desc`,
-    [studentUserId],
+    [studentUserId, schoolId],
   );
   return rows.map((r) => mapRow(r));
 }
@@ -194,13 +206,36 @@ async function resolveSubsidiary(
   schoolCombinationId: string,
   requestedSubsidiaryId: string | null | undefined,
 ): Promise<string | null> {
-  const options = await client.query<{ subject_id: string }>(
-    `select subject_id from school_combination_subject
-     where school_combination_id = $1 and role = 'subsidiary'`,
+  const members = await client.query<{ subject_id: string; role: CombinationRole; uneb_code: string | null }>(
+    `select cs.subject_id, cs.role, s.uneb_code
+     from school_combination_subject cs
+     join subject s on s.id = cs.subject_id
+     where cs.school_combination_id = $1 and cs.role in ('principal', 'subsidiary')`,
     [schoolCombinationId],
   );
-  if (options.rowCount === 0) return null;
-  if (options.rowCount === 1) return options.rows[0].subject_id;
+  const options = { rows: members.rows.filter((m) => m.role === "subsidiary") };
+
+  // UNEB rule (shared/uneb.ts): where the principals fix the subsidiary, it's
+  // that one — picked automatically, and any other request is rejected. A
+  // combination saved before the rule existed may not carry it at all; that
+  // blocks assignment until the combination is fixed, rather than placing a
+  // student on a subsidiary UNEB won't register.
+  const rule = subsidiaryRuleFor(members.rows.filter((m) => m.role === "principal").map((m) => m.uneb_code));
+  if (rule.required) {
+    const required = options.rows.find((o) => o.uneb_code === rule.required);
+    if (!required) {
+      throw new InvalidSubsidiaryError(
+        `${rule.reason}, but this combination doesn't include ${unebSubjectName(rule.required)}. Edit the combination first.`,
+      );
+    }
+    if (requestedSubsidiaryId && requestedSubsidiaryId !== required.subject_id) {
+      throw new InvalidSubsidiaryError(`${rule.reason} — no other subsidiary is allowed.`);
+    }
+    return required.subject_id;
+  }
+
+  if (options.rows.length === 0) return null;
+  if (options.rows.length === 1) return options.rows[0].subject_id;
 
   // More than one subsidiary option — the school/student must pick one of
   // the real options, never a free-typed subject id.
@@ -319,6 +354,19 @@ async function applyCombinationTx(
     [schoolCombinationId, schoolId, academicYearId],
   );
   if (combo.rowCount === 0) throw new UnknownReferenceError("schoolCombinationId");
+
+  // Only a student actually enrolled in A-Level here, that year, can be
+  // placed on a combination — also what keeps one school from writing a
+  // combination onto another school's student.
+  const enrolled = await client.query(
+    `select 1 from student_enrollment se
+     join classes c on c.id = se.class_id
+     join curriculum_stage cs on cs.id = c.curriculum_stage_id
+     where se.student_user_id = $1 and se.school_id = $2 and se.academic_year_id = $3
+       and se.status = 'active' and cs.phase = 'A_LEVEL'`,
+    [studentUserId, schoolId, academicYearId],
+  );
+  if (enrolled.rowCount === 0) throw new NotALevelStudentError();
 
   if (reassign) {
     await client.query(
@@ -451,4 +499,52 @@ export async function reassignCombination(
   } finally {
     client.release();
   }
+}
+
+export interface BulkAssignInput {
+  schoolId: string;
+  academicYearId: string;
+  schoolCombinationId: string;
+  subsidiarySubjectId?: string | null;
+  studentUserIds: string[];
+  confirmedBy: string;
+}
+
+export type BulkAssignOutcome =
+  | { studentUserId: string; status: "assigned"; warnings: string[] }
+  | { studentUserId: string; status: "skipped" | "error"; message: string };
+
+// Places many students on one combination. Each student is its own
+// transaction through the same path as a single assignment (UNEB subsidiary
+// rule, A-Level enrollment check, GP + subject sync), so one failure never
+// undoes the others. Students who already have a combination are skipped,
+// not reassigned — reassignment stays a deliberate one-at-a-time action.
+export async function bulkAssignCombination(input: BulkAssignInput): Promise<BulkAssignOutcome[]> {
+  const outcomes: BulkAssignOutcome[] = [];
+  for (const studentUserId of new Set(input.studentUserIds)) {
+    try {
+      const record = await selectCombination(
+        input.schoolId,
+        studentUserId,
+        input.academicYearId,
+        input.schoolCombinationId,
+        input.subsidiarySubjectId,
+        input.confirmedBy,
+      );
+      outcomes.push({ studentUserId, status: "assigned", warnings: record.warnings });
+    } catch (err) {
+      if (err instanceof ActiveCombinationExistsError) {
+        outcomes.push({ studentUserId, status: "skipped", message: "Already has a combination this year." });
+      } else if (
+        err instanceof NotALevelStudentError ||
+        err instanceof InvalidSubsidiaryError ||
+        err instanceof UnknownReferenceError
+      ) {
+        outcomes.push({ studentUserId, status: "error", message: err.message });
+      } else {
+        throw err;
+      }
+    }
+  }
+  return outcomes;
 }

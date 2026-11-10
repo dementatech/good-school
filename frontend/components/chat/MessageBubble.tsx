@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Check, CheckCheck, Clock, Copy, FileText, MoreVertical, Pencil, Reply, SmilePlus, Trash2 } from 'lucide-react';
 import { PersonAvatar } from './ChatAvatar';
+import { VoiceNotePlayer } from './VoiceNotePlayer';
 import { bubbleTime, fileSize, messageSnippet } from '@/lib/communications/format';
 import type { ChatMessage } from '@/lib/communications/types';
 
@@ -120,7 +121,8 @@ export function MessageBubble({
               <span className="line-clamp-2">
                 {message.replyTo.deleted
                   ? 'This message was deleted'
-                  : message.replyTo.body || (message.replyTo.attachmentName ? `📎 ${message.replyTo.attachmentName}` : '')}
+                  : message.replyTo.body ||
+                    (message.replyTo.isVoice ? '🎤 Voice message' : message.replyTo.attachmentName ? `📎 ${message.replyTo.attachmentName}` : '')}
               </span>
             </button>
           )}
@@ -145,7 +147,10 @@ export function MessageBubble({
                   />
                 </button>
               )}
-              {message.attachment && !message.attachment.isImage && (
+              {message.attachment?.isVoice && (
+                <VoiceNotePlayer id={message.id} attachment={message.attachment} sender={message.sender} mine={mine} />
+              )}
+              {message.attachment && !message.attachment.isImage && !message.attachment.isVoice && (
                 <a
                   href={message.attachment.url}
                   target="_blank"

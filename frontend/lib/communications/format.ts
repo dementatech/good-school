@@ -45,13 +45,21 @@ export function lastMessagePreview(m: LastMessage | null, myUserId: string | und
   if (!m) return 'No messages yet';
   if (m.deleted) return 'This message was deleted';
   const who = m.senderUserId === myUserId ? 'You: ' : isGroup && m.senderName ? `${m.senderName.split(' ')[0]}: ` : '';
-  const text = m.body.trim() || (m.hasAttachment ? `📎 ${m.attachmentName ?? 'Attachment'}` : '');
+  const text =
+    m.body.trim() || (m.isVoice ? '🎤 Voice message' : m.hasAttachment ? `📎 ${m.attachmentName ?? 'Attachment'}` : '');
   return who + text;
 }
 
 export function messageSnippet(m: Pick<ChatMessage, 'body' | 'attachment' | 'deletedAt'>): string {
   if (m.deletedAt) return 'This message was deleted';
+  if (m.attachment?.isVoice) return m.body.trim() || `🎤 Voice message (${clock(m.attachment.durationMs ?? 0)})`;
   return m.body.trim() || (m.attachment ? (m.attachment.isImage ? '📷 Photo' : `📎 ${m.attachment.name}`) : '');
+}
+
+/** 0:07, 1:42, 12:05 */
+export function clock(ms: number): string {
+  const total = Math.max(0, Math.round(ms / 1000));
+  return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, '0')}`;
 }
 
 export function fileSize(bytes: number | null): string {

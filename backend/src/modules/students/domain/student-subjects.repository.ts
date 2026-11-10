@@ -1,5 +1,6 @@
 import type { Pool, PoolClient } from "pg";
 import { pool } from "../../../shared/db/index.js";
+import { seedAlwaysOnOfferings } from "../../academic-structure/index.js";
 
 type Db = Pool | PoolClient;
 
@@ -171,4 +172,33 @@ export async function setStudentSubjectStatus(
     result.rows[0].id,
   ]);
   return mapRow(row.rows[0]);
+}
+
+// Attaches every subject this school marks offered + compulsory for the year
+// (O-Level only — A-Level gets its subjects, GP included, from the
+// combination) as an 'active' registration. Runs on every enrollment, so
+// S1 admissions, bulk imports and repeat/transfer periods all get them, not
+// only the wizard paths that pre-tick them in the browser. Existing rows are
+// left alone (on conflict do nothing), so subjects already sent with the
+// admission aren't touched. Always-on offerings are seeded first so a year
+// nobody has opened the Subjects page for still has its core subjects.
+export async function attachCompulsorySubjects(
+  db: Db,
+  schoolId: string,
+  studentUserId: string,
+  academicYearId: string,
+  changedBy: string | null,
+): Promise<void> {
+  await seedAlwaysOnOfferings(schoolId, academicYearId, db);
+  await db.query(
+    `insert into student_subject (student_user_id, school_id, subject_id, academic_year_id, status, status_changed_by)
+     select $1, $2, o.subject_id, $3, 'active', $4
+     from subject_offering o
+     join subject s on s.id = o.subject_id
+     where o.school_id = $2 and o.academic_year_id = $3
+       and o.is_offered and o.is_compulsory
+       and s.phase = 'O_LEVEL' and s.is_active
+     on conflict (student_user_id, subject_id, academic_year_id) do nothing`,
+    [studentUserId, schoolId, academicYearId, changedBy],
+  );
 }

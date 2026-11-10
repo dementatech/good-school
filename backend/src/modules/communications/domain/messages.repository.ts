@@ -15,6 +15,11 @@ export interface Attachment {
   mimeType: string;
   size: number | null;
   isImage: boolean;
+  /** Recorded in the app with the voice-note button. */
+  isVoice: boolean;
+  durationMs: number | null;
+  /** Bar heights 0-100 for the player's waveform. */
+  waveform: number[] | null;
 }
 
 export interface ReplyPreview {
@@ -23,6 +28,7 @@ export interface ReplyPreview {
   senderName: string | null;
   body: string;
   attachmentName: string | null;
+  isVoice: boolean;
   deleted: boolean;
 }
 
@@ -50,13 +56,17 @@ interface MessageRow {
   attachment_mime: string | null;
   attachment_name: string | null;
   attachment_size: number | null;
+  is_voice_note: boolean;
+  attachment_duration_ms: number | null;
+  attachment_waveform: number[] | null;
   edited_at: string | null;
   deleted_at: string | null;
   created_at: string;
 }
 
 const COLUMNS = `id, room_id, sender_user_id, body, reply_to_id, attachment_ref, attachment_provider,
-  attachment_mime, attachment_name, attachment_size, edited_at, deleted_at, created_at`;
+  attachment_mime, attachment_name, attachment_size, is_voice_note, attachment_duration_ms, attachment_waveform,
+  edited_at, deleted_at, created_at`;
 
 async function hydrate(rows: MessageRow[]): Promise<ChatMessage[]> {
   if (rows.length === 0) return [];
@@ -96,6 +106,7 @@ async function hydrate(rows: MessageRow[]): Promise<ChatMessage[]> {
             senderName: reply.sender_user_id ? (people.get(reply.sender_user_id)?.name ?? null) : null,
             body: reply.deleted_at ? "" : reply.body.slice(0, 200),
             attachmentName: reply.deleted_at ? null : reply.attachment_name,
+            isVoice: reply.is_voice_note && !reply.deleted_at,
             deleted: reply.deleted_at !== null,
           }
         : null,
@@ -111,6 +122,9 @@ async function hydrate(rows: MessageRow[]): Promise<ChatMessage[]> {
               mimeType: r.attachment_mime ?? "application/octet-stream",
               size: r.attachment_size,
               isImage: (r.attachment_mime ?? "").startsWith("image/"),
+              isVoice: r.is_voice_note,
+              durationMs: r.attachment_duration_ms,
+              waveform: r.attachment_waveform,
             }
           : null,
       reactions: deleted
@@ -163,6 +177,7 @@ export async function postMessage(input: {
   body: string;
   replyToId?: string | null;
   attachment?: (StoredFile & { name: string; size: number }) | null;
+  voice?: { durationMs: number; waveform: number[] } | null;
 }): Promise<ChatMessage> {
   if (input.replyToId) {
     const target = await messageRow(input.replyToId).catch(() => null);
@@ -173,8 +188,9 @@ export async function postMessage(input: {
     await client.query("begin");
     const { rows } = await client.query<MessageRow>(
       `insert into chat_message (room_id, sender_user_id, body, reply_to_id, attachment_ref, attachment_provider,
-                                 attachment_mime, attachment_name, attachment_size)
-       values ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+                                 attachment_mime, attachment_name, attachment_size, is_voice_note,
+                                 attachment_duration_ms, attachment_waveform)
+       values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
        returning ${COLUMNS}`,
       [
         input.roomId,
@@ -186,6 +202,9 @@ export async function postMessage(input: {
         input.attachment?.mimeType ?? null,
         input.attachment?.name ?? null,
         input.attachment?.size ?? null,
+        Boolean(input.voice),
+        input.voice?.durationMs ?? null,
+        input.voice?.waveform ?? null,
       ],
     );
     await client.query(`update chat_room set last_message_at = $2 where id = $1`, [input.roomId, rows[0].created_at]);
@@ -221,7 +240,8 @@ export async function deleteMessage(messageId: string, userId: string, canModera
   if (!row.deleted_at) {
     await pool.query(
       `update chat_message set deleted_at = now(), body = '', attachment_ref = null, attachment_provider = null,
-              attachment_name = null, attachment_mime = null, attachment_size = null
+              attachment_name = null, attachment_mime = null, attachment_size = null,
+              attachment_duration_ms = null, attachment_waveform = null
         where id = $1`,
       [messageId],
     );

@@ -55,6 +55,8 @@ export const subjectBodySchema = {
     isExaminable: { type: "boolean" },
     isActive: { type: "boolean" },
     stageIds: { type: "array", items: { type: "string" } },
+    // A-Level catalog only, platform admin only. Omit to leave unchanged.
+    unebCode: { type: ["string", "null"], maxLength: 8 },
     // Omit both to leave the variant configuration untouched on an update.
     hasVariant: { type: "boolean" },
     variants: {

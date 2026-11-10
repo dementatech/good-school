@@ -40,10 +40,16 @@ export const chatApi = {
     file: File,
     caption: string,
     replyToId?: string | null,
+    voice?: { durationMs: number; waveform: number[] } | null,
   ): Promise<{ ok: boolean; error?: string; data?: ChatMessage }> {
     const form = new FormData();
     form.append('caption', caption);
     if (replyToId) form.append('replyToId', replyToId);
+    if (voice) {
+      form.append('voice', '1');
+      form.append('durationMs', String(Math.round(voice.durationMs)));
+      form.append('waveform', voice.waveform.join(','));
+    }
     form.append('file', file);
     try {
       const res = await fetch(`${BASE}/rooms/${id}/attachments`, { method: 'POST', body: form, credentials: 'include' });

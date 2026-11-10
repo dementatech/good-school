@@ -17,6 +17,8 @@ export {
   showPositionsFor,
 } from "./domain/section-settings.repository.js";
 
+export { seedAlwaysOnOfferings } from "./domain/subject-offering.repository.js";
+
 export async function registerAcademicStructureModule(fastify: FastifyInstance) {
   await fastify.register(academicStructureRoutes, { prefix: "/api/v1/academic" });
 }

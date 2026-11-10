@@ -7,7 +7,7 @@ import { DataTable, type DataTableColumn } from '@/components/ui/DataTable';
 import { type DropdownMenuItem } from '@/components/ui/DropdownMenu';
 import { useToast } from '@/components/ui/ToastProvider';
 import { Loader } from '@/components/ui/loader';
-import { BadgeCheck, Pencil, Plus, Trash2, X } from 'lucide-react';
+import { BadgeCheck, ListPlus, Pencil, Plus, Trash2, X } from 'lucide-react';
 import { Modal } from '@/components/ui/Modal';
 import { CurriculumFormModal } from '@/components/admin/curriculum/CurriculumFormModal';
 import { StageFormModal } from '@/components/admin/curriculum/StageFormModal';
@@ -134,6 +134,29 @@ export default function CurriculumPage() {
     await reloadForCurriculum(cid);
   }
 
+  // Seeds the standard UNEB combinations (PCM, HEG, ...) into this
+  // curriculum's catalog. Anything that couldn't be built is listed with why
+  // (usually a subject still missing its UNEB code).
+  const [seedResult, setSeedResult] = useState<{
+    created: string[];
+    existing: string[];
+    skipped: { code: string; reason: string }[];
+  } | null>(null);
+  async function seedStandardCombinations() {
+    const res = await submitJson<NonNullable<typeof seedResult>>(
+      `/api/v1/academic/combinations/seed-standard?curriculumId=${curriculumId}`,
+      'POST',
+    );
+    if (!res.ok || !res.data) {
+      toast.error(res.error!);
+      return;
+    }
+    await reloadAll();
+    if (res.data.skipped.length > 0) setSeedResult(res.data);
+    else if (res.data.created.length > 0) toast.success(`Added ${res.data.created.join(', ')}.`);
+    else toast.info('All the standard combinations are already in this catalog.');
+  }
+
   async function del(url: string, confirmText: string, label: string) {
     if (!confirm(confirmText)) return;
     const res = await submitJson(url, 'DELETE');
@@ -253,6 +276,13 @@ export default function CurriculumPage() {
     { key: 'name', header: 'Subject', value: (s) => s.name, render: (s) => <span className="font-medium">{s.name}</span> },
     { key: 'shortName', header: 'Short name', value: (s) => s.shortName, hideOnMobile: true },
     { key: 'code', header: 'Code', value: (s) => s.code, render: (s) => <Badge variant="muted">{s.code}</Badge> },
+    {
+      key: 'unebCode',
+      header: 'UNEB',
+      value: (s) => s.unebCode ?? '',
+      hideOnMobile: true,
+      render: (s) => (s.unebCode ? s.unebCode : <span className="text-text-faint">—</span>),
+    },
     {
       key: 'category',
       header: 'Category',
@@ -548,6 +578,13 @@ export default function CurriculumPage() {
             emptyMessage="No combinations yet."
             exportFileName="combinations"
             actions={addBtn('Add combination', () => setCombinationModal({}))}
+            secondaryActions={[
+              {
+                label: 'Add standard UNEB combinations',
+                icon: ListPlus,
+                onClick: () => void seedStandardCombinations(),
+              },
+            ]}
           />
         )}
       </Section>
@@ -623,6 +660,31 @@ export default function CurriculumPage() {
                 Cancel
               </Button>
             </div>
+          </div>
+        </Modal>
+      )}
+      {seedResult && (
+        <Modal open onClose={() => setSeedResult(null)} title="Standard combinations">
+          <div className="space-y-3 text-sm">
+            {seedResult.created.length > 0 && <p>Added: {seedResult.created.join(', ')}.</p>}
+            {seedResult.existing.length > 0 && (
+              <p className="text-text-muted">Already in the catalog: {seedResult.existing.join(', ')}.</p>
+            )}
+            <div>
+              <p className="font-medium mb-1">Not added</p>
+              <ul className="space-y-1">
+                {seedResult.skipped.map((s) => (
+                  <li key={s.code}>
+                    <span className="font-medium">{s.code}</span>{' '}
+                    <span className="text-text-muted">— {s.reason}</span>
+                  </li>
+                ))}
+              </ul>
+              <p className="text-xs text-text-faint mt-2">
+                Set the UNEB code on those subjects (or add them), then run this again — it only adds what&apos;s missing.
+              </p>
+            </div>
+            <Button onClick={() => setSeedResult(null)}>Done</Button>
           </div>
         </Modal>
       )}

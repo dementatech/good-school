@@ -1,7 +1,7 @@
 // Shapes returned by /api/v1/communications. Mirrors
 // backend/src/modules/communications/domain/{rooms,messages}.repository.ts.
 
-export type RoomKind = 'direct' | 'group' | 'staff_room' | 'announcements' | 'class' | 'class_parents';
+export type RoomKind = 'direct' | 'group' | 'staff_room' | 'announcements' | 'class' | 'class_parents' | 'support';
 
 export interface Person {
   userId: string;
@@ -18,6 +18,7 @@ export interface LastMessage {
   body: string;
   hasAttachment: boolean;
   attachmentName: string | null;
+  isVoice?: boolean;
   deleted: boolean;
   createdAt: string;
 }
@@ -60,6 +61,10 @@ export interface Attachment {
   mimeType: string;
   size: number | null;
   isImage: boolean;
+  isVoice: boolean;
+  durationMs: number | null;
+  /** Bar heights 0-100. */
+  waveform: number[] | null;
 }
 
 export interface ReplyPreview {
@@ -68,6 +73,7 @@ export interface ReplyPreview {
   senderName: string | null;
   body: string;
   attachmentName: string | null;
+  isVoice?: boolean;
   deleted: boolean;
 }
 
@@ -100,4 +106,5 @@ export const KIND_LABEL: Record<RoomKind, string> = {
   announcements: 'Announcements',
   class: 'Class group',
   class_parents: 'Parents group',
+  support: 'Support chat',
 };

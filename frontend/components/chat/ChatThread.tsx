@@ -220,11 +220,15 @@ export function ChatThread({
   }
 
   // ── Actions ─────────────────────────────────────────────────────────────
-  async function send(body: string, file: File | null): Promise<boolean> {
+  async function send(
+    body: string,
+    file: File | null,
+    voice?: { durationMs: number; waveform: number[] } | null,
+  ): Promise<boolean> {
     const replyId = replyTo?.id ?? null;
     setReplyTo(null);
     if (file) {
-      const result = await chatApi.sendFile(roomId, file, body, replyId);
+      const result = await chatApi.sendFile(roomId, file, body, replyId, voice);
       if (!result.ok || !result.data) {
         onError(result.error ?? 'The file could not be sent.');
         return false;

@@ -1,6 +1,8 @@
 import { pool } from "../../../shared/db/index.js";
 import { derivedNameSql } from "../../../shared/combination-name.js";
 import { nextSequentialCode } from "./sequential-code.js";
+import { applyUnebCombinationRules } from "./combination-rules.js";
+import { STANDARD_COMBINATIONS, unebSubjectName } from "../../../shared/uneb.js";
 
 // A-Level subject combinations (PCM, HEG, …) and their member subjects with a
 // role — `principal` subjects drive UACE points, `subsidiary`/`compulsory`
@@ -113,10 +115,6 @@ async function replaceMembers(
       "Pick the subjects that make up this combination — a combination can't be empty.",
     );
   }
-  if (!members.some((m) => m.role === "principal")) {
-    throw new InvalidCombinationError("A combination needs at least one principal subject.");
-  }
-
   // Every subject named must be a real subject in this curriculum. We reject
   // the whole request rather than silently drop the unknown ones — a
   // combination that quietly loses a subject is exactly the kind of surprise
@@ -157,6 +155,14 @@ async function replaceMembers(
       "This curriculum has no approved General Paper subject yet — add one before creating combinations.",
     );
   }
+
+  // Exactly 3 principals + the UNEB subsidiary rule (shared/uneb.ts).
+  members = await applyUnebCombinationRules(
+    client,
+    curriculumId,
+    members,
+    (message) => new InvalidCombinationError(message),
+  );
 
   await client.query(`delete from combination_subject where combination_id = $1`, [combinationId]);
   // Array order becomes `sort_order` — this is what the derived name follows.
@@ -255,4 +261,98 @@ export async function updateCombination(
 export async function deleteCombination(id: string): Promise<boolean> {
   const result = await pool.query(`delete from subject_combination where id = $1`, [id]);
   return (result.rowCount ?? 0) > 0;
+}
+
+export interface SeedStandardResult {
+  created: string[];
+  /** Already in the catalog — same code, or the same three principals. */
+  existing: string[];
+  /** Couldn't be built: a principal or the required subsidiary has no
+   * subject with that UNEB code in this curriculum yet. */
+  skipped: { code: string; reason: string }[];
+}
+
+// Adds the standard Ugandan combinations (shared/uneb.ts) to a curriculum's
+// catalog, matching principals by UNEB code. Idempotent: a combination whose
+// code or principal set is already there is left alone. Each one goes
+// through the same member validation as a hand-built combination, so the
+// subsidiary follows the UNEB rule. One transaction for the whole seed.
+export async function seedStandardCombinations(curriculumId: string): Promise<SeedStandardResult | null> {
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const owner = await client.query(`select 1 from curriculum where id = $1`, [curriculumId]);
+    if (owner.rowCount === 0) {
+      await client.query("ROLLBACK");
+      return null;
+    }
+
+    const subjects = await client.query<{ id: string; uneb_code: string }>(
+      `select id, uneb_code from subject
+       where curriculum_id = $1 and phase = 'A_LEVEL' and uneb_code is not null
+         and school_id is null and status = 'approved' and is_active`,
+      [curriculumId],
+    );
+    const idByCode = new Map(subjects.rows.map((r) => [r.uneb_code, r.id]));
+
+    const current = await client.query<{ code: string; principals: string[] }>(
+      `select sc.code,
+              coalesce(array_agg(cs.subject_id::text order by cs.subject_id) filter (where cs.role = 'principal'), '{}') as principals
+       from subject_combination sc
+       left join combination_subject cs on cs.combination_id = sc.id
+       where sc.curriculum_id = $1
+       group by sc.id`,
+      [curriculumId],
+    );
+    const takenCodes = new Set(current.rows.map((r) => r.code));
+    const takenSets = new Set(current.rows.map((r) => r.principals.join(",")));
+
+    const result: SeedStandardResult = { created: [], existing: [], skipped: [] };
+    for (const std of STANDARD_COMBINATIONS) {
+      const missing = std.principals.filter((c) => !idByCode.has(c));
+      if (missing.length > 0) {
+        result.skipped.push({
+          code: std.code,
+          reason: `no subject with UNEB code ${missing.map((c) => `${c} (${unebSubjectName(c)})`).join(", ")}`,
+        });
+        continue;
+      }
+      const principalIds = std.principals.map((c) => idByCode.get(c)!);
+      if (takenCodes.has(std.code) || takenSets.has([...principalIds].sort().join(","))) {
+        result.existing.push(std.code);
+        continue;
+      }
+
+      // Savepoint per combination: a rule failure (e.g. no Sub-ICT subject
+      // yet) skips just that one instead of aborting the whole seed.
+      await client.query("SAVEPOINT seed_one");
+      try {
+        const { rows } = await client.query<{ id: string }>(
+          `insert into subject_combination (curriculum_id, code, description, is_active)
+           values ($1, $2, 'Standard UNEB combination', true) returning id`,
+          [curriculumId, std.code],
+        );
+        await replaceMembers(
+          client,
+          rows[0].id,
+          curriculumId,
+          principalIds.map((subjectId) => ({ subjectId, role: "principal" as const })),
+        );
+        await client.query("RELEASE SAVEPOINT seed_one");
+        result.created.push(std.code);
+      } catch (err) {
+        await client.query("ROLLBACK TO SAVEPOINT seed_one");
+        if (!(err instanceof InvalidCombinationError)) throw err;
+        result.skipped.push({ code: std.code, reason: err.message });
+      }
+    }
+
+    await client.query("COMMIT");
+    return result;
+  } catch (err) {
+    await client.query("ROLLBACK");
+    throw err;
+  } finally {
+    client.release();
+  }
 }

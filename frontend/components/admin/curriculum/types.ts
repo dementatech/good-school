@@ -68,6 +68,9 @@ export interface Subject {
    * Paper, a system constant every A-Level student takes automatically —
    * never created or deleted through this form. */
   isGeneralPaper: boolean;
+  /** UNEB paper code (P425, S850, ...) — A-Level catalog subjects only. The
+   * combination rules key off it (lib/uneb.ts). */
+  unebCode: string | null;
   /** Papers examined separately and merged into one subject mark (e.g.
    * Physics Theory 70% + Practical 30%). Once this subject has any recorded
    * exam marks, hasVariant/variants become read-only server-side. */

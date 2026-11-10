@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import { useToast } from '@/components/ui/ToastProvider';
 import { Plus, Trash2 } from 'lucide-react';
+import { UNEB_A_LEVEL_SUBJECTS } from '@/lib/uneb';
 import {
   CATEGORY_LABEL,
   PHASE_LABEL,
@@ -70,7 +71,14 @@ export function SubjectFormModal({
     isExaminable: initial?.isExaminable ?? true,
     isActive: initial?.isActive ?? true,
     stageIds: initial?.stageIds ?? ([] as string[]),
+    unebCode: initial?.unebCode ?? '',
   });
+  // Only the platform catalog carries UNEB codes (a school's proposal never
+  // does), and General Paper's S101 is fixed.
+  const showUnebCode = phase === 'A_LEVEL' && !isProposal && !initial?.isGeneralPaper;
+  const unebOptions = UNEB_A_LEVEL_SUBJECTS.filter((u) =>
+    form.category === 'subsidiary' ? u.kind === 'subsidiary' : u.kind === 'science' || u.kind === 'arts',
+  );
   const [hasVariant, setHasVariant] = useState(initial?.hasVariant ?? false);
   const [variants, setVariants] = useState<VariantDraft[]>(
     initial?.variants.length ? initial.variants.map(toDraft) : [
@@ -133,6 +141,7 @@ export function SubjectFormModal({
       isExaminable: form.isExaminable,
       isActive: form.isActive,
       stageIds: form.stageIds,
+      ...(showUnebCode ? { unebCode: form.unebCode || null } : {}),
       hasVariant,
       variants: hasVariant
         ? variants.map((v) => ({
@@ -220,7 +229,13 @@ export function SubjectFormModal({
             </label>
             <select
               value={form.category}
-              onChange={(e) => setForm({ ...form, category: e.target.value as SubjectCategory })}
+              onChange={(e) => {
+                const category = e.target.value as SubjectCategory;
+                // A principal code never fits a subsidiary subject (and vice
+                // versa) — clear it when the category crosses that line.
+                const crossed = (category === 'subsidiary') !== (form.category === 'subsidiary');
+                setForm({ ...form, category, unebCode: crossed ? '' : form.unebCode });
+              }}
               className="w-full border border-border rounded-lg px-3 py-2.5 text-sm"
             >
               {categoryOptions.map((c) => (
@@ -251,6 +266,33 @@ export function SubjectFormModal({
             </label>
           </div>
         </div>
+
+        {showUnebCode && (
+          <div>
+            <label className="block text-xs font-medium text-text-muted tracking-wide mb-1">
+              UNEB code
+            </label>
+            <select
+              value={form.unebCode}
+              onChange={(e) => setForm({ ...form, unebCode: e.target.value })}
+              className="w-full border border-border rounded-lg px-3 py-2.5 text-sm"
+            >
+              <option value="">None</option>
+              {unebOptions.map((u) => (
+                <option key={u.code} value={u.code}>
+                  {u.code} — {u.name}
+                </option>
+              ))}
+            </select>
+            <p className="text-xs text-text-faint mt-1">
+              Combination rules use this to recognise the subject (e.g. Principal Mathematics →
+              Subsidiary ICT), whatever it&apos;s called here.
+            </p>
+          </div>
+        )}
+        {initial?.isGeneralPaper && (
+          <p className="text-xs text-text-faint">UNEB code: S101 (fixed for General Paper).</p>
+        )}
 
         <div>
           <p className="text-xs font-medium text-text-muted tracking-wide mb-1.5">

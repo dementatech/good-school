@@ -424,7 +424,7 @@ async function importOne(
       streamId,
       entryDate,
       entryType: "new_admission",
-    });
+    }, actingUserId);
 
     await client.query("COMMIT");
 

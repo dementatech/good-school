@@ -7,8 +7,10 @@ import { Modal } from '@/components/ui/Modal';
 import { Loader } from '@/components/ui/loader';
 import { useToast } from '@/components/ui/ToastProvider';
 import { fetchList } from '@/lib/api/envelope';
-import { Pencil } from 'lucide-react';
+import { Pencil, Users } from 'lucide-react';
+import { Button } from '@/components/ui/Button';
 import { ALevelCombination } from '@/components/admin/students/StudentSubjectsPanel';
+import { BulkAssignCombinationModal } from '@/components/admin/students/BulkAssignCombinationModal';
 import {
   studentFullName,
   type Student,
@@ -25,6 +27,7 @@ export default function ManageCombinationsPage() {
   const [rows, setRows] = useState<Row[]>([]);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState<Row | null>(null);
+  const [bulkOpen, setBulkOpen] = useState(false);
 
   const load = useCallback(async () => {
     const students = await fetchList<Student>('/api/v1/students', toast.error);
@@ -127,7 +130,21 @@ export default function ManageCombinationsPage() {
         searchPlaceholder="Search students…"
         emptyMessage="No active A-Level students."
         exportFileName="a-level-combinations"
+        actions={
+          <Button onClick={() => setBulkOpen(true)} disabled={!rows.some((r) => !r.combination)}>
+            <Users className="w-4 h-4 mr-1.5" aria-hidden />
+            Assign to several
+          </Button>
+        }
       />
+
+      {bulkOpen && (
+        <BulkAssignCombinationModal
+          students={rows.filter((r) => !r.combination).map((r) => r.student)}
+          onClose={() => setBulkOpen(false)}
+          onDone={load}
+        />
+      )}
 
       {editing && editing.student.activeEnrollment && (
         <Modal

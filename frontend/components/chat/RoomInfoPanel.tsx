@@ -118,7 +118,14 @@ export function RoomInfoPanel({ room, myUserId, myRole, onlineIds, onClose, onCh
             This class group is from an earlier year. It stays here so its history can still be read.
           </p>
         )}
-        {!isCustom && detail.kind !== 'direct' && (
+        {detail.kind === 'support' && (
+          <p className="rounded-lg bg-primary-50 px-3 py-2 text-sm text-primary-900">
+            {detail.myRole === 'admin'
+              ? "This school's chat with Dementa support. Every school admin at the school and everyone on the support team is in it."
+              : 'Your school’s chat with the Dementa support team. Every school admin at your school can see it, and anyone on the support team can answer.'}
+          </p>
+        )}
+        {!isCustom && detail.kind !== 'direct' && detail.kind !== 'support' && (
           <p className="rounded-lg bg-primary-50 px-3 py-2 text-sm text-primary-900">
             The school manages this group. People join and leave it automatically as staff, classes and enrollment change.
           </p>

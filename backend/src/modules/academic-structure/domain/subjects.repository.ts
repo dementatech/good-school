@@ -2,6 +2,7 @@ import type { PoolClient } from "pg";
 import { pool } from "../../../shared/db/index.js";
 import { nextSequentialCode } from "./sequential-code.js";
 import { LEVEL_LABEL, LEVEL_STAGE_RANGE, type SubjectPhase } from "../../../shared/levels.js";
+import { GENERAL_PAPER_CODE, UNEB_A_LEVEL_SUBJECTS } from "../../../shared/uneb.js";
 
 // The subject catalog, per curriculum. `stageIds` is which curriculum stages
 // offer the subject (Physics: S3–S6). Per-student subject registration is a
@@ -50,6 +51,10 @@ export interface SubjectRecord {
    * constant, seeded when the curriculum is created — never set through
    * `createSubject`/`updateSubject`, and never deletable. */
   isGeneralPaper: boolean;
+  /** UNEB paper code (P425 Mathematics, S850 Subsidiary ICT, ...) — A-Level
+   * catalog subjects only, set by the platform admin. The A-Level combination
+   * rules key off it (shared/uneb.ts), never off the subject's name. */
+  unebCode: string | null;
   /** Some subjects (Physics Theory + Practical, ...) are examined as separate
    * papers with different weights and merged into one subject mark. `variants`
    * is empty unless `hasVariant` is true, in which case it always has at
@@ -88,6 +93,8 @@ export interface SubjectInput {
    * subject has any exam_result, changing either throws VariantsLockedError. */
   hasVariant?: boolean;
   variants?: SubjectVariantInput[];
+  /** A-Level catalog only. Omit to leave unchanged on update; null clears. */
+  unebCode?: string | null;
 }
 
 interface SubjectRow {
@@ -108,6 +115,7 @@ interface SubjectRow {
   reviewed_at: string | null;
   rejection_reason: string | null;
   is_general_paper: boolean;
+  uneb_code: string | null;
   has_variant: boolean;
   variants: SubjectVariantRecord[] | null;
   created_at: string;
@@ -132,6 +140,7 @@ const mapRow = (r: SubjectRow): SubjectRecord => ({
   reviewedAt: r.reviewed_at,
   rejectionReason: r.rejection_reason,
   isGeneralPaper: r.is_general_paper,
+  unebCode: r.uneb_code,
   hasVariant: r.has_variant,
   variants: r.variants ?? [],
   createdAt: r.created_at,
@@ -146,7 +155,7 @@ const SELECT_SUBJECT = `
          (select coalesce(array_agg(ss.curriculum_stage_id), '{}')
             from subject_stage ss where ss.subject_id = s.id) as stage_ids,
          s.status, s.proposed_by_school_id, s.school_id, s.reviewed_by, s.reviewed_at, s.rejection_reason, s.is_general_paper,
-         s.has_variant,
+         s.uneb_code, s.has_variant,
          (select coalesce(json_agg(json_build_object(
                   'id', sv.id, 'name', sv.name, 'code', sv.code,
                   'contributionPercent', sv.contribution_percent
@@ -257,6 +266,39 @@ function assertCategoryValidForPhase(phase: SubjectPhase, category: SubjectCateg
       `A ${LEVEL_LABEL[phase]} subject's category must be one of: ${allowed.join(", ")}.`,
     );
   }
+}
+
+// A UNEB code must be a known A-Level paper code whose kind matches the
+// subject's category (a subsidiary code on a subsidiary subject, a principal
+// code on a Science/Art one). S101 is reserved for the General Paper constant.
+function assertUnebCodeValid(phase: SubjectPhase, category: SubjectCategory, code: string): void {
+  if (phase !== "A_LEVEL") throw new InvalidSubjectError("UNEB codes only apply to A-Level subjects.");
+  const known = UNEB_A_LEVEL_SUBJECTS.find((u) => u.code === code);
+  if (!known) throw new InvalidSubjectError(`"${code}" isn't a known UNEB A-Level code.`);
+  if (code === GENERAL_PAPER_CODE) {
+    throw new InvalidSubjectError("S101 belongs to the General Paper, which already exists.");
+  }
+  const isSubsidiaryCode = known.kind === "subsidiary";
+  if (isSubsidiaryCode !== (category === "subsidiary")) {
+    throw new InvalidSubjectError(
+      isSubsidiaryCode
+        ? `${code} (${known.name}) is a subsidiary paper — set the category to Subsidiary.`
+        : `${code} (${known.name}) is a principal paper — it can't go on a subsidiary subject.`,
+    );
+  }
+}
+
+/** Turns a duplicate UNEB code into a readable error; rethrows anything else. */
+function rethrowUnebConflict(err: unknown, code: string | null | undefined): never {
+  if (
+    code &&
+    typeof err === "object" &&
+    err !== null &&
+    (err as { constraint?: string }).constraint === "subject_catalog_uneb_code_unique"
+  ) {
+    throw new InvalidSubjectError(`Another subject in this curriculum already has UNEB code ${code}.`);
+  }
+  throw err;
 }
 
 async function replaceStages(
@@ -408,6 +450,8 @@ export async function createSubject(
     const category = input.category ?? defaultCategoryForPhase(input.phase);
     assertCategoryValidForPhase(input.phase, category);
     const variants = assertVariantsValid(input.hasVariant ?? false, input.variants);
+    const unebCode = input.unebCode?.trim().toUpperCase() || null;
+    if (unebCode) assertUnebCodeValid(input.phase, category, unebCode);
     const code = await nextSequentialCode(client, {
       table: "subject",
       column: "code",
@@ -419,8 +463,8 @@ export async function createSubject(
     const { rows } = await client.query<{ id: string }>(
       `insert into subject
          (curriculum_id, phase, code, short_name, name, category, is_examinable, is_active,
-          status, proposed_by_school_id, has_variant)
-       values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) returning id`,
+          status, proposed_by_school_id, has_variant, uneb_code)
+       values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) returning id`,
       [
         curriculumId,
         input.phase,
@@ -433,6 +477,7 @@ export async function createSubject(
         status,
         context.proposedBySchoolId,
         input.hasVariant ?? false,
+        unebCode,
       ],
     );
     await replaceStages(client, rows[0].id, curriculumId, input.phase, input.stageIds ?? []);
@@ -441,7 +486,7 @@ export async function createSubject(
     return getSubject(rows[0].id);
   } catch (err) {
     await client.query("ROLLBACK");
-    throw err;
+    rethrowUnebConflict(err, input.unebCode);
   } finally {
     client.release();
   }
@@ -457,8 +502,8 @@ export async function updateSubject(
     // Phase and code are fixed at creation — an O-Level subject never becomes
     // an A-Level one (different syllabi), and code is a system-assigned id,
     // never re-typed.
-    const current = await client.query<{ phase: SubjectPhase; has_variant: boolean }>(
-      `select phase, has_variant from subject where id = $1`,
+    const current = await client.query<{ phase: SubjectPhase; has_variant: boolean; is_general_paper: boolean }>(
+      `select phase, has_variant, is_general_paper from subject where id = $1`,
       [id],
     );
     if (current.rows.length === 0) {
@@ -467,6 +512,12 @@ export async function updateSubject(
     }
     const category = input.category ?? defaultCategoryForPhase(current.rows[0].phase);
     assertCategoryValidForPhase(current.rows[0].phase, category);
+
+    // General Paper keeps S101 for good; otherwise omitting unebCode leaves it
+    // as is and null clears it.
+    const touchesUneb = input.unebCode !== undefined && !current.rows[0].is_general_paper;
+    const unebCode = touchesUneb ? input.unebCode?.trim().toUpperCase() || null : null;
+    if (unebCode) assertUnebCodeValid(current.rows[0].phase, category, unebCode);
 
     // Only touch variants when the caller actually sent something about them
     // — omitting both fields means "leave as is". Re-submitting the current
@@ -491,7 +542,8 @@ export async function updateSubject(
     const { rows } = await client.query<{ curriculum_id: string; phase: SubjectPhase }>(
       `update subject
        set short_name = $1, name = $2, category = $3, is_examinable = $4, is_active = $5,
-           has_variant = $6, updated_at = now()
+           has_variant = $6, uneb_code = case when $8::boolean then $9 else uneb_code end,
+           updated_at = now()
        where id = $7
        returning curriculum_id, phase`,
       [
@@ -502,6 +554,8 @@ export async function updateSubject(
         input.isActive ?? true,
         nextHasVariant,
         id,
+        touchesUneb,
+        unebCode,
       ],
     );
     if (rows.length === 0) {
@@ -516,7 +570,7 @@ export async function updateSubject(
     return getSubject(id);
   } catch (err) {
     await client.query("ROLLBACK");
-    throw err;
+    rethrowUnebConflict(err, input.unebCode);
   } finally {
     client.release();
   }
@@ -561,9 +615,9 @@ export async function ensureGeneralPaperSubject(
   await client.query(
     `insert into subject
        (curriculum_id, phase, code, short_name, name, category, is_examinable, is_active,
-        status, is_general_paper)
-     values ($1, 'A_LEVEL', $2, 'GP', 'General Paper', 'subsidiary', true, true, 'approved', true)`,
-    [curriculumId, code],
+        status, is_general_paper, uneb_code)
+     values ($1, 'A_LEVEL', $2, 'GP', 'General Paper', 'subsidiary', true, true, 'approved', true, $3)`,
+    [curriculumId, code, GENERAL_PAPER_CODE],
   );
 }
 

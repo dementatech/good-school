@@ -5,7 +5,7 @@ import { findPeople, isStaff, type Person } from "./people.js";
 // only ever sees rooms they belong to. The one exception is a school admin's
 // oversight view (listSchoolRooms / accessFor), which is read-only.
 
-export type RoomKind = "direct" | "group" | "staff_room" | "announcements" | "class" | "class_parents";
+export type RoomKind = "direct" | "group" | "staff_room" | "announcements" | "class" | "class_parents" | "support";
 
 export class ChatError extends Error {
   constructor(
@@ -38,6 +38,7 @@ export interface LastMessage {
   body: string;
   hasAttachment: boolean;
   attachmentName: string | null;
+  isVoice: boolean;
   deleted: boolean;
   createdAt: string;
 }
@@ -90,9 +91,11 @@ interface SummaryRow extends RoomRow {
   lm_body: string | null;
   lm_attachment_name: string | null;
   lm_has_attachment: boolean | null;
+  lm_is_voice: boolean | null;
   lm_deleted_at: string | null;
   lm_created_at: string | null;
   other_user_id: string | null;
+  school_name: string | null;
 }
 
 /** $1 = the viewing user. Expects `r` (chat_room) and `m` (their chat_member row, may be null). */
@@ -106,14 +109,16 @@ const SUMMARY_COLUMNS = `
   )::text end as unread_count,
   lm.id as lm_id, lm.sender_user_id as lm_sender, lm.body as lm_body,
   lm.attachment_name as lm_attachment_name, lm.attachment_ref is not null as lm_has_attachment,
+  lm.is_voice_note as lm_is_voice,
   lm.deleted_at as lm_deleted_at, lm.created_at as lm_created_at,
+  (select sc.name from schools sc where sc.id = r.school_id) as school_name,
   case when r.kind = 'direct' then (
     select o.user_id from chat_member o where o.room_id = r.id and o.user_id <> $1 limit 1
   ) end as other_user_id`;
 
 const LAST_MESSAGE_JOIN = `
   left join lateral (
-    select id, sender_user_id, body, attachment_name, attachment_ref, deleted_at, created_at
+    select id, sender_user_id, body, attachment_name, attachment_ref, is_voice_note, deleted_at, created_at
       from chat_message where room_id = r.id order by created_at desc limit 1
   ) lm on true`;
 
@@ -130,7 +135,13 @@ async function toSummaries(rows: SummaryRow[]): Promise<RoomSummary[]> {
       id: r.id,
       schoolId: r.school_id,
       kind: r.kind,
-      title: r.kind === "direct" ? (other?.name ?? "Former member") : (r.title ?? "Group"),
+      title:
+        r.kind === "direct"
+          ? (other?.name ?? "Former member")
+          : // The support team sees which school; the school sees "Dementa Support".
+            r.kind === "support" && r.my_role === "admin"
+            ? (r.school_name ?? "School")
+            : (r.title ?? "Group"),
       description: r.description,
       onlyAdminsPost: r.only_admins_post,
       archived,
@@ -148,6 +159,7 @@ async function toSummaries(rows: SummaryRow[]): Promise<RoomSummary[]> {
             body: r.lm_deleted_at ? "" : (r.lm_body ?? ""),
             hasAttachment: Boolean(r.lm_has_attachment) && !r.lm_deleted_at,
             attachmentName: r.lm_deleted_at ? null : r.lm_attachment_name,
+            isVoice: Boolean(r.lm_is_voice) && !r.lm_deleted_at,
             deleted: r.lm_deleted_at !== null,
             createdAt: r.lm_created_at!,
           }

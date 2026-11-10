@@ -126,6 +126,7 @@ export function isFeatureReady(key: FeatureKey): boolean {
  */
 const ROUTE_FEATURES: { prefix: string; key: FeatureKey }[] = [
   { prefix: "/admin/account", key: "account_settings" },
+  { prefix: "/admin/communications", key: "communications" },
   { prefix: "/admin/system/curriculum", key: "academic_structure" },
   { prefix: "/admin/system/academic-years", key: "academic_structure" },
   { prefix: "/admin/system/schools", key: "schools" },
