@@ -8,7 +8,12 @@ import { pool } from "../src/shared/db/index.js";
 //
 // Deleted: learners, staff, the school's guardians and the parent logins that
 // only they used, exams and marks, attendance, timetable slots, schemes of
-// work, lesson plans, calendar events, chats and broadcasts.
+// work, lesson plans and calendar events.
+//
+// Chats and broadcasts stay: their rooms belong to the classes and streams
+// that are kept, and the kept admins may have written in them. Deleted
+// people drop out of them by the existing foreign keys (memberships go,
+// their messages lose the sender).
 //
 // Written to clear the Kasubi Ridge demo school, but works for any school.
 // Runs in one transaction. Without --apply it only reports what it would
@@ -23,7 +28,7 @@ function arg(name: string): string | undefined {
 }
 
 // School-scoped records people generated. Children (exam results, scheme
-// weeks, chat messages, ...) go with them by cascade.
+// weeks, ...) go with them by cascade.
 const ACTIVITY_TABLES = [
   "school_exam",
   "attendance_record",
@@ -40,9 +45,6 @@ const ACTIVITY_TABLES = [
   "student_subject",
   "student_payment_code",
   "student_enrollment",
-  "chat_room",
-  "conversation",
-  "broadcast",
 ];
 
 // Setup rows that record who made them without an on-delete rule; they're
