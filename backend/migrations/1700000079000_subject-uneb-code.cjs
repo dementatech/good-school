@@ -44,7 +44,8 @@ exports.up = (pgm) => {
         ('P320', false, '^kiswahili$'),
         ('P330', false, '^french$'),
         ('P340', false, '^german$'),
-        ('P350', false, '^arabic$'),
+        ('P350', false, '^latin$'),
+        ('P370', false, '^arabic$'),
         ('P360', false, '^luganda$'),
         ('P615', false, '^fine art')
     ),

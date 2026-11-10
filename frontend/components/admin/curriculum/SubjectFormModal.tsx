@@ -341,8 +341,8 @@ export function SubjectFormModal({
             {initial && (
               <>
                 {' '}
-                If this subject already has recorded marks, this configuration is locked — you&apos;ll
-                see an error on save.
+                Exams that already have marks for this subject keep them as one mark; papers apply to
+                exams marked from now on. Once marks are entered paper by paper, the papers are locked.
               </>
             )}
           </p>

@@ -90,7 +90,8 @@ export interface SubjectInput {
   isActive?: boolean;
   stageIds?: string[];
   /** Omit both to leave the variant configuration untouched. Once the
-   * subject has any exam_result, changing either throws VariantsLockedError. */
+   * subject has marks entered paper by paper, changing either throws
+   * VariantsLockedError. Whole-subject marks don't lock them. */
   hasVariant?: boolean;
   variants?: SubjectVariantInput[];
   /** A-Level catalog only. Omit to leave unchanged on update; null clears. */
@@ -335,8 +336,8 @@ async function replaceStages(
 export class VariantsLockedError extends Error {
   constructor() {
     super(
-      "This subject already has recorded marks — its variants can't be changed. " +
-        "Create a new subject instead.",
+      "Marks have already been entered paper by paper for this subject, so its papers can't be " +
+        "changed — that would change those marks' meaning. Create a new subject instead.",
     );
     this.name = "VariantsLockedError";
   }
@@ -391,10 +392,15 @@ function variantsEqual(
   return sa.every((v, i) => v === sb[i]);
 }
 
-async function hasRecordedResults(client: PoolClient, subjectId: string): Promise<boolean> {
-  const { rowCount } = await client.query(`select 1 from exam_result where subject_id = $1 limit 1`, [
-    subjectId,
-  ]);
+// Marks entered paper by paper pin the paper set: changing it would change
+// what those marks mean. Whole-subject marks (no paper) don't — an exam that
+// already has them keeps marking the subject as one (see paperModeFor in the
+// exams module), so papers can be added or changed for later exams.
+async function hasPaperMarks(client: PoolClient, subjectId: string): Promise<boolean> {
+  const { rowCount } = await client.query(
+    `select 1 from exam_result where subject_id = $1 and subject_variant_id is not null limit 1`,
+    [subjectId],
+  );
   return (rowCount ?? 0) > 0;
 }
 
@@ -533,7 +539,7 @@ export async function updateSubject(
       if (!variantsChanged && nextHasVariant) {
         variantsChanged = !variantsEqual(await currentVariants(client, id), nextVariants);
       }
-      if (variantsChanged && (await hasRecordedResults(client, id))) {
+      if (variantsChanged && (await hasPaperMarks(client, id))) {
         await client.query("ROLLBACK");
         throw new VariantsLockedError();
       }
