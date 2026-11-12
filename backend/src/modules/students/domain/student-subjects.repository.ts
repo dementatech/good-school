@@ -1,6 +1,10 @@
 import type { Pool, PoolClient } from "pg";
 import { pool } from "../../../shared/db/index.js";
-import { seedAlwaysOnOfferings } from "../../academic-structure/index.js";
+import {
+  LOWER_SECONDARY_STAGES,
+  lowerSecondaryTakesAllSubjects,
+  seedAlwaysOnOfferings,
+} from "../../academic-structure/index.js";
 
 type Db = Pool | PoolClient;
 
@@ -182,23 +186,32 @@ export async function setStudentSubjectStatus(
 // left alone (on conflict do nothing), so subjects already sent with the
 // admission aren't touched. Always-on offerings are seeded first so a year
 // nobody has opened the Subjects page for still has its core subjects.
+//
+// For S1/S2, when the school has every lower-secondary student take every
+// subject it offers (the Subjects page setting), all offered O-Level
+// subjects are attached, not just the compulsory ones.
 export async function attachCompulsorySubjects(
   db: Db,
   schoolId: string,
   studentUserId: string,
   academicYearId: string,
   changedBy: string | null,
+  stageCode?: string,
 ): Promise<void> {
   await seedAlwaysOnOfferings(schoolId, academicYearId, db);
+  const allOffered =
+    stageCode !== undefined &&
+    LOWER_SECONDARY_STAGES.includes(stageCode) &&
+    (await lowerSecondaryTakesAllSubjects(schoolId));
   await db.query(
     `insert into student_subject (student_user_id, school_id, subject_id, academic_year_id, status, status_changed_by)
      select $1, $2, o.subject_id, $3, 'active', $4
      from subject_offering o
      join subject s on s.id = o.subject_id
      where o.school_id = $2 and o.academic_year_id = $3
-       and o.is_offered and o.is_compulsory
+       and o.is_offered and (o.is_compulsory or $5)
        and s.phase = 'O_LEVEL' and s.is_active
      on conflict (student_user_id, subject_id, academic_year_id) do nothing`,
-    [studentUserId, schoolId, academicYearId, changedBy],
+    [studentUserId, schoolId, academicYearId, changedBy, allOffered],
   );
 }
