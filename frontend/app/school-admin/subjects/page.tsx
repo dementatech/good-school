@@ -24,6 +24,7 @@ import {
 } from '@/components/admin/curriculum/types';
 import { SUBJECT_PHASES, offersLevel, subjectPhasesOf, useSchoolLevels } from '@/lib/levels';
 import { NurseryAssessmentCard } from '@/components/admin/subjects/NurseryAssessmentCard';
+import { LowerSecondarySubjectsCard } from '@/components/admin/subjects/LowerSecondarySubjectsCard';
 import { SchoolSubjectModal } from '@/components/admin/subjects/SchoolSubjectModal';
 import {
   CATEGORY_LABEL,
@@ -408,6 +409,7 @@ export default function SchoolAdminSubjectsPage() {
                     : 'They appear on the timetable and in lesson plans; they’re only marked if you switch Nursery to marks above.'}
                 </p>
               )}
+              {phase === 'O_LEVEL' && <LowerSecondarySubjectsCard />}
               {phase === 'PRIMARY' && (
                 <p className="text-xs text-text-muted">
                   English, Mathematics, Integrated Science and Social Studies are examined at PLE and make up

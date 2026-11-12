@@ -25,6 +25,8 @@ export interface ReportCardStudentSubject {
   isExaminable: boolean;
   /** Primary: the band's points (D1 = 1 … F9 = 9). */
   points: number | null;
+  /** The subject teacher's initials ("J.O."), or null if nobody is assigned. */
+  teacherInitials?: string | null;
   /** Scores in the report's `compared` exams, same order. */
   history?: { examId: string; rawScore: number | null; isAbsent: boolean }[];
 }
@@ -120,6 +122,7 @@ export type ReportCardField =
   | 'grade'
   | 'points'
   | 'subjectRemarks'
+  | 'teacherInitials'
   | 'paperBreakdown'
   | 'otherSubjects'
   | 'totalMarks'
@@ -168,6 +171,13 @@ export const REPORT_CARD_FIELD_GROUPS: {
       { key: 'grade', label: 'Grade', sections: ALL, default: true },
       { key: 'points', label: 'Points (D1 = 1 … F9 = 9)', sections: ['PRIMARY'], default: true },
       { key: 'subjectRemarks', label: 'Remark per subject', sections: ALL, default: true },
+      {
+        key: 'teacherInitials',
+        label: "Subject teacher's initials",
+        hint: 'From who is assigned to teach each subject on the Subjects page.',
+        sections: ALL,
+        default: true,
+      },
       { key: 'paperBreakdown', label: 'Paper-by-paper scores', hint: 'For subjects with more than one paper.', sections: ['SECONDARY'], default: true },
       { key: 'otherSubjects', label: 'Non-PLE subjects', hint: 'Luganda, CRE, PE, Creative Arts, …', sections: ['PRIMARY'], default: true },
     ],
@@ -276,7 +286,8 @@ function ReportSubjectTable({
   title: string;
   subjects: ReportCardStudentSubject[];
   fields: ReportCardFields;
-  /** Live-grade fallback for an unpublished exam (Primary). */
+  /** The level's grading bands: each subject's remark is its band's
+   * comment, and they grade an unpublished exam live. */
   bands?: GradeBand[];
   showPoints?: boolean;
   compared?: ComparedExam[];
@@ -305,7 +316,8 @@ function ReportSubjectTable({
             )}
             {fields.grade && <th className="py-1 px-2 border-b border-r border-border text-center">Grade</th>}
             {points && <th className="py-1 px-2 border-b border-r border-border text-center">Points</th>}
-            {fields.subjectRemarks && <th className="py-1 px-2 border-b border-border">Remarks</th>}
+            {fields.subjectRemarks && <th className="py-1 px-2 border-b border-r border-border">Remarks</th>}
+            {fields.teacherInitials && <th className="py-1 px-2 border-b border-border text-center w-14">Initials</th>}
           </tr>
         </thead>
         <tbody>
@@ -367,7 +379,12 @@ function ReportSubjectTable({
                   </td>
                 )}
                 {fields.subjectRemarks && (
-                  <td className="py-1 px-2 text-text-faint">{bands.find((b) => b.label === grade)?.comment ?? ' '}</td>
+                  <td className="py-1 px-2 border-r border-border text-text-secondary">
+                    {bands.find((b) => b.label === grade)?.comment ?? ' '}
+                  </td>
+                )}
+                {fields.teacherInitials && (
+                  <td className="py-1 px-2 text-center font-semibold text-text-secondary">{s.teacherInitials ?? ' '}</td>
                 )}
               </tr>
             );
@@ -615,8 +632,20 @@ export function StudentReportCardSheet({
 
           {isALevel ? (
             <div className="space-y-2.5">
-              <ReportSubjectTable title="Principal Subjects" subjects={principalSubjects} fields={fields} {...columns} />
-              <ReportSubjectTable title="Subsidiary Subjects" subjects={subsidiarySubjects} fields={fields} {...columns} />
+              <ReportSubjectTable
+                title="Principal Subjects"
+                subjects={principalSubjects}
+                fields={fields}
+                bands={principalBands}
+                {...columns}
+              />
+              <ReportSubjectTable
+                title="Subsidiary Subjects"
+                subjects={subsidiarySubjects}
+                fields={fields}
+                bands={subsidiaryBands}
+                {...columns}
+              />
               <div className="grid grid-cols-2 gap-2.5">
                 <StatRow
                   items={[
@@ -677,7 +706,7 @@ export function StudentReportCardSheet({
                 title="Subjects"
                 subjects={student.subjects}
                 fields={fields}
-                bands={isNursery ? nurseryBands : []}
+                bands={isNursery ? nurseryBands : oLevelBands}
                 {...columns}
               />
               <StatRow

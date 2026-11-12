@@ -189,6 +189,9 @@ export interface ReportCardStudentSubject {
    * unpublished exam still shows grades. `computedGrade` (frozen at publish)
    * wins when set. */
   bandGrade: string | null;
+  /** Initials of the teacher assigned to teach this subject to the learner's
+   * stream (or the whole class), e.g. "J.O.". Null when nobody is assigned. */
+  teacherInitials: string | null;
   /** This learner's score in each of the report's `compared` exams, in the
    * same order. Empty on a single-exam report. */
   history: { examId: string; rawScore: number | null; isAbsent: boolean }[];
@@ -1700,6 +1703,38 @@ export async function getExamReportCard(
   );
   const attendanceOf = new Map(attendanceRows.map((a) => [a.student_user_id, { present: a.present, total: a.total }]));
 
+  // Who teaches each subject here, from the subject-teacher assignments for
+  // the exam's year: a stream's own teacher wins over a whole-class one.
+  const { rows: teacherRows } = await pool.query<{
+    subject_id: string;
+    stream_id: string | null;
+    first_name: string;
+    last_name: string;
+  }>(
+    `select sta.subject_id, sta.stream_id, sf.first_name, sf.last_name
+       from subject_teacher_assignment sta
+       join staff sf on sf.user_id = sta.staff_id
+      where sta.school_id = $1 and sta.academic_year_id = $2 and sta.class_id = $3
+        and sta.status = 'active'
+      order by sta.is_lead desc, sta.start_date desc`,
+    [schoolId, exam.academicYearId, classId],
+  );
+  const teacherInitialsOf = new Map<string, string>();
+  for (const t of teacherRows) {
+    const key = `${t.subject_id}:${t.stream_id ?? ""}`;
+    if (teacherInitialsOf.has(key)) continue;
+    const initials = [t.first_name, t.last_name]
+      .map((n) => n.trim()[0]?.toUpperCase())
+      .filter(Boolean)
+      .map((c) => `${c}.`)
+      .join("");
+    teacherInitialsOf.set(key, initials);
+  }
+  const initialsFor = (subjectId: string, streamId: string | null) =>
+    (streamId ? teacherInitialsOf.get(`${subjectId}:${streamId}`) : undefined) ??
+    teacherInitialsOf.get(`${subjectId}:`) ??
+    null;
+
   const students: ReportCardStudent[] = rosterRows.map((r) => {
     const subjects = mergedByStudent.get(r.student_user_id) ?? [];
     const base = {
@@ -1728,6 +1763,7 @@ export async function getExamReportCard(
           isExaminable: s.isExaminable,
           points: pointsOf(s),
           bandGrade: isPrimary && !s.isAbsent ? bandOf(primaryBands, s.rawScore)?.label ?? null : null,
+          teacherInitials: initialsFor(s.subjectId, r.stream_id),
           history: compared.map((c) => {
             const score = scoresByExam.get(c.id)?.get(r.student_user_id)?.get(s.subjectId);
             return { examId: c.id, rawScore: score?.rawScore ?? null, isAbsent: score?.isAbsent ?? false };

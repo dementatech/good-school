@@ -85,7 +85,9 @@ import {
   InvalidMaxMarkError,
   LastReligiousSubjectError,
   listSubjectOfferings,
+  lowerSecondaryTakesAllSubjects,
   removeSubjectOffering,
+  setLowerSecondaryTakesAllSubjects,
   setSubjectOffering,
   SubjectNotApprovedError,
   UnknownSubjectError,
@@ -870,6 +872,36 @@ export async function academicStructureRoutes(fastify: FastifyInstance) {
         }
         throw err;
       }
+    },
+  );
+
+  // Whether S1/S2 students take every offered subject (on) or choose like
+  // S3/S4 (off) — school-wide, see subject-offering.repository.ts.
+  fastify.get("/subject-policy", { preHandler: SCHOOL }, async (request, reply) => {
+    const schoolId = schoolOf(request, reply);
+    if (!schoolId) return;
+    return ok({ lowerSecondaryAllSubjects: await lowerSecondaryTakesAllSubjects(schoolId) });
+  });
+
+  fastify.put<{ Body: { lowerSecondaryAllSubjects: boolean } }>(
+    "/subject-policy",
+    {
+      preHandler: SCHOOL,
+      schema: {
+        body: {
+          type: "object",
+          required: ["lowerSecondaryAllSubjects"],
+          additionalProperties: false,
+          properties: { lowerSecondaryAllSubjects: { type: "boolean" } },
+        },
+      },
+    },
+    async (request, reply) => {
+      const schoolId = schoolOf(request, reply);
+      if (!schoolId) return;
+      const value = request.body.lowerSecondaryAllSubjects;
+      await setLowerSecondaryTakesAllSubjects(schoolId, value, request.authUser!.user_id);
+      return ok({ lowerSecondaryAllSubjects: value });
     },
   );
 

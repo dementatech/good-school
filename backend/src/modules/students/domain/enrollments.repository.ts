@@ -236,7 +236,14 @@ export async function createEnrollment(
   // O-Level compulsory subjects come with the enrollment itself, so no
   // admission path (wizard, import, repeat/transfer) can leave them out.
   if (enrollment.stagePhase === "O_LEVEL") {
-    await attachCompulsorySubjects(client, schoolId, studentUserId, input.academicYearId, actingUserId);
+    await attachCompulsorySubjects(
+      client,
+      schoolId,
+      studentUserId,
+      input.academicYearId,
+      actingUserId,
+      enrollment.stageCode,
+    );
   }
   return enrollment;
 }

@@ -1,5 +1,6 @@
 import { pool } from "../../../shared/db/index.js";
 import { ensureAcademicDepartment } from "../../organization/index.js";
+import { getSchoolSetting, setSchoolSetting } from "../../schools/index.js";
 import { schoolOffersLevelSql, type SubjectPhase } from "../../../shared/levels.js";
 
 // A school's O-Level subject offering — which catalog subjects (super_admin's
@@ -261,6 +262,11 @@ export async function setSubjectOffering(
   // itself idempotent (checked via department_subject, not a flag here).
   if (input.isOffered) {
     await ensureAcademicDepartment(schoolId, input.subjectId, owned.rows[0].name);
+    // A newly offered subject reaches S1/S2 students straight away when
+    // they take every subject here.
+    if (await lowerSecondaryTakesAllSubjects(schoolId)) {
+      await attachAllOfferedToLowerSecondary(schoolId, null, academicYearId, input.subjectId);
+    }
   }
 
   return mapRow(row.rows[0]);
@@ -272,4 +278,57 @@ export async function removeSubjectOffering(schoolId: string, id: string): Promi
     schoolId,
   ]);
   return (result.rowCount ?? 0) > 0;
+}
+
+// Some schools have S1 and S2 students take every subject they offer
+// (optional ones included) and only let students choose from S3; others let
+// students choose from S1. A school-wide policy, off by default — the old
+// behaviour, where only compulsory subjects are attached automatically.
+// Core subjects are attached either way (attachCompulsorySubjects).
+const LOWER_SECONDARY_ALL_SUBJECTS = "lower_secondary_all_subjects";
+export const LOWER_SECONDARY_STAGES = ["S1", "S2"];
+
+export async function lowerSecondaryTakesAllSubjects(schoolId: string): Promise<boolean> {
+  return (await getSchoolSetting<boolean>(schoolId, LOWER_SECONDARY_ALL_SUBJECTS, false)) === true;
+}
+
+// Turning it on registers every S1/S2 student already enrolled for every
+// offered O-Level subject. Turning it off removes nothing — students keep
+// what they're registered for, and admins drop subjects as usual.
+export async function setLowerSecondaryTakesAllSubjects(
+  schoolId: string,
+  value: boolean,
+  updatedBy: string,
+): Promise<void> {
+  await setSchoolSetting(schoolId, LOWER_SECONDARY_ALL_SUBJECTS, value, updatedBy);
+  if (value) await attachAllOfferedToLowerSecondary(schoolId, updatedBy);
+}
+
+// Registers active S1/S2 students for the year's offered O-Level subjects
+// (or one subject). Existing rows — dropped ones included — are left alone,
+// so a subject an admin dropped for a student isn't silently brought back.
+// Direct SQL on student_subject: students imports from this module, so it
+// can't import back (same precedent as student-subjects.repository.ts).
+async function attachAllOfferedToLowerSecondary(
+  schoolId: string,
+  changedBy: string | null,
+  academicYearId?: string,
+  subjectId?: string,
+): Promise<void> {
+  await pool.query(
+    `insert into student_subject (student_user_id, school_id, subject_id, academic_year_id, status, status_changed_by)
+     select se.student_user_id, se.school_id, o.subject_id, se.academic_year_id, 'active', $2
+     from student_enrollment se
+     join classes c on c.id = se.class_id
+     join curriculum_stage cs on cs.id = c.curriculum_stage_id
+     join subject_offering o on o.school_id = se.school_id and o.academic_year_id = se.academic_year_id
+     join subject s on s.id = o.subject_id
+     where se.school_id = $1 and se.status = 'active'
+       and cs.code = any($3)
+       and o.is_offered and s.phase = 'O_LEVEL' and s.is_active
+       and ($4::uuid is null or se.academic_year_id = $4)
+       and ($5::uuid is null or o.subject_id = $5)
+     on conflict (student_user_id, subject_id, academic_year_id) do nothing`,
+    [schoolId, changedBy, LOWER_SECONDARY_STAGES, academicYearId ?? null, subjectId ?? null],
+  );
 }

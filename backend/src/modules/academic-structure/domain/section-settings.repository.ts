@@ -29,6 +29,7 @@ export const REPORT_CARD_FIELDS = {
   grade: { default: true, sections: ["KINDERGARTEN", "PRIMARY", "SECONDARY"] },
   points: { default: true, sections: ["PRIMARY"] },
   subjectRemarks: { default: true, sections: ["KINDERGARTEN", "PRIMARY", "SECONDARY"] },
+  teacherInitials: { default: true, sections: ["KINDERGARTEN", "PRIMARY", "SECONDARY"] },
   paperBreakdown: { default: true, sections: ["SECONDARY"] },
   otherSubjects: { default: true, sections: ["PRIMARY"] },
   totalMarks: { default: true, sections: ["PRIMARY"] },
