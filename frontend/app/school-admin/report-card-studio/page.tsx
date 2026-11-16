@@ -702,7 +702,7 @@ export default function ReportCardStudioPage() {
   const [examId, setExamId] = useState('');
   const [exams, setExams] = useState<SchoolExam[]>([]);
   const [termId, setTermId] = useState('');
-  const [reportType, setReportType] = useState<ReportType>('single');
+  const [reportType, setReportType] = useState<ReportType>('template');
   const [otherExamIds, setOtherExamIds] = useState<string[]>([]);
   const [weights, setWeights] = useState<Record<string, number>>({});
   const [classes, setClasses] = useState<SchoolClass[]>([]);
@@ -748,7 +748,7 @@ export default function ReportCardStudioPage() {
       setTermId(opening?.termId ?? '');
       setExamId(opening?.id ?? '');
       setOtherExamIds([]);
-      setReportType('single');
+      setReportType('template');
       // A Nursery on progress ratings sits no exams — its reports live under
       // Kindergarten Progress. A Nursery that gives marks is compiled here too.
       const examined = classList.filter((c) => c.stagePhase !== 'KINDERGARTEN' || nurseryGivesMarks);
@@ -793,12 +793,13 @@ export default function ReportCardStudioPage() {
     setLoading(true);
     const qs = new URLSearchParams({ classId, ...(reportParams ?? {}) });
     if (streamId) qs.set('streamId', streamId);
+    if (chosenTemplate) qs.set('templateId', chosenTemplate);
     const data = await fetchOne<ExamReportCard>(`/api/v1/exams/${examId}/report-card?${qs.toString()}`, toast.error);
     if (thisLoad !== latestLoad.current) return;
     setReport(data);
     setStudentKey(data?.students[0]?.studentUserId ?? '');
     setLoading(false);
-  }, [examId, classId, streamId, reportParams]);
+  }, [examId, classId, streamId, reportParams, chosenTemplate]);
 
   useEffect(() => {
     // A short pause so typing "60" into a share loads one report, not two.
@@ -905,7 +906,7 @@ export default function ReportCardStudioPage() {
 
   function chooseReportType(next: ReportType) {
     setReportType(next);
-    if (next !== 'single' && otherExamIds.length === 0) setOtherExamIds(defaultOtherExams(exams, examId, today));
+    if (next !== 'single' && next !== 'template' && otherExamIds.length === 0) setOtherExamIds(defaultOtherExams(exams, examId, today));
   }
 
   function toggleOtherExam(id: string) {
@@ -1077,7 +1078,7 @@ export default function ReportCardStudioPage() {
         </div>
       </div>
 
-      {reportType !== 'single' && (
+      {reportType !== 'single' && reportType !== 'template' && (
         <Card className="print:hidden">
           <p className="text-sm font-semibold text-primary-900">
             {reportType === 'side_by_side' ? 'Show these exams beside it' : 'Combine with these exams'}

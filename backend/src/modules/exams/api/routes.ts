@@ -95,6 +95,8 @@ function reportOptionsFrom(query: { mode?: ReportMode; examIds?: string; weights
     examIds: list(query.examIds),
     weights: list(query.weights)?.map(Number),
     templateId: query.templateId || undefined,
+    // No report type asked for: the template's exam rule decides.
+    fromTemplate: !query.mode,
   };
 }
 

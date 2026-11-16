@@ -269,6 +269,43 @@ export interface ReportOptions {
   /** A report card template to print with; the section's default if absent
    * or not one this school can use. */
   templateId?: string;
+  /** No report type was asked for: the template's exam rule picks the exams. */
+  fromTemplate?: boolean;
+}
+
+type ExamRule = ReportCardTemplate["design"]["rules"]["exams"];
+
+/** Turns a template's exam rule into report options for the opened exam:
+ * the other exams of its term (those that have started, or those with the
+ * rule's codes), side by side or combined. Just the opened exam when the
+ * rule finds nothing else. */
+async function optionsFromExamRule(
+  schoolId: string,
+  exam: { id: string; termId: string; academicYearId: string },
+  rule: ExamRule,
+  options: ReportOptions,
+): Promise<ReportOptions> {
+  const single: ReportOptions = { ...options, mode: "single", examIds: undefined, weights: undefined };
+  if (rule.mode === "opened") return single;
+  const { rows } = await pool.query<{ id: string; exam_code: string }>(
+    `select se.id, upper(es.exam_code) as exam_code
+       from school_exam se
+       join exam_session es on es.id = se.exam_session_id
+      where se.school_id = $1 and se.academic_year_id = $2 and se.term_id = $3
+        and (se.id = $4 or se.starts_on <= current_date)
+      order by se.starts_on, se.created_at`,
+    [schoolId, exam.academicYearId, exam.termId, exam.id],
+  );
+  const chosen = rows.filter((r) => r.id === exam.id || rule.mode === "term" || rule.codes.includes(r.exam_code));
+  const others = chosen.filter((r) => r.id !== exam.id);
+  if (others.length === 0) return single;
+  if (!rule.combine) return { ...options, mode: "side_by_side", examIds: others.map((r) => r.id), weights: undefined };
+  const all = chosen.some((r) => r.id === exam.id) ? chosen : [rows.find((r) => r.id === exam.id)!, ...chosen];
+  // Combined reports must include the opened exam (see loadSelectedExams).
+  const ordered = [all.find((r) => r.id === exam.id)!, ...all.filter((r) => r.id !== exam.id)];
+  const weights = ordered.map((r) => rule.weights[r.exam_code] ?? 1);
+  if (weights.reduce((a, b) => a + b, 0) <= 0) return single;
+  return { ...options, mode: "combined", examIds: ordered.map((r) => r.id), weights };
 }
 
 export interface ComparedExam {
@@ -1362,9 +1399,6 @@ export async function getExamReportCard(
   options: ReportOptions = { mode: "single" },
 ): Promise<ExamReportCard> {
   const exam = await loadExam(schoolId, examId);
-  const mode = options.mode;
-  const selected = await loadSelectedExams(schoolId, exam.academicYearId, examId, options);
-  const resultExamIds = selected.map((e) => e.id);
 
   const { rows: classRows } = await pool.query<{
     id: string;
@@ -1382,6 +1416,20 @@ export async function getExamReportCard(
   );
   if (!classRows[0]) throw new UnknownClassError();
   const klass = classRows[0];
+
+  const section: SchoolSection =
+    klass.stage_phase === "KINDERGARTEN" ? "KINDERGARTEN" : klass.stage_phase === "PRIMARY" ? "PRIMARY" : "SECONDARY";
+  const { showPositions, fields: reportCardFields, template } = await reportCardSettingsFor(
+    schoolId,
+    section,
+    options.templateId,
+  );
+  // No report type chosen: the template's exam rule decides which exams show.
+  if (options.fromTemplate) options = await optionsFromExamRule(schoolId, exam, template.design.rules.exams, options);
+
+  const mode = options.mode;
+  const selected = await loadSelectedExams(schoolId, exam.academicYearId, examId, options);
+  const resultExamIds = selected.map((e) => e.id);
 
   const { rows: rosterRows } = await pool.query<{
     student_user_id: string;
@@ -1431,13 +1479,6 @@ export async function getExamReportCard(
     termName: exam.termName,
     publishedAt: exam.publishedAt,
   };
-  const section: SchoolSection =
-    klass.stage_phase === "KINDERGARTEN" ? "KINDERGARTEN" : klass.stage_phase === "PRIMARY" ? "PRIMARY" : "SECONDARY";
-  const { showPositions, fields: reportCardFields, template } = await reportCardSettingsFor(
-    schoolId,
-    section,
-    options.templateId,
-  );
   const classOut = { id: klass.id, name: klass.class_name, phase: klass.stage_phase };
   const streamOut = klass.stream_id ? { id: klass.stream_id, name: klass.stream_name ?? "" } : null;
 
