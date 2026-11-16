@@ -6,7 +6,9 @@ exports.shorthands = undefined;
 // column. Same approach as 079 for A-Level: only names that clearly match are
 // tagged, a code goes to at most one subject per curriculum, and anything
 // ambiguous stays null for the platform admin to set on the Curriculum page.
-// Never overwrites a code that's already set.
+// Never overwrites a code that's already set. (First shipped with Art as
+// 610; UNEB's timetable has 612 — corrected here, and 084 fixes databases
+// that ran the old version.)
 
 exports.up = (pgm) => {
   pgm.sql(`
@@ -28,7 +30,7 @@ exports.up = (pgm) => {
         ('545', '^chemistry$'),
         ('553', '^biology$'),
         ('555', '^physical education'),
-        ('610', '^(fine art|art and design|art & design|art)$'),
+        ('612', '^(fine art|art and design|art & design|art)$'),
         ('840', '^(ict|computer studies|information (and|&) communications? technology)$'),
         ('845', '^entrepreneurship')
     ),

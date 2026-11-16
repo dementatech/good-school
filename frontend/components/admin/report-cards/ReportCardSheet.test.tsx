@@ -4,7 +4,7 @@ import { StudentReportCardSheet, CLASSIC_DESIGN, defaultReportCardFields, type S
 import type { ReportCardTemplate } from './templates';
 
 const subj = (name: string, short: string, code: string, score: number | null, abs = false) => ({
-  subjectId: name, subjectName: name, subjectShortName: short, paperCode: code, role: 'principal' as const, hasVariant: false,
+  subjectId: name, subjectName: name, subjectReportName: short, paperCode: code, role: 'principal' as const, hasVariant: false,
   rawScore: score, mark: score, maxMark: 100, isAbsent: abs, computedGrade: null, isExaminable: true, points: null,
   teacherInitials: 'N.J.', history: [{ examId: 'bot', rawScore: 40, isAbsent: false }, { examId: 'mid', rawScore: score, isAbsent: abs }],
 });

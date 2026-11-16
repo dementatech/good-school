@@ -3,6 +3,7 @@ import { reportCardSettingsFor, type ReportCardFields, type ReportCardTemplate }
 import { fileUrl, type StorageProvider } from "../../../shared/media.js";
 import type { Pool, PoolClient } from "pg";
 import { pool } from "../../../shared/db/index.js";
+import { UCE_REPORT_NAMES } from "../../../shared/uneb.js";
 
 type Db = Pool | PoolClient;
 
@@ -165,9 +166,10 @@ export interface ReportCardSubject {
 export interface ReportCardStudentSubject {
   subjectId: string;
   subjectName: string;
-  /** The catalog's short form ("Bio", "Hist") — report cards print it in
-   * place of the full name when the school chooses to. */
-  subjectShortName: string;
+  /** The short name a report card prints when the school chooses short
+   * names: the standard UCE name for the subject's code ("English", "CRE",
+   * "Maths"), else the full name. */
+  subjectReportName: string;
   /** UNEB paper code (553 Biology, P530 Biology) when the catalog has one. */
   paperCode: string | null;
   role: ReportSubjectRole;
@@ -1470,7 +1472,6 @@ export async function getExamReportCard(
     subject_id: string;
     subject_code: string;
     subject_name: string;
-    subject_short_name: string;
     subject_uneb_code: string | null;
     subject_category: string;
     subject_is_examinable: boolean;
@@ -1483,7 +1484,7 @@ export async function getExamReportCard(
     contribution_percent: string | null;
   }>(
     `select er.school_exam_id, er.student_user_id, er.subject_id, sub.code as subject_code, sub.name as subject_name,
-            sub.short_name as subject_short_name, sub.uneb_code as subject_uneb_code,
+            sub.uneb_code as subject_uneb_code,
             sub.category as subject_category, sub.is_examinable as subject_is_examinable,
             er.raw_score, er.max_mark, er.is_absent, er.computed_grade,
             er.subject_variant_id, sv.name as variant_name, sv.contribution_percent
@@ -1506,7 +1507,7 @@ export async function getExamReportCard(
   interface MergedSubjectScore {
     subjectId: string;
     subjectName: string;
-    subjectShortName: string;
+    subjectReportName: string;
     paperCode: string | null;
     role: ReportSubjectRole;
     isExaminable: boolean;
@@ -1572,7 +1573,7 @@ export async function getExamReportCard(
     bySubject.set(first.subject_id, {
       subjectId: first.subject_id,
       subjectName: first.subject_name,
-      subjectShortName: first.subject_short_name,
+      subjectReportName: (first.subject_uneb_code && UCE_REPORT_NAMES[first.subject_uneb_code]) || first.subject_name,
       paperCode: first.subject_uneb_code,
       role: roleOf(first.subject_category),
       isExaminable: first.subject_is_examinable,
@@ -1786,7 +1787,7 @@ export async function getExamReportCard(
         .map((s) => ({
           subjectId: s.subjectId,
           subjectName: s.subjectName,
-          subjectShortName: s.subjectShortName,
+          subjectReportName: s.subjectReportName,
           paperCode: s.paperCode,
           role: s.role,
           hasVariant: s.hasVariant,
