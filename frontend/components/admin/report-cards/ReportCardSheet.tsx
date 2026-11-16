@@ -24,8 +24,9 @@ type SubjectRole = 'principal' | 'subsidiary';
 export interface ReportCardStudentSubject {
   subjectId: string;
   subjectName: string;
-  /** The catalog's short form ("Bio", "Hist"). */
-  subjectShortName?: string;
+  /** The short name to print: the standard UCE name ("English", "CRE",
+   * "Maths") for the subject's code, else the full name. */
+  subjectReportName?: string;
   /** UNEB paper code (553, P530) when the catalog has one. */
   paperCode?: string | null;
   role: SubjectRole;
@@ -200,7 +201,7 @@ export const REPORT_CARD_FIELD_GROUPS: {
       {
         key: 'shortSubjectNames',
         label: 'Short subject names',
-        hint: 'Bio, Chem, Hist… in place of the full names, leaving more room for marks.',
+        hint: 'English, CRE, Maths, ICT… (the standard UCE names) in place of the full names, leaving more room for marks.',
         sections: ['SECONDARY'],
         default: true,
       },
@@ -376,7 +377,7 @@ function ReportSubjectTable({
   // has no separate score column.
   const inline = compared.some((e) => e.isCurrent);
   const nameOf = (s: ReportCardStudentSubject) =>
-    fields.shortSubjectNames && s.subjectShortName ? s.subjectShortName : s.subjectName;
+    fields.shortSubjectNames && s.subjectReportName ? s.subjectReportName : s.subjectName;
   const scoreCell = (s: ReportCardStudentSubject) =>
     s.isAbsent ? (
       <span className="text-text-muted font-normal">Abs</span>
