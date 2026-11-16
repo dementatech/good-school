@@ -100,6 +100,15 @@ import {
   updateSectionSettings,
   type AssessmentStyle,
 } from "../domain/section-settings.repository.js";
+import {
+  createTemplate,
+  deleteTemplate,
+  InvalidTemplateError,
+  listTemplates,
+  setDefaultTemplate,
+  updateTemplate,
+  type TemplateKind,
+} from "../domain/report-card-templates.repository.js";
 import type { SchoolSection } from "../../../shared/levels.js";
 import {
   createSchoolCombination,
@@ -144,6 +153,9 @@ import {
   stageLabelBodySchema,
   bulkStreamsBodySchema,
   sectionSettingsBodySchema,
+  reportCardTemplateCreateSchema,
+  reportCardTemplateDefaultSchema,
+  reportCardTemplateUpdateSchema,
   schoolSubjectBodySchema,
   schoolSubjectUpdateBodySchema,
   termBodySchema,
@@ -1123,7 +1135,7 @@ export async function academicStructureRoutes(fastify: FastifyInstance) {
   });
 
   fastify.put<{
-    Body: { section: SchoolSection; assessmentStyle?: AssessmentStyle; showPositions?: boolean; reportCard?: Record<string, boolean> };
+    Body: { section: SchoolSection; assessmentStyle?: AssessmentStyle; showPositions?: boolean };
   }>(
     "/section-settings",
     { preHandler: SCHOOL, schema: { body: sectionSettingsBodySchema } },
@@ -1137,6 +1149,83 @@ export async function academicStructureRoutes(fastify: FastifyInstance) {
         if (err instanceof InvalidSectionSettingsError) return reply.status(400).send(fail(err.message));
         throw err;
       }
+    },
+  );
+
+  // -- Report card templates ----------------------------------------------
+  // Built-ins plus the school's own, per section, with each section's
+  // default. A print run can pick any of them (exams' report-card endpoint
+  // takes ?templateId=).
+  fastify.get<{ Querystring: { section?: SchoolSection } }>(
+    "/report-card-templates",
+    { preHandler: SCHOOL },
+    async (request, reply) => {
+      const schoolId = schoolOf(request, reply);
+      if (!schoolId) return;
+      const section = request.query.section;
+      if (section && !["KINDERGARTEN", "PRIMARY", "SECONDARY"].includes(section)) {
+        return reply.status(400).send(fail("Unknown section."));
+      }
+      return ok(await listTemplates(schoolId, section));
+    },
+  );
+
+  fastify.post<{ Body: { section: SchoolSection; name: string; kind: TemplateKind; design: unknown } }>(
+    "/report-card-templates",
+    { preHandler: SCHOOL, schema: { body: reportCardTemplateCreateSchema } },
+    async (request, reply) => {
+      const schoolId = schoolOf(request, reply);
+      if (!schoolId) return;
+      try {
+        return reply.status(201).send(ok(await createTemplate(schoolId, request.body)));
+      } catch (err) {
+        if (err instanceof InvalidTemplateError) return reply.status(400).send(fail(err.message));
+        throw err;
+      }
+    },
+  );
+
+  // Declared before /:id so "default" is never read as a template id.
+  fastify.put<{ Body: { section: SchoolSection; templateId: string } }>(
+    "/report-card-templates/default",
+    { preHandler: SCHOOL, schema: { body: reportCardTemplateDefaultSchema } },
+    async (request, reply) => {
+      const schoolId = schoolOf(request, reply);
+      if (!schoolId) return;
+      try {
+        await setDefaultTemplate(schoolId, request.body.section, request.body.templateId);
+        return ok(null);
+      } catch (err) {
+        if (err instanceof InvalidTemplateError) return reply.status(400).send(fail(err.message));
+        throw err;
+      }
+    },
+  );
+
+  fastify.put<{ Params: { id: string }; Body: { name?: string; design?: unknown } }>(
+    "/report-card-templates/:id",
+    { preHandler: SCHOOL, schema: { body: reportCardTemplateUpdateSchema } },
+    async (request, reply) => {
+      const schoolId = schoolOf(request, reply);
+      if (!schoolId) return;
+      try {
+        const updated = await updateTemplate(schoolId, request.params.id, request.body);
+        return updated ? ok(updated) : reply.status(404).send(fail("not_found"));
+      } catch (err) {
+        if (err instanceof InvalidTemplateError) return reply.status(400).send(fail(err.message));
+        throw err;
+      }
+    },
+  );
+
+  fastify.delete<{ Params: { id: string } }>(
+    "/report-card-templates/:id",
+    { preHandler: SCHOOL },
+    async (request, reply) => {
+      const schoolId = schoolOf(request, reply);
+      if (!schoolId) return;
+      const deleted = await deleteTemplate(schoolId, request.params.id);
+      return deleted ? ok(null) : reply.status(404).send(fail("not_found"));
     },
   );
 

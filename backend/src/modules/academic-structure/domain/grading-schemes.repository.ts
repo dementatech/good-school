@@ -576,3 +576,28 @@ export async function getActiveSchemeForSubject(
   );
   return rows[0] ? mapRow(rows[0]) : null;
 }
+
+// The catalog schemes a school grades with until it picks its own: NLSC A–E
+// for O-Level, NLSC principal + subsidiary for A-Level, PLE D1–F9 for
+// Primary. Migrations 055/063 attached these to the schools that existed
+// then; a school given a curriculum later needs them attached here, or its
+// report cards print no grades, remarks or overall grade. Never replaces a
+// school's own choice.
+export const DEFAULT_GRADING_SCHEMES_SQL = `
+  insert into school_grading_scheme (school_id, applies_to, role_scope, grading_scheme_id)
+  select distinct on (sc.school_id, gs.applies_to, gs.role_scope)
+         sc.school_id, gs.applies_to, gs.role_scope, gs.id
+    from school_curriculum sc
+    join grading_scheme gs on gs.curriculum_id = sc.curriculum_id and gs.school_id is null
+   where ($1::uuid is null or sc.school_id = $1)
+     and (gs.name in ('NLSC O-Level', 'NLSC A-Level (Principal)', 'NLSC A-Level (Subsidiary)')
+          or (gs.applies_to = 'PRIMARY' and gs.regime = 'ple_1_9'))
+   order by sc.school_id, gs.applies_to, gs.role_scope, sc.is_primary desc, gs.created_at
+  on conflict do nothing`;
+
+export async function attachDefaultGradingSchemes(
+  db: PoolClient | typeof pool,
+  schoolId: string,
+): Promise<void> {
+  await db.query(DEFAULT_GRADING_SCHEMES_SQL, [schoolId]);
+}

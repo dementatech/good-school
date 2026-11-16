@@ -1,5 +1,5 @@
 import type { SchoolLevel, SchoolSection } from "../../../shared/levels.js";
-import { reportCardSettingsFor, type ReportCardFields } from "../../academic-structure/index.js";
+import { reportCardSettingsFor, type ReportCardFields, type ReportCardTemplate } from "../../academic-structure/index.js";
 import { fileUrl, type StorageProvider } from "../../../shared/media.js";
 import type { Pool, PoolClient } from "pg";
 import { pool } from "../../../shared/db/index.js";
@@ -165,6 +165,11 @@ export interface ReportCardSubject {
 export interface ReportCardStudentSubject {
   subjectId: string;
   subjectName: string;
+  /** The catalog's short form ("Bio", "Hist") — report cards print it in
+   * place of the full name when the school chooses to. */
+  subjectShortName: string;
+  /** UNEB paper code (553 Biology, P530 Biology) when the catalog has one. */
+  paperCode: string | null;
   role: ReportSubjectRole;
   hasVariant: boolean;
   /** Present only when hasVariant — the individual papers behind rawScore's
@@ -193,7 +198,8 @@ export interface ReportCardStudentSubject {
    * stream (or the whole class), e.g. "J.O.". Null when nobody is assigned. */
   teacherInitials: string | null;
   /** This learner's score in each of the report's `compared` exams, in the
-   * same order. Empty on a single-exam report. */
+   * same order (on a side-by-side report that includes the opened exam
+   * itself). Empty on a single-exam report. */
   history: { examId: string; rawScore: number | null; isAbsent: boolean }[];
 }
 
@@ -258,12 +264,18 @@ export interface ReportOptions {
   examIds?: string[];
   /** Relative shares, same order as `examIds`: 40,60 and 2,3 mean the same. */
   weights?: number[];
+  /** A report card template to print with; the section's default if absent
+   * or not one this school can use. */
+  templateId?: string;
 }
 
 export interface ComparedExam {
   id: string;
-  /** Short column heading, e.g. "T3 MID". */
+  /** Short column heading: the exam code ("MID") when every exam on the
+   * report is from one term, else term-prefixed ("T3 MID"). */
   label: string;
+  /** Side-by-side only: this column is the exam the report was opened from. */
+  isCurrent?: boolean;
   name: string;
   /** Combined reports only: this exam's share of the final mark. */
   weightPercent: number | null;
@@ -275,12 +287,14 @@ export interface ExamReportCard {
   compared: ComparedExam[];
   /** Every subject taught in this class in this exam, for any stream. */
   classSubjects: { subjectId: string; subjectName: string; subjectShortName: string; role: ReportSubjectRole }[];
-  exam: { id: string; name: string; termId: string; termName: string; publishedAt: string | null };
+  exam: { id: string; name: string; label: string; termId: string; termName: string; publishedAt: string | null };
   /** Whether printed report cards show each pupil's position — the school's
    * choice per section (Nursery defaults to off). */
   showPositions: boolean;
-  /** What else the section's report cards show — the school's choice. */
+  /** What this report's cards show: the template's choices. */
   reportCardFields: ReportCardFields;
+  /** The template this report prints with (chosen, or the section's default). */
+  template: ReportCardTemplate;
   class: { id: string; name: string; phase: SchoolLevel };
   stream: { id: string; name: string } | null;
   subjects: ReportCardSubject[];
@@ -1296,9 +1310,11 @@ async function loadSelectedExams(
   if (rows.length !== ids.length) {
     throw new InvalidReportOptionsError("Only exams from the same school year can go on one report.");
   }
+  // One term's exams read as BOT / MID / EOT; across terms they need the term.
+  const oneTerm = new Set(rows.map((row) => row.term_number)).size === 1;
   return rows.map((row) => ({
     id: row.id,
-    label: `T${row.term_number} ${row.exam_code}`,
+    label: oneTerm ? row.exam_code : `T${row.term_number} ${row.exam_code}`,
     name: row.name,
     startsOn: row.starts_on,
     weight: weightOf.get(row.id) ?? 1,
@@ -1313,9 +1329,14 @@ function comparedExamsOf(
 ): ComparedExam[] {
   if (mode === "single") return [];
   if (mode === "side_by_side") {
-    return selected
-      .filter((e) => e.id !== examId)
-      .map((e) => ({ id: e.id, label: e.label, name: e.name, weightPercent: null }));
+    // Every exam in date order, the opened one in its place among them.
+    return selected.map((e) => ({
+      id: e.id,
+      label: e.label,
+      name: e.name,
+      weightPercent: null,
+      isCurrent: e.id === examId,
+    }));
   }
   const total = selected.reduce((sum, e) => sum + e.weight, 0);
   return selected.map((e) => ({
@@ -1403,13 +1424,18 @@ export async function getExamReportCard(
       mode === "combined"
         ? `Combined report: ${compared.map((c) => `${c.label} ${c.weightPercent}%`).join(", ")}`
         : exam.name,
+    label: selected.find((e) => e.id === examId)!.label,
     termId: exam.termId,
     termName: exam.termName,
     publishedAt: exam.publishedAt,
   };
   const section: SchoolSection =
     klass.stage_phase === "KINDERGARTEN" ? "KINDERGARTEN" : klass.stage_phase === "PRIMARY" ? "PRIMARY" : "SECONDARY";
-  const { showPositions, fields: reportCardFields } = await reportCardSettingsFor(schoolId, section);
+  const { showPositions, fields: reportCardFields, template } = await reportCardSettingsFor(
+    schoolId,
+    section,
+    options.templateId,
+  );
   const classOut = { id: klass.id, name: klass.class_name, phase: klass.stage_phase };
   const streamOut = klass.stream_id ? { id: klass.stream_id, name: klass.stream_name ?? "" } : null;
 
@@ -1421,6 +1447,7 @@ export async function getExamReportCard(
       exam: examOut,
       showPositions,
       reportCardFields,
+      template,
       class: classOut,
       stream: streamOut,
       subjects: [],
@@ -1443,6 +1470,8 @@ export async function getExamReportCard(
     subject_id: string;
     subject_code: string;
     subject_name: string;
+    subject_short_name: string;
+    subject_uneb_code: string | null;
     subject_category: string;
     subject_is_examinable: boolean;
     raw_score: string | null;
@@ -1454,6 +1483,7 @@ export async function getExamReportCard(
     contribution_percent: string | null;
   }>(
     `select er.school_exam_id, er.student_user_id, er.subject_id, sub.code as subject_code, sub.name as subject_name,
+            sub.short_name as subject_short_name, sub.uneb_code as subject_uneb_code,
             sub.category as subject_category, sub.is_examinable as subject_is_examinable,
             er.raw_score, er.max_mark, er.is_absent, er.computed_grade,
             er.subject_variant_id, sv.name as variant_name, sv.contribution_percent
@@ -1476,6 +1506,8 @@ export async function getExamReportCard(
   interface MergedSubjectScore {
     subjectId: string;
     subjectName: string;
+    subjectShortName: string;
+    paperCode: string | null;
     role: ReportSubjectRole;
     isExaminable: boolean;
     hasVariant: boolean;
@@ -1540,6 +1572,8 @@ export async function getExamReportCard(
     bySubject.set(first.subject_id, {
       subjectId: first.subject_id,
       subjectName: first.subject_name,
+      subjectShortName: first.subject_short_name,
+      paperCode: first.subject_uneb_code,
       role: roleOf(first.subject_category),
       isExaminable: first.subject_is_examinable,
       hasVariant,
@@ -1752,6 +1786,8 @@ export async function getExamReportCard(
         .map((s) => ({
           subjectId: s.subjectId,
           subjectName: s.subjectName,
+          subjectShortName: s.subjectShortName,
+          paperCode: s.paperCode,
           role: s.role,
           hasVariant: s.hasVariant,
           variantScores: s.hasVariant ? s.variantScores : undefined,
@@ -1968,6 +2004,7 @@ export async function getExamReportCard(
     exam: examOut,
     showPositions,
     reportCardFields,
+    template,
     class: classOut,
     stream: streamOut,
     subjects,

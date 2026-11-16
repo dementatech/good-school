@@ -74,7 +74,7 @@ function ReportCardsContent() {
       async function loadForClass(classId: string, streamId: string | null): Promise<Sheet[]> {
         const qs = new URLSearchParams({ classId });
         if (streamId) qs.set('streamId', streamId);
-        for (const key of ['mode', 'examIds', 'weights']) {
+        for (const key of ['mode', 'examIds', 'weights', 'templateId']) {
           const value = search.get(key);
           if (value) qs.set(key, value);
         }
@@ -103,6 +103,7 @@ function ReportCardsContent() {
           fields: report.reportCardFields,
           mode: report.mode,
           compared: report.compared,
+          template: report.template ?? null,
           nurseryRatings: ratings
             ? {
                 areas: ratings.learningAreas,

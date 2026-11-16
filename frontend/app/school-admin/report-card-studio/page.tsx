@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { usePortalBase } from '@/lib/portal';
-import { useSchoolLevels, type SchoolLevel } from '@/lib/levels';
+import { useSchoolLevels, type SchoolLevel, type SchoolSection } from '@/lib/levels';
 import { useRouter } from 'next/navigation';
 import { arc as d3arc, max, pie as d3pie, scaleBand, scaleLinear } from 'd3';
 import { Card } from '@/components/ui/Card';
@@ -18,6 +18,7 @@ import Link from 'next/link';
 import { AlertTriangle, FileText, LayoutTemplate, TrendingUp, Trophy } from 'lucide-react';
 import type { SchoolExam } from '@/components/admin/exams/types';
 import { localIsoDate } from '@/lib/school-admin/dashboard';
+import type { TemplateListing } from '@/components/admin/report-cards/templates';
 import {
   REPORT_TYPE_LABELS,
   defaultExam,
@@ -711,6 +712,9 @@ export default function ReportCardStudioPage() {
   const [report, setReport] = useState<ExamReportCard | null>(null);
   const [loading, setLoading] = useState(true);
   const [studentKey, setStudentKey] = useState('');
+  // '' = the section's default template.
+  const [templateId, setTemplateId] = useState('');
+  const [templateListings, setTemplateListings] = useState<TemplateListing[]>([]);
 
   useEffect(() => {
     void (async () => {
@@ -718,6 +722,12 @@ export default function ReportCardStudioPage() {
       setYears(list);
       const current = list.find((y) => y.isCurrent) ?? list[0];
       setYearId(current?.id ?? '');
+    })();
+  }, []);
+
+  useEffect(() => {
+    void (async () => {
+      setTemplateListings(await fetchList<TemplateListing>('/api/v1/academic/report-card-templates', toast.error));
     })();
   }, []);
 
@@ -749,6 +759,14 @@ export default function ReportCardStudioPage() {
   }, [yearId, levelsLoaded, nurseryGivesMarks]);
 
   const selectedClass = classes.find((c) => c.id === classId) ?? null;
+  const classSection: SchoolSection | null = selectedClass
+    ? selectedClass.stagePhase === 'KINDERGARTEN' || selectedClass.stagePhase === 'PRIMARY'
+      ? selectedClass.stagePhase
+      : 'SECONDARY'
+    : null;
+  const sectionTemplates = templateListings.find((l) => l.section === classSection) ?? null;
+  // A template chosen for one section doesn't follow the class to another.
+  const chosenTemplate = sectionTemplates?.templates.some((t) => t.id === templateId) ? templateId : '';
 
   useEffect(() => {
     void (async () => {
@@ -859,6 +877,7 @@ export default function ReportCardStudioPage() {
 
   function openReportCards(params: Record<string, string>) {
     const query = new URLSearchParams({ ...params, ...(reportParams ?? {}) });
+    if (chosenTemplate) query.set('templateId', chosenTemplate);
     window.open(`${base}/exams/${examId}/report-cards?${query.toString()}`, '_blank');
   }
 
@@ -1001,13 +1020,27 @@ export default function ReportCardStudioPage() {
               ))}
             </select>
           )}
-          {/* Choosing the layout is the school admin's — the DOS portal shares this page. */}
+          {sectionTemplates && (
+            <select
+              aria-label="Report card template"
+              value={chosenTemplate}
+              onChange={(e) => setTemplateId(e.target.value)}
+              className="h-9 rounded-lg border border-border-strong bg-white px-3 text-sm font-medium text-primary-900"
+            >
+              {sectionTemplates.templates.map((t) => (
+                <option key={t.id} value={t.id === sectionTemplates.defaultId ? '' : t.id}>
+                  {t.id === sectionTemplates.defaultId ? `Template: ${t.name} (default)` : `Template: ${t.name}`}
+                </option>
+              ))}
+            </select>
+          )}
+          {/* Designing templates is the school admin's — the DOS portal shares this page. */}
           {base === '/school-admin' && (
             <Link
               href="/school-admin/report-card-layout"
               className="h-9 inline-flex items-center gap-1.5 rounded-lg border border-border-strong bg-white px-3.5 text-sm font-semibold text-primary-900 hover:bg-bg-subtle transition-colors"
             >
-              <LayoutTemplate className="w-4 h-4" aria-hidden /> Customise layout
+              <LayoutTemplate className="w-4 h-4" aria-hidden /> Templates
             </Link>
           )}
           <Link

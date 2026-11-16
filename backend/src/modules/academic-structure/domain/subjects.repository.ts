@@ -273,7 +273,13 @@ function assertCategoryValidForPhase(phase: SubjectPhase, category: SubjectCateg
 // subject's category (a subsidiary code on a subsidiary subject, a principal
 // code on a Science/Art one). S101 is reserved for the General Paper constant.
 function assertUnebCodeValid(phase: SubjectPhase, category: SubjectCategory, code: string): void {
-  if (phase !== "A_LEVEL") throw new InvalidSubjectError("UNEB codes only apply to A-Level subjects.");
+  if (phase === "O_LEVEL") {
+    // UCE paper codes are three digits (112 English, 553 Biology). No fixed
+    // list: nothing keys off them yet, they only print on report cards.
+    if (!/^\d{3}$/.test(code)) throw new InvalidSubjectError(`"${code}" isn't a UCE code — they're three digits, like 553.`);
+    return;
+  }
+  if (phase !== "A_LEVEL") throw new InvalidSubjectError("UNEB codes only apply to O-Level and A-Level subjects.");
   const known = UNEB_A_LEVEL_SUBJECTS.find((u) => u.code === code);
   if (!known) throw new InvalidSubjectError(`"${code}" isn't a known UNEB A-Level code.`);
   if (code === GENERAL_PAPER_CODE) {

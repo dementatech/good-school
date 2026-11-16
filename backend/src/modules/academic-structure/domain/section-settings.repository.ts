@@ -9,8 +9,11 @@ import { ensureNurserySubjects } from "./subjects.repository.js";
 //     no national nursery exam either way, so it's the school's call.
 //   - Whether report cards show a pupil's position — off by default for
 //     Nursery, on for Primary/Secondary (as before this setting existed).
-//   - What else report cards show (report_card_fields): the learner's photo,
-//     attendance, subject remarks, signatures, ... one switch per field.
+//   - Which report card template the section prints with by default
+//     (report_card_template) — see report-card-templates.repository.ts. What a
+//     card shows (photo, attendance, remarks, ...) is part of the template.
+//     report_card_fields is the pre-template per-section switch set, kept only
+//     because migration 083 copied it into each school's "Our layout".
 
 export type AssessmentStyle = "ratings" | "marks" | "both";
 
@@ -25,6 +28,8 @@ export const REPORT_CARD_FIELDS = {
   studentPhoto: { default: true, sections: ["KINDERGARTEN", "PRIMARY", "SECONDARY"] },
   studentId: { default: true, sections: ["KINDERGARTEN", "PRIMARY", "SECONDARY"] },
   rowNumbers: { default: true, sections: ["KINDERGARTEN", "PRIMARY", "SECONDARY"] },
+  subjectCode: { default: true, sections: ["SECONDARY"] },
+  shortSubjectNames: { default: true, sections: ["SECONDARY"] },
   score: { default: true, sections: ["KINDERGARTEN", "PRIMARY", "SECONDARY"] },
   grade: { default: true, sections: ["KINDERGARTEN", "PRIMARY", "SECONDARY"] },
   points: { default: true, sections: ["PRIMARY"] },
@@ -50,7 +55,7 @@ export type ReportCardFields = Record<ReportCardField, boolean>;
 
 /** A section's report card fields: the school's choices over the defaults.
  * Fields that don't apply to the section come back false. */
-function reportCardFieldsOf(section: SchoolSection, saved: Partial<Record<string, boolean>> | null): ReportCardFields {
+export function reportCardFieldsOf(section: SchoolSection, saved: Partial<Record<string, boolean>> | null): ReportCardFields {
   const out = {} as ReportCardFields;
   for (const [key, field] of Object.entries(REPORT_CARD_FIELDS) as [ReportCardField, (typeof REPORT_CARD_FIELDS)[ReportCardField]][]) {
     const applies = (field.sections as readonly SchoolSection[]).includes(section);
@@ -64,7 +69,6 @@ export interface SectionSettings {
   /** Nursery only — null for Primary/Secondary. */
   assessmentStyle: AssessmentStyle | null;
   showPositions: boolean;
-  reportCard: ReportCardFields;
 }
 
 export class InvalidSectionSettingsError extends Error {
@@ -86,9 +90,8 @@ export async function getSectionSettings(schoolId: string): Promise<SectionSetti
     section: SchoolSection;
     assessment_style: AssessmentStyle | null;
     show_positions: boolean | null;
-    report_card_fields: Partial<Record<string, boolean>> | null;
   }>(
-    `select section, assessment_style, show_positions, report_card_fields from school_section where school_id = $1`,
+    `select section, assessment_style, show_positions from school_section where school_id = $1`,
     [schoolId],
   );
   return sections.map((section) => {
@@ -97,7 +100,6 @@ export async function getSectionSettings(schoolId: string): Promise<SectionSetti
       section,
       assessmentStyle: section === "KINDERGARTEN" ? row?.assessment_style ?? "ratings" : null,
       showPositions: row?.show_positions ?? DEFAULT_SHOW_POSITIONS[section],
-      reportCard: reportCardFieldsOf(section, row?.report_card_fields ?? null),
     };
   });
 }
@@ -116,21 +118,6 @@ export async function showPositionsFor(schoolId: string, section: SchoolSection)
     [schoolId, section],
   );
   return rows[0]?.show_positions ?? DEFAULT_SHOW_POSITIONS[section];
-}
-
-/** What a section's report cards show — positions included. */
-export async function reportCardSettingsFor(
-  schoolId: string,
-  section: SchoolSection,
-): Promise<{ showPositions: boolean; fields: ReportCardFields }> {
-  const { rows } = await pool.query<{ show_positions: boolean | null; report_card_fields: Partial<Record<string, boolean>> | null }>(
-    `select show_positions, report_card_fields from school_section where school_id = $1 and section = $2`,
-    [schoolId, section],
-  );
-  return {
-    showPositions: rows[0]?.show_positions ?? DEFAULT_SHOW_POSITIONS[section],
-    fields: reportCardFieldsOf(section, rows[0]?.report_card_fields ?? null),
-  };
 }
 
 // Turning Nursery marks on sets the school up so it can enter marks straight
@@ -175,36 +162,25 @@ export async function assignNurseryClassTeachers(client: PoolClient | typeof poo
 export async function updateSectionSettings(
   schoolId: string,
   section: SchoolSection,
-  input: { assessmentStyle?: AssessmentStyle; showPositions?: boolean; reportCard?: Partial<Record<string, boolean>> },
+  input: { assessmentStyle?: AssessmentStyle; showPositions?: boolean },
 ): Promise<SectionSettings> {
   const sections = sectionsOf(await levelsForSchool(schoolId));
   if (!sections.includes(section)) throw new InvalidSectionSettingsError("Unknown section.");
   if (input.assessmentStyle !== undefined && section !== "KINDERGARTEN") {
     throw new InvalidSectionSettingsError("Only the Nursery section has an assessment style.");
   }
-  // Only fields that exist and belong to this section — a Primary report
-  // card can't be told to show Nursery progress ratings.
-  const reportCard: Record<string, boolean> = {};
-  for (const [key, value] of Object.entries(input.reportCard ?? {})) {
-    const field = REPORT_CARD_FIELDS[key as ReportCardField];
-    if (!field || !(field.sections as readonly SchoolSection[]).includes(section)) {
-      throw new InvalidSectionSettingsError(`"${key}" isn't a report card option for this section.`);
-    }
-    if (typeof value === "boolean") reportCard[key] = value;
-  }
 
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
     await client.query(
-      `insert into school_section (school_id, section, assessment_style, show_positions, report_card_fields)
-       values ($1, $2, $3, $4, $5::jsonb)
+      `insert into school_section (school_id, section, assessment_style, show_positions)
+       values ($1, $2, $3, $4)
        on conflict (school_id, section) do update
          set assessment_style = coalesce($3, school_section.assessment_style),
              show_positions = coalesce($4, school_section.show_positions),
-             report_card_fields = coalesce(school_section.report_card_fields, '{}'::jsonb) || $5::jsonb,
              updated_at = now()`,
-      [schoolId, section, input.assessmentStyle ?? null, input.showPositions ?? null, JSON.stringify(reportCard)],
+      [schoolId, section, input.assessmentStyle ?? null, input.showPositions ?? null],
     );
     if (input.assessmentStyle === "marks" || input.assessmentStyle === "both") {
       await prepareNurseryMarks(client, schoolId);

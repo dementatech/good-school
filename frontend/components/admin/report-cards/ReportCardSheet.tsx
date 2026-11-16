@@ -1,9 +1,22 @@
 'use client';
 
+import { useLayoutEffect, useRef, useState } from 'react';
 import type { SchoolLevel, SchoolSection, SubjectPhase } from '@/lib/levels';
+import {
+  COLUMN_KEYS,
+  PAGE_MM,
+  PX_PER_MM,
+  fillPlaceholders,
+  templateVars,
+  type CanvasBlock,
+  type ColumnKey,
+  type ReportCardTemplate,
+  type TemplateDesign,
+  type TemplateStyle,
+} from './templates';
 
 // One learner's printed report card — used by the report-cards print page
-// (and its server-side PDF) and by Report Card Layout's live preview, so what
+// (and its server-side PDF) and by Report Card Templates' live preview, so what
 // a school sees while choosing its layout is exactly what prints.
 
 type SubjectRole = 'principal' | 'subsidiary';
@@ -11,6 +24,10 @@ type SubjectRole = 'principal' | 'subsidiary';
 export interface ReportCardStudentSubject {
   subjectId: string;
   subjectName: string;
+  /** The catalog's short form ("Bio", "Hist"). */
+  subjectShortName?: string;
+  /** UNEB paper code (553, P530) when the catalog has one. */
+  paperCode?: string | null;
   role: SubjectRole;
   hasVariant: boolean;
   variantScores?: { name: string; rawScore: number | null; isAbsent: boolean }[];
@@ -61,6 +78,8 @@ export interface GradeDivision {
 export interface ComparedExam {
   id: string;
   label: string;
+  /** Side-by-side: the exam the report was opened from, in date order. */
+  isCurrent?: boolean;
   name: string;
   weightPercent: number | null;
 }
@@ -70,11 +89,13 @@ export interface ExamReportCard {
   compared?: ComparedExam[];
   /** Every subject taught in this class in this exam, for any stream. */
   classSubjects?: { subjectId: string; subjectName: string; subjectShortName: string; role: 'principal' | 'subsidiary' }[];
-  exam: { id: string; name: string; termId: string; termName: string; publishedAt: string | null };
+  exam: { id: string; name: string; label?: string; termId: string; termName: string; publishedAt: string | null };
   /** The school's choice, per section, whether report cards show positions. */
   showPositions: boolean;
   /** The school's choice, per section, of what else report cards show. */
   reportCardFields: ReportCardFields;
+  /** The template this report prints with (chosen, or the section's default). */
+  template?: ReportCardTemplate;
   class: { id: string; name: string; phase: SchoolLevel };
   stream: { id: string; name: string } | null;
   aggregation: { subjectCount: number; divisions: GradeDivision[] } | null;
@@ -118,6 +139,8 @@ export type ReportCardField =
   | 'studentPhoto'
   | 'studentId'
   | 'rowNumbers'
+  | 'subjectCode'
+  | 'shortSubjectNames'
   | 'score'
   | 'grade'
   | 'points'
@@ -167,6 +190,20 @@ export const REPORT_CARD_FIELD_GROUPS: {
     title: 'Results table',
     fields: [
       { key: 'rowNumbers', label: 'Row numbers (#)', sections: ALL, default: true },
+      {
+        key: 'subjectCode',
+        label: 'Paper code',
+        hint: 'The UNEB code (553 Biology, P530 Biology), where the subject has one.',
+        sections: ['SECONDARY'],
+        default: true,
+      },
+      {
+        key: 'shortSubjectNames',
+        label: 'Short subject names',
+        hint: 'Bio, Chem, Hist… in place of the full names, leaving more room for marks.',
+        sections: ['SECONDARY'],
+        default: true,
+      },
       { key: 'score', label: 'Score', sections: ALL, default: true },
       { key: 'grade', label: 'Grade', sections: ALL, default: true },
       { key: 'points', label: 'Points (D1 = 1 … F9 = 9)', sections: ['PRIMARY'], default: true },
@@ -272,7 +309,37 @@ export interface Sheet {
   nurseryRatings: NurseryRatings | null;
   mode?: ExamReportCard['mode'];
   compared?: ComparedExam[];
+  /** The look to print with; Classic when absent. */
+  template?: ReportCardTemplate | null;
 }
+
+// Classic, for a card printed without a template (older callers, previews).
+export const CLASSIC_DESIGN: TemplateDesign = {
+  base: 'classic',
+  fields: {},
+  columns: [...COLUMN_KEYS],
+  style: {
+    accent: '#2E77AE',
+    highlight: '#FF8E2B',
+    frame: 'double',
+    font: 'rounded',
+    density: 'comfortable',
+    header: 'centered',
+    table: 'bordered',
+  },
+  text: {
+    title: 'Report Card',
+    signatures: ["Class Teacher's Signature", "Parent/Guardian's Signature", "Head Teacher's Signature"],
+    footerNote: '',
+  },
+};
+
+interface TableLook {
+  columns: ColumnKey[];
+  density: TemplateStyle['density'];
+  table: TemplateStyle['table'];
+}
+const CLASSIC_LOOK: TableLook = { columns: [...COLUMN_KEYS], density: 'comfortable', table: 'bordered' };
 
 function ReportSubjectTable({
   title,
@@ -282,6 +349,8 @@ function ReportSubjectTable({
   showPoints = false,
   compared = [],
   combined = false,
+  examLabel,
+  look = CLASSIC_LOOK,
 }: {
   title: string;
   subjects: ReportCardStudentSubject[];
@@ -292,103 +361,166 @@ function ReportSubjectTable({
   showPoints?: boolean;
   compared?: ComparedExam[];
   combined?: boolean;
+  /** The opened exam's short heading ("MID"), for the score column. */
+  examLabel?: string;
+  look?: TableLook;
 }) {
   if (subjects.length === 0) return null;
-  const points = showPoints && fields.points;
+  const compact = look.density === 'compact';
+  const pad = compact ? 'py-0.5 px-1.5' : 'py-1 px-2';
+  // Bordered: a grid. Striped: shaded rows, no inner verticals. Minimal: hairlines only.
+  const vline = look.table === 'bordered' ? 'border-r border-border last:border-r-0' : '';
+  const th = `${pad} ${vline} border-b ${look.table === 'minimal' ? 'border-primary-700' : 'border-border'}`;
+  const td = `${pad} ${vline}`;
+  // Side by side, the opened exam sits among the others in date order, so it
+  // has no separate score column.
+  const inline = compared.some((e) => e.isCurrent);
+  const nameOf = (s: ReportCardStudentSubject) =>
+    fields.shortSubjectNames && s.subjectShortName ? s.subjectShortName : s.subjectName;
+  const scoreCell = (s: ReportCardStudentSubject) =>
+    s.isAbsent ? (
+      <span className="text-text-muted font-normal">Abs</span>
+    ) : s.rawScore !== null ? (
+      // Out of the subject's own full mark when it isn't 100.
+      s.mark !== null && s.maxMark !== 100 ? `${round(s.mark)}/${s.maxMark}` : round(s.rawScore)
+    ) : (
+      '—'
+    );
+
+  type Column = { key: string; head: React.ReactNode; headClass?: string; cell: (s: ReportCardStudentSubject, i: number) => React.ReactNode; cellClass?: string };
+  const columnsFor = (key: ColumnKey): Column[] => {
+    switch (key) {
+      case 'rowNumbers':
+        return fields.rowNumbers
+          ? [{ key, head: '#', headClass: 'w-8 text-center', cell: (_s, i) => i + 1, cellClass: 'text-center text-text-faint tabular-nums' }]
+          : [];
+      case 'subjectCode':
+        return fields.subjectCode
+          ? [{ key, head: 'Code', headClass: 'w-14', cell: (s) => s.paperCode ?? '', cellClass: 'tabular-nums text-text-secondary' }]
+          : [];
+      case 'subject':
+        return [
+          {
+            key,
+            head: 'Subject',
+            cell: (s) => (
+              <span title={s.subjectName}>
+                {nameOf(s)}
+                {fields.paperBreakdown && s.hasVariant && s.variantScores && (
+                  <span className="block text-[10px] text-text-faint">
+                    {s.variantScores
+                      .map((v) => `${v.name} ${v.isAbsent ? 'Abs' : v.rawScore !== null ? round(v.rawScore) : '—'}`)
+                      .join(' · ')}
+                  </span>
+                )}
+              </span>
+            ),
+          },
+        ];
+      case 'scores': {
+        const cols: Column[] = compared.map((exam) => ({
+          key: `exam-${exam.id}`,
+          head: (
+            <span title={exam.name}>
+              {exam.label}
+              {exam.weightPercent !== null && ` (${exam.weightPercent}%)`}
+            </span>
+          ),
+          headClass: 'text-right whitespace-nowrap',
+          cellClass: `text-right tabular-nums ${exam.isCurrent ? 'font-semibold' : ''}`,
+          cell: (s) => {
+            if (exam.isCurrent) return scoreCell(s);
+            const past = s.history?.find((h) => h.examId === exam.id);
+            return past?.isAbsent ? 'Abs' : past?.rawScore != null ? round(past.rawScore) : '—';
+          },
+        }));
+        if (fields.score && !inline) {
+          cols.push({
+            key: 'score',
+            head: combined ? 'Final' : examLabel || (compared.length > 0 ? 'This exam' : 'Score'),
+            headClass: 'text-right',
+            cellClass: 'text-right tabular-nums font-semibold',
+            cell: scoreCell,
+          });
+        }
+        return cols;
+      }
+      case 'grade':
+        return fields.grade
+          ? [
+              {
+                key,
+                head: 'Grade',
+                headClass: 'text-center',
+                cellClass: 'text-center',
+                cell: (s) => {
+                  const grade = gradeOf(s, bands);
+                  return grade ? (
+                    <span
+                      className={`inline-flex min-w-6 justify-center px-1.5 py-0.5 rounded-md text-[11px] font-extrabold ${gradeChip(grade)}`}
+                    >
+                      {grade}
+                    </span>
+                  ) : (
+                    <span className="text-text-faint">—</span>
+                  );
+                },
+              },
+            ]
+          : [];
+      case 'points':
+        return showPoints && fields.points
+          ? [{ key, head: 'Points', headClass: 'text-center', cellClass: 'text-center tabular-nums font-semibold', cell: (s) => s.points ?? '—' }]
+          : [];
+      case 'subjectRemarks':
+        return fields.subjectRemarks
+          ? [
+              {
+                key,
+                head: 'Remarks',
+                cellClass: 'text-text-secondary',
+                cell: (s) => bands.find((b) => b.label === gradeOf(s, bands))?.comment ?? ' ',
+              },
+            ]
+          : [];
+      case 'teacherInitials':
+        return fields.teacherInitials
+          ? [{ key, head: 'Initials', headClass: 'w-14 text-center', cellClass: 'text-center font-semibold text-text-secondary', cell: (s) => s.teacherInitials ?? ' ' }]
+          : [];
+    }
+  };
+  const columns = look.columns.flatMap(columnsFor);
+
   return (
     <div>
       <p className="text-xs font-bold uppercase tracking-wide text-text-faint mb-1.5">{title}</p>
-      <table className="w-full text-sm border border-border">
+      <table className={`w-full ${compact ? 'text-xs' : 'text-sm'} ${look.table === 'minimal' ? '' : 'border border-border'}`}>
         <thead>
-          <tr className="bg-bg-subtle text-left text-[10.5px] font-bold uppercase tracking-wide text-text-faint">
-            {fields.rowNumbers && <th className="py-1 px-2 border-b border-r border-border w-8 text-center">#</th>}
-            <th className="py-1 px-2 border-b border-r border-border">Subject</th>
-            {compared.map((exam) => (
-              <th key={exam.id} className="py-1 px-2 border-b border-r border-border text-right whitespace-nowrap" title={exam.name}>
-                {exam.label}
-                {exam.weightPercent !== null && ` (${exam.weightPercent}%)`}
+          <tr
+            className={`text-left text-[10.5px] font-bold uppercase tracking-wide ${
+              look.table === 'minimal' ? 'text-primary-700' : 'bg-primary-50 text-text-faint'
+            }`}
+          >
+            {columns.map((c) => (
+              <th key={c.key} className={`${th} ${c.headClass ?? ''}`}>
+                {c.head}
               </th>
             ))}
-            {fields.score && (
-              <th className="py-1 px-2 border-b border-r border-border text-right">
-                {combined ? 'Final' : compared.length > 0 ? 'This exam' : 'Score'}
-              </th>
-            )}
-            {fields.grade && <th className="py-1 px-2 border-b border-r border-border text-center">Grade</th>}
-            {points && <th className="py-1 px-2 border-b border-r border-border text-center">Points</th>}
-            {fields.subjectRemarks && <th className="py-1 px-2 border-b border-r border-border">Remarks</th>}
-            {fields.teacherInitials && <th className="py-1 px-2 border-b border-border text-center w-14">Initials</th>}
           </tr>
         </thead>
         <tbody>
-          {subjects.map((s, i) => {
-            const grade = gradeOf(s, bands);
-            return (
-              <tr key={s.subjectId} className="border-b border-border last:border-0">
-                {fields.rowNumbers && (
-                  <td className="py-1 px-2 border-r border-border text-center text-text-faint tabular-nums">{i + 1}</td>
-                )}
-                <td className="py-1 px-2 border-r border-border">
-                  {s.subjectName}
-                  {fields.paperBreakdown && s.hasVariant && s.variantScores && (
-                    <span className="block text-[10px] text-text-faint">
-                      {s.variantScores
-                        .map((v) => `${v.name} ${v.isAbsent ? 'Abs' : v.rawScore !== null ? round(v.rawScore) : '—'}`)
-                        .join(' · ')}
-                    </span>
-                  )}
+          {subjects.map((s, i) => (
+            <tr
+              key={s.subjectId}
+              className={`border-b border-border last:border-0 ${look.table === 'striped' && i % 2 === 1 ? 'bg-bg-subtle' : ''}`}
+            >
+              {columns.map((c) => (
+                <td key={c.key} className={`${td} ${c.cellClass ?? ''}`}>
+                  {c.cell(s, i)}
                 </td>
-                {compared.map((exam) => {
-                  const past = s.history?.find((h) => h.examId === exam.id);
-                  return (
-                    <td key={exam.id} className="py-1 px-2 border-r border-border text-right tabular-nums">
-                      {past?.isAbsent ? 'Abs' : past?.rawScore != null ? round(past.rawScore) : '—'}
-                    </td>
-                  );
-                })}
-                {fields.score && (
-                  <td className="py-1 px-2 border-r border-border text-right tabular-nums font-semibold">
-                    {s.isAbsent ? (
-                      <span className="text-text-muted font-normal">Absent</span>
-                    ) : s.rawScore !== null ? (
-                      // Out of the subject's own full mark when it isn't 100.
-                      s.mark !== null && s.maxMark !== 100 ? `${round(s.mark)}/${s.maxMark}` : round(s.rawScore)
-                    ) : (
-                      '—'
-                    )}
-                  </td>
-                )}
-                {fields.grade && (
-                  <td className="py-1 px-2 border-r border-border text-center">
-                    {grade ? (
-                      <span
-                        className={`inline-flex min-w-6 justify-center px-1.5 py-0.5 rounded-md text-[11px] font-extrabold ${gradeChip(
-                          grade,
-                        )}`}
-                      >
-                        {grade}
-                      </span>
-                    ) : (
-                      <span className="text-text-faint">—</span>
-                    )}
-                  </td>
-                )}
-                {points && (
-                  <td className="py-1 px-2 border-r border-border text-center tabular-nums font-semibold">
-                    {s.points ?? '—'}
-                  </td>
-                )}
-                {fields.subjectRemarks && (
-                  <td className="py-1 px-2 border-r border-border text-text-secondary">
-                    {bands.find((b) => b.label === grade)?.comment ?? ' '}
-                  </td>
-                )}
-                {fields.teacherInitials && (
-                  <td className="py-1 px-2 text-center font-semibold text-text-secondary">{s.teacherInitials ?? ' '}</td>
-                )}
-              </tr>
-            );
-          })}
+              ))}
+            </tr>
+          ))}
         </tbody>
       </table>
     </div>
@@ -517,246 +649,469 @@ function LearnerPhoto({ student }: { student: ReportCardStudent }) {
   );
 }
 
-export function StudentReportCardSheet({
-  sheet,
-  schoolInfo,
-  primaryBands,
-  nurseryBands,
-  oLevelBands,
-  principalBands,
-  subsidiaryBands,
-}: {
-  sheet: Sheet;
-  schoolInfo: SchoolInfo | null;
+export interface CardBands {
   primaryBands: GradeBand[];
   nurseryBands: GradeBand[];
   oLevelBands: GradeBand[];
   principalBands: GradeBand[];
   subsidiaryBands: GradeBand[];
-}) {
+}
+
+/** Every part of one learner's card, built once and laid out by either renderer. */
+export interface CardParts {
+  logo: React.ReactNode;
+  photo: React.ReactNode;
+  schoolName: (align?: string, size?: number) => React.ReactNode;
+  schoolDetails: (align?: string) => React.ReactNode;
+  examTitle: (align?: string) => React.ReactNode;
+  badge: React.ReactNode;
+  header: React.ReactNode;
+  learner: React.ReactNode;
+  results: React.ReactNode;
+  summary: React.ReactNode;
+  ratings: React.ReactNode;
+  remarks: React.ReactNode;
+  signatures: React.ReactNode;
+  issuedDate: (align?: string) => React.ReactNode;
+  gradingKey: React.ReactNode;
+  footerNote: (align?: string) => React.ReactNode;
+  /** What {student}, {class}, … in a text block become. */
+  placeholders: Record<string, string>;
+}
+
+const ALIGN_CLASS: Record<string, string> = { left: 'text-left', center: 'text-center', right: 'text-right' };
+
+export function buildCardParts(sheet: Sheet, schoolInfo: SchoolInfo | null, bands: CardBands, design: TemplateDesign): CardParts {
   const { student, exam, klass, stream, aggregation, totalInClass, showPositions, fields, nurseryRatings, compared, mode } = sheet;
-  const columns = { compared, combined: mode === 'combined' };
+  const { primaryBands, nurseryBands, oLevelBands, principalBands, subsidiaryBands } = bands;
+  const look: TableLook = { columns: design.columns, density: design.style.density, table: design.style.table };
+  const columns = { compared, combined: mode === 'combined', examLabel: exam.label, look };
+  const compact = design.style.density === 'compact';
+  const gap = compact ? 'space-y-1.5' : 'space-y-2.5';
   const isALevel = klass.phase === 'A_LEVEL';
   const isPrimary = klass.phase === 'PRIMARY';
+  const isNursery = klass.phase === 'KINDERGARTEN';
   const pleSubjects = student.subjects.filter((s) => s.isExaminable);
   const otherSubjects = student.subjects.filter((s) => !s.isExaminable);
   const pleScored = pleSubjects.filter((s) => !s.isAbsent && s.rawScore !== null);
   const pleTotal = pleScored.reduce((sum, s) => sum + (s.mark ?? s.rawScore!), 0);
   const pleOutOf = pleSubjects.reduce((sum, s) => sum + (s.mark !== null ? s.maxMark : 100), 0);
-  const isNursery = klass.phase === 'KINDERGARTEN';
   const principalSubjects = student.subjects.filter((s) => s.role === 'principal');
   const subsidiarySubjects = student.subjects.filter((s) => s.role === 'subsidiary');
   const schoolName = schoolInfo?.name ?? 'School';
   const subtitle = [schoolInfo?.address, schoolInfo?.district].filter(Boolean).join(', ');
-  const emis = schoolInfo?.emisCodes?.[isPrimary ? 'PRIMARY' : klass.phase === 'KINDERGARTEN' ? 'KINDERGARTEN' : 'SECONDARY'];
-  const issuedOn = exam.publishedAt
-    ? new Date(exam.publishedAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })
-    : new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
+  const emis = schoolInfo?.emisCodes?.[isPrimary ? 'PRIMARY' : isNursery ? 'KINDERGARTEN' : 'SECONDARY'];
+  const issuedOn = new Date(exam.publishedAt ?? Date.now()).toLocaleDateString('en-GB', {
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+  });
+  const className = `${klass.name}${(stream?.name ?? student.streamName) ? ` ${stream?.name ?? student.streamName}` : ''}`;
+  const position = student.rank ? `${student.rank} of ${totalInClass}` : '—';
   const attendance = fields.attendance && {
     label: 'Attendance',
     value: student.attendance ? `${student.attendance.present} / ${student.attendance.total} days` : '—',
   };
+  const average = (n: number | null) => (n !== null ? `${round(n)}%` : '—');
 
+  const logo = fields.schoolLogo ? (
+    <div className="w-full h-full min-w-12 min-h-12 aspect-square rounded-full border-2 border-primary-700 flex items-center justify-center overflow-hidden bg-primary-50">
+      {schoolInfo?.logoUrl ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={schoolInfo.logoUrl} alt="" className="w-full h-full object-contain" />
+      ) : (
+        <span className="text-primary-700 font-extrabold text-sm">{initialsOf(schoolName)}</span>
+      )}
+    </div>
+  ) : null;
+  const photo = fields.studentPhoto ? <LearnerPhoto student={student} /> : null;
+  const schoolNameNode = (align = 'center', size?: number) => (
+    <p
+      className={`${ALIGN_CLASS[align]} ${size ? '' : 'text-xl'} font-extrabold text-primary-700 uppercase tracking-wide leading-tight`}
+      style={size ? { fontSize: `${size}pt` } : undefined}
+    >
+      {schoolName}
+    </p>
+  );
+  const schoolDetails = (align = 'center') => (
+    <div className={ALIGN_CLASS[align]}>
+      {fields.schoolAddress && subtitle && (
+        <p className="text-[10px] font-semibold text-text-muted uppercase tracking-wide">{subtitle}</p>
+      )}
+      {fields.emisNumber && emis && <p className="text-[10px] font-semibold text-text-muted tracking-wide">EMIS No. {emis}</p>}
+    </div>
+  );
+  const examTitle = (align = 'center') => (
+    <p className={`${ALIGN_CLASS[align]} text-[11px] font-bold text-primary-700 uppercase tracking-wide`}>
+      {exam.name} &middot; {exam.termName}
+    </p>
+  );
+  const badge = design.text.title ? (
+    <span
+      className="inline-block px-3 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-widest text-white"
+      style={{ background: 'var(--rc-highlight, #FF8E2B)' }}
+    >
+      {design.text.title}
+    </span>
+  ) : null;
+
+  const left = design.style.header === 'left';
+  const header = (
+    <div className={`flex items-start justify-between gap-3 ${compact ? 'mb-1.5' : 'mb-2.5'}`}>
+      {/* Fixed-width side slots keep the school name centred whichever are shown. */}
+      {(!left || logo) && <div className={`${left ? 'w-12' : 'w-16'} shrink-0 flex justify-start`}>{logo && <div className="w-12 h-12">{logo}</div>}</div>}
+      <div className={`flex-1 ${left ? 'text-left' : 'text-center'}`}>
+        {schoolNameNode(left ? 'left' : 'center')}
+        {schoolDetails(left ? 'left' : 'center')}
+        <div className="mt-1">{examTitle(left ? 'left' : 'center')}</div>
+        {badge && <div className="mt-1">{badge}</div>}
+      </div>
+      <div className="w-16 shrink-0 flex justify-end">{photo}</div>
+    </div>
+  );
+
+  const field = (label: string, value: string) => (
+    <p className="flex items-baseline gap-2">
+      <span className="text-text-muted">{label}:</span>
+      <span className="font-semibold text-primary-900 border-b border-dotted border-border-strong px-2 min-w-16 inline-block">{value}</span>
+    </p>
+  );
+  const learner = (
+    <div className={`space-y-1 ${compact ? 'text-xs' : 'text-sm'} border-t border-b border-border py-1.5`}>
+      <p className="flex items-baseline gap-2">
+        <span className="text-text-muted shrink-0">Student Name:</span>
+        <span className="flex-1 border-b border-dotted border-border-strong font-semibold text-primary-900 pb-0.5">
+          {student.studentName}
+        </span>
+      </p>
+      <div className="flex flex-wrap gap-x-8 gap-y-1">
+        {field('Class', className)}
+        {fields.studentId && field('Student ID', student.systemId ?? '—')}
+        {showPositions && field('Position', position)}
+      </div>
+    </div>
+  );
+
+  let results: React.ReactNode;
+  let summary: React.ReactNode;
+  let remarks: React.ReactNode = null;
+  if (isALevel) {
+    results = (
+      <div className={gap}>
+        <ReportSubjectTable title="Principal Subjects" subjects={principalSubjects} fields={fields} bands={principalBands} {...columns} />
+        <ReportSubjectTable title="Subsidiary Subjects" subjects={subsidiarySubjects} fields={fields} bands={subsidiaryBands} {...columns} />
+      </div>
+    );
+    summary = (
+      <div className={gap}>
+        <div className="grid grid-cols-2 gap-2.5">
+          <StatRow
+            items={[
+              fields.average && { label: 'Principal Avg', value: average(student.principalAverage) },
+              fields.overallGrade && { label: 'Principal Grade', value: student.principalGrade ?? '—' },
+            ]}
+          />
+          <StatRow
+            items={[
+              fields.average && { label: 'Subsidiary Avg', value: average(student.subsidiaryAverage) },
+              fields.overallGrade && { label: 'Subsidiary Grade', value: student.subsidiaryGrade ?? '—' },
+            ]}
+          />
+        </div>
+        <StatRow items={[attendance]} />
+      </div>
+    );
+    if (fields.remarks) {
+      remarks = (
+        <RemarksBox
+          lines={[
+            { label: 'Principal', text: student.principalComment },
+            { label: 'Subsidiary', text: student.subsidiaryComment },
+          ]}
+        />
+      );
+    }
+  } else if (isPrimary) {
+    results = (
+      <div className={gap}>
+        <ReportSubjectTable title="Examinable Subjects (PLE)" subjects={pleSubjects} fields={fields} bands={primaryBands} showPoints {...columns} />
+        {fields.otherSubjects && (
+          <ReportSubjectTable title="Other Subjects" subjects={otherSubjects} fields={fields} bands={primaryBands} {...columns} />
+        )}
+      </div>
+    );
+    summary = (
+      <StatRow
+        items={[
+          fields.totalMarks && { label: 'Total Marks', value: pleScored.length ? `${round(pleTotal)} / ${pleOutOf}` : '—' },
+          fields.average && { label: 'Average', value: average(student.average) },
+          fields.aggregate && { label: 'Aggregate', value: student.aggregate !== null ? String(student.aggregate) : '—' },
+          fields.division && { label: 'Division', value: student.division ?? '—' },
+          attendance,
+        ]}
+      />
+    );
+    if (fields.remarks) remarks = <RemarksBox lines={[{ label: 'Overall', text: student.overallComment }]} />;
+  } else {
+    results = (
+      <ReportSubjectTable title="Subjects" subjects={student.subjects} fields={fields} bands={isNursery ? nurseryBands : oLevelBands} {...columns} />
+    );
+    summary = (
+      <StatRow
+        items={[
+          fields.average && { label: 'Average', value: average(student.average) },
+          fields.overallGrade && { label: 'Overall Grade', value: student.overallGrade ?? '—' },
+          attendance,
+        ]}
+      />
+    );
+    if (fields.remarks) remarks = <RemarksBox lines={[{ label: 'Overall', text: student.overallComment }]} />;
+  }
+  const ratings = fields.progressRatings && nurseryRatings ? <NurseryRatingsTable data={nurseryRatings} /> : null;
+
+  const signatureLabels = design.text.signatures.filter((s) => s.trim());
+  const signatures =
+    fields.signatures && signatureLabels.length > 0 ? (
+      <div
+        className="grid gap-6 text-xs text-text-muted text-center"
+        style={{ gridTemplateColumns: `repeat(${signatureLabels.length}, minmax(0, 1fr))` }}
+      >
+        {signatureLabels.map((label, i) => (
+          <div key={i}>
+            <div className="h-5 border-b border-border mb-1" />
+            {label}
+          </div>
+        ))}
+      </div>
+    ) : null;
+  const issuedDate = (align = 'left') =>
+    fields.issuedDate ? <p className={`${ALIGN_CLASS[align]} text-[10px] text-text-faint`}>Issued on {issuedOn}</p> : null;
+  const gradingKey = fields.gradingKey ? (
+    <GradingLegend
+      bands={isALevel ? [...principalBands, ...subsidiaryBands] : isPrimary ? primaryBands : isNursery ? nurseryBands : oLevelBands}
+      divisions={isPrimary ? aggregation?.divisions : undefined}
+    />
+  ) : null;
+  const footerNote = (align = 'center') =>
+    design.text.footerNote.trim() ? (
+      <p className={`${ALIGN_CLASS[align]} text-[10px] text-text-secondary whitespace-pre-line`}>{design.text.footerNote}</p>
+    ) : null;
+
+  const overallGrade = isALevel ? student.principalGrade : student.overallGrade;
+  return {
+    logo,
+    photo,
+    schoolName: schoolNameNode,
+    schoolDetails,
+    examTitle,
+    badge,
+    header,
+    learner,
+    results,
+    summary,
+    ratings,
+    remarks,
+    signatures,
+    issuedDate,
+    gradingKey,
+    footerNote,
+    placeholders: {
+      school: schoolName,
+      student: student.studentName,
+      class: className,
+      id: student.systemId ?? '',
+      position: showPositions ? position : '',
+      average: average(isALevel ? student.principalAverage : student.average),
+      grade: overallGrade ?? '—',
+      exam: exam.name,
+      term: exam.termName,
+      date: issuedOn,
+    },
+  };
+}
+
+const FRAME_OUTER: Record<TemplateStyle['frame'], string> = {
+  double: 'border-4 border-primary-700 p-1',
+  single: 'border-2 border-primary-700',
+  none: '',
+};
+const FRAME_INNER: Record<TemplateStyle['frame'], string> = {
+  double: 'border border-primary-700',
+  single: '',
+  none: '',
+};
+
+/** A flowing card: header, learner, results, summary, remarks, footer. */
+function StyledCard({ parts, design }: { parts: CardParts; design: TemplateDesign }) {
+  const compact = design.style.density === 'compact';
   return (
-    <div className="report-sheet bg-white p-2 max-w-[800px] mx-auto">
-      {/* Certificate-style double frame, matching the school's printed marksheet layout. */}
-      <div className="border-4 border-primary-700 p-1">
-        <div className="border border-primary-700 p-4">
-          <div className="flex items-start justify-between gap-3 mb-2.5">
-            {/* Fixed-width side slots keep the school name centred whichever are shown. */}
-            <div className="w-16 shrink-0 flex justify-start">
-              {fields.schoolLogo && (
-                <div className="w-12 h-12 rounded-full border-2 border-primary-700 flex items-center justify-center overflow-hidden bg-primary-50">
-                  {schoolInfo?.logoUrl ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img src={schoolInfo.logoUrl} alt="" className="w-full h-full object-contain" />
-                  ) : (
-                    <span className="text-primary-700 font-extrabold text-sm">{initialsOf(schoolName)}</span>
-                  )}
-                </div>
-              )}
-            </div>
-            <div className="flex-1 text-center">
-              <p className="text-xl font-extrabold text-primary-700 uppercase tracking-wide leading-tight">
-                {schoolName}
-              </p>
-              {fields.schoolAddress && subtitle && (
-                <p className="text-[10px] font-semibold text-text-muted uppercase tracking-wide">{subtitle}</p>
-              )}
-              {fields.emisNumber && emis && (
-                <p className="text-[10px] font-semibold text-text-muted tracking-wide">EMIS No. {emis}</p>
-              )}
-              <p className="text-[11px] font-bold text-primary-700 uppercase tracking-wide mt-1">
-                {exam.name} &middot; {exam.termName}
-              </p>
-              <span className="inline-block mt-1 px-3 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-widest text-white bg-gradient-to-r from-accent-dark to-accent">
-                Report Card
-              </span>
-            </div>
-            <div className="w-16 shrink-0 flex justify-end">{fields.studentPhoto && <LearnerPhoto student={student} />}</div>
+    <div className="report-sheet bg-white p-2 max-w-[800px] mx-auto" style={templateVars(design.style)}>
+      <div className={FRAME_OUTER[design.style.frame]}>
+        <div className={`${FRAME_INNER[design.style.frame]} ${compact ? 'p-3' : 'p-4'}`}>
+          {parts.header}
+          <div className={compact ? 'mb-1.5' : 'mb-2.5'}>{parts.learner}</div>
+          <div className={compact ? 'space-y-1.5' : 'space-y-2.5'}>
+            {parts.results}
+            {parts.summary}
+            {parts.ratings}
+            {parts.remarks}
           </div>
-
-          <div className="space-y-1 text-sm mb-2.5 border-t border-b border-border py-1.5">
-            <p className="flex items-baseline gap-2">
-              <span className="text-text-muted shrink-0">Student Name:</span>
-              <span className="flex-1 border-b border-dotted border-border-strong font-semibold text-primary-900 pb-0.5">
-                {student.studentName}
-              </span>
-            </p>
-            <div className="flex flex-wrap gap-x-8 gap-y-1">
-              <p className="flex items-baseline gap-2">
-                <span className="text-text-muted">Class:</span>
-                <span className="font-semibold text-primary-900 border-b border-dotted border-border-strong px-2 min-w-16 inline-block">
-                  {klass.name}
-                  {(stream?.name ?? student.streamName) ? ` ${stream?.name ?? student.streamName}` : ''}
-                </span>
-              </p>
-              {fields.studentId && (
-                <p className="flex items-baseline gap-2">
-                  <span className="text-text-muted">Student ID:</span>
-                  <span className="font-semibold text-primary-900 border-b border-dotted border-border-strong px-2 min-w-16 inline-block">
-                    {student.systemId ?? '—'}
-                  </span>
-                </p>
-              )}
-              {showPositions && (
-                <p className="flex items-baseline gap-2">
-                  <span className="text-text-muted">Position:</span>
-                  <span className="font-semibold text-primary-900 border-b border-dotted border-border-strong px-2 min-w-16 inline-block">
-                    {student.rank ? `${student.rank} of ${totalInClass}` : '—'}
-                  </span>
-                </p>
-              )}
-            </div>
-          </div>
-
-          {isALevel ? (
-            <div className="space-y-2.5">
-              <ReportSubjectTable
-                title="Principal Subjects"
-                subjects={principalSubjects}
-                fields={fields}
-                bands={principalBands}
-                {...columns}
-              />
-              <ReportSubjectTable
-                title="Subsidiary Subjects"
-                subjects={subsidiarySubjects}
-                fields={fields}
-                bands={subsidiaryBands}
-                {...columns}
-              />
-              <div className="grid grid-cols-2 gap-2.5">
-                <StatRow
-                  items={[
-                    fields.average && {
-                      label: 'Principal Avg',
-                      value: student.principalAverage !== null ? `${round(student.principalAverage)}%` : '—',
-                    },
-                    fields.overallGrade && { label: 'Principal Grade', value: student.principalGrade ?? '—' },
-                  ]}
-                />
-                <StatRow
-                  items={[
-                    fields.average && {
-                      label: 'Subsidiary Avg',
-                      value: student.subsidiaryAverage !== null ? `${round(student.subsidiaryAverage)}%` : '—',
-                    },
-                    fields.overallGrade && { label: 'Subsidiary Grade', value: student.subsidiaryGrade ?? '—' },
-                  ]}
-                />
-              </div>
-              <StatRow items={[attendance]} />
-              {fields.remarks && (
-                <RemarksBox
-                  lines={[
-                    { label: 'Principal', text: student.principalComment },
-                    { label: 'Subsidiary', text: student.subsidiaryComment },
-                  ]}
-                />
-              )}
-            </div>
-          ) : isPrimary ? (
-            <div className="space-y-2.5">
-              <ReportSubjectTable
-                title="Examinable Subjects (PLE)"
-                subjects={pleSubjects}
-                fields={fields}
-                bands={primaryBands}
-                showPoints
-                {...columns}
-              />
-              {fields.otherSubjects && (
-                <ReportSubjectTable title="Other Subjects" subjects={otherSubjects} fields={fields} bands={primaryBands} {...columns} />
-              )}
-              <StatRow
-                items={[
-                  fields.totalMarks && { label: 'Total Marks', value: pleScored.length ? `${round(pleTotal)} / ${pleOutOf}` : '—' },
-                  fields.average && { label: 'Average', value: student.average !== null ? `${round(student.average)}%` : '—' },
-                  fields.aggregate && { label: 'Aggregate', value: student.aggregate !== null ? String(student.aggregate) : '—' },
-                  fields.division && { label: 'Division', value: student.division ?? '—' },
-                  attendance,
-                ]}
-              />
-              {fields.remarks && <RemarksBox lines={[{ label: 'Overall', text: student.overallComment }]} />}
-            </div>
-          ) : (
-            <div className="space-y-2.5">
-              <ReportSubjectTable
-                title="Subjects"
-                subjects={student.subjects}
-                fields={fields}
-                bands={isNursery ? nurseryBands : oLevelBands}
-                {...columns}
-              />
-              <StatRow
-                items={[
-                  fields.average && { label: 'Average', value: student.average !== null ? `${round(student.average)}%` : '—' },
-                  fields.overallGrade && { label: 'Overall Grade', value: student.overallGrade ?? '—' },
-                  attendance,
-                ]}
-              />
-              {fields.progressRatings && nurseryRatings && <NurseryRatingsTable data={nurseryRatings} />}
-              {fields.remarks && <RemarksBox lines={[{ label: 'Overall', text: student.overallComment }]} />}
-            </div>
-          )}
-
-          {fields.signatures && (
-            <div className="grid grid-cols-3 gap-6 mt-4 text-xs text-text-muted text-center">
-              <div>
-                <div className="h-5 border-b border-border mb-1" />
-                Class Teacher&apos;s Signature
-              </div>
-              <div>
-                <div className="h-5 border-b border-border mb-1" />
-                Parent/Guardian&apos;s Signature
-              </div>
-              <div>
-                <div className="h-5 border-b border-border mb-1" />
-                Head Teacher&apos;s Signature
-              </div>
-            </div>
-          )}
-          {fields.issuedDate && <p className="text-[10px] text-text-faint mt-2">Issued on {issuedOn}</p>}
-
-          {fields.gradingKey && (
-            <GradingLegend
-              bands={
-                isALevel
-                  ? [...principalBands, ...subsidiaryBands]
-                  : isPrimary
-                    ? primaryBands
-                    : isNursery
-                      ? nurseryBands
-                      : oLevelBands
-              }
-              divisions={isPrimary ? aggregation?.divisions : undefined}
-            />
-          )}
+          {parts.signatures && <div className={compact ? 'mt-3' : 'mt-4'}>{parts.signatures}</div>}
+          {parts.issuedDate() && <div className="mt-2">{parts.issuedDate()}</div>}
+          {parts.footerNote() && <div className="mt-2">{parts.footerNote()}</div>}
+          {parts.gradingKey}
         </div>
       </div>
     </div>
   );
+}
+
+const colorOf = (value: unknown, fallback: string) =>
+  value === 'accent' ? 'var(--color-primary-700)' : typeof value === 'string' && value ? value : fallback;
+
+/** One page-editor block's content, sized to fill its box. Shared with the editor. */
+export function CanvasBlockContent({ block, parts }: { block: CanvasBlock; parts: CardParts }) {
+  const p = block.props;
+  const align = typeof p.align === 'string' ? p.align : undefined;
+  switch (block.type) {
+    case 'header':
+      return <>{parts.header}</>;
+    case 'schoolName':
+      return <>{parts.schoolName(align, typeof p.size === 'number' ? p.size : undefined)}</>;
+    case 'schoolDetails':
+      return <>{parts.schoolDetails(align)}</>;
+    case 'examTitle':
+      return <>{parts.examTitle(align)}</>;
+    case 'badge':
+      return <div className="text-center">{parts.badge}</div>;
+    case 'logo':
+      return <div className="w-full h-full flex items-center justify-center">{parts.logo}</div>;
+    case 'photo':
+      return parts.photo ? <div className="w-full h-full [&>div]:w-full [&>div]:h-full">{parts.photo}</div> : null;
+    case 'learner':
+      return <>{parts.learner}</>;
+    case 'results':
+      return (
+        <div className="space-y-2">
+          {parts.results}
+          {parts.ratings}
+        </div>
+      );
+    case 'summary':
+      return <>{parts.summary}</>;
+    case 'remarks':
+      return <>{parts.remarks}</>;
+    case 'signatures':
+      return <div className="pt-2">{parts.signatures}</div>;
+    case 'issuedDate':
+      return <>{parts.issuedDate(align)}</>;
+    case 'gradingKey':
+      return <div className="[&>div]:mt-0 [&>div]:pt-0 [&>div]:border-0">{parts.gradingKey}</div>;
+    case 'footerNote':
+      return <>{parts.footerNote(align)}</>;
+    case 'text':
+      return (
+        <p
+          className="whitespace-pre-line leading-snug"
+          style={{
+            fontSize: `${p.size}pt`,
+            fontWeight: p.bold ? 700 : 400,
+            fontStyle: p.italic ? 'italic' : 'normal',
+            textTransform: p.uppercase ? 'uppercase' : 'none',
+            textAlign: (align ?? 'left') as 'left' | 'center' | 'right',
+            color: colorOf(p.color, '#1F2937'),
+          }}
+        >
+          {fillPlaceholders(String(p.text ?? ''), parts.placeholders)}
+        </p>
+      );
+    case 'line': {
+      const vertical = block.h > block.w;
+      const thickness = `${Number(p.thickness) || 1}px`;
+      return (
+        <div className="w-full h-full flex items-center justify-center">
+          <div
+            style={{
+              background: colorOf(p.color, 'var(--color-primary-700)'),
+              width: vertical ? thickness : '100%',
+              height: vertical ? '100%' : thickness,
+            }}
+          />
+        </div>
+      );
+    }
+    case 'box':
+      return (
+        <div
+          className="w-full h-full"
+          style={{
+            border: `${Number(p.thickness) || 0}px solid ${colorOf(p.color, 'var(--color-primary-700)')}`,
+            background: typeof p.fill === 'string' && p.fill ? p.fill : 'transparent',
+            borderRadius: `${Number(p.radius) || 0}mm`,
+          }}
+        />
+      );
+  }
+}
+
+/** A page-editor card: each block where the school put it. The results table
+ * grows with the learner's subjects, and whatever sits below it moves down by
+ * as much, so a long subject list never covers the summary or signatures. */
+function CanvasCard({ parts, design }: { parts: CardParts; design: TemplateDesign }) {
+  const blocks = design.blocks ?? [];
+  const results = blocks.find((b) => b.type === 'results');
+  const resultsRef = useRef<HTMLDivElement>(null);
+  const [growth, setGrowth] = useState(0);
+
+  useLayoutEffect(() => {
+    const el = resultsRef.current;
+    if (!el || !results) return;
+    const measure = () => setGrowth(Math.max(0, el.scrollHeight / PX_PER_MM - results.h));
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [results]);
+
+  const resultsBottom = results ? results.y + results.h : Infinity;
+  const shift = (b: CanvasBlock) => (b !== results && b.y >= resultsBottom - 0.5 ? growth : 0);
+  const pageHeight = Math.max(PAGE_MM.height, ...blocks.map((b) => b.y + b.h + shift(b) + 8));
+
+  return (
+    <div
+      className="report-sheet report-canvas bg-white mx-auto relative overflow-hidden"
+      style={{ ...templateVars(design.style), width: `${PAGE_MM.width}mm`, height: `${pageHeight}mm` }}
+    >
+      {blocks.map((b) => {
+        const style: React.CSSProperties = {
+          position: 'absolute',
+          left: `${b.x}mm`,
+          top: `${b.y + shift(b)}mm`,
+          width: `${b.w}mm`,
+          [b === results ? 'minHeight' : 'height']: `${b.h}mm`,
+        };
+        return (
+          <div key={b.id} style={style} ref={b === results ? resultsRef : undefined} className={b === results ? '' : 'overflow-hidden'}>
+            <CanvasBlockContent block={b} parts={parts} />
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+export function StudentReportCardSheet({
+  sheet,
+  schoolInfo,
+  ...bands
+}: {
+  sheet: Sheet;
+  schoolInfo: SchoolInfo | null;
+} & CardBands) {
+  const template = sheet.template;
+  const design = template?.design ?? CLASSIC_DESIGN;
+  const parts = buildCardParts(sheet, schoolInfo, bands, design);
+  return template?.kind === 'canvas' ? <CanvasCard parts={parts} design={design} /> : <StyledCard parts={parts} design={design} />;
 }
 
 /** The grading bands each level prints with, from the school's selections. */

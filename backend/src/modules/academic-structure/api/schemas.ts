@@ -269,8 +269,6 @@ export const sectionSettingsBodySchema = {
     section: { type: "string", enum: ["KINDERGARTEN", "PRIMARY", "SECONDARY"] },
     assessmentStyle: { type: "string", enum: ["ratings", "marks", "both"] },
     showPositions: { type: "boolean" },
-    // { field: true | false } — checked against REPORT_CARD_FIELDS in the repository.
-    reportCard: { type: "object", additionalProperties: { type: "boolean" }, maxProperties: 50 },
   },
   additionalProperties: false,
 } as const;
@@ -317,6 +315,42 @@ export const bulkStreamsBodySchema = {
     classIds: { type: "array", items: { type: "string", format: "uuid" }, minItems: 1, maxItems: 50 },
     names: { type: "array", items: { type: "string", minLength: 1, maxLength: 40 }, minItems: 1, maxItems: 20 },
     capacity: { type: ["integer", "null"], minimum: 1, maximum: 500 },
+  },
+  additionalProperties: false,
+} as const;
+
+// Report card templates. The design is checked and cleaned in the repository
+// (normalizeDesign), which knows every field, column, style and block.
+const SECTION_ENUM = { type: "string", enum: ["KINDERGARTEN", "PRIMARY", "SECONDARY"] } as const;
+const DESIGN = { type: "object", maxProperties: 20 } as const;
+
+export const reportCardTemplateCreateSchema = {
+  type: "object",
+  required: ["section", "name", "kind", "design"],
+  properties: {
+    section: SECTION_ENUM,
+    name: { type: "string", minLength: 1, maxLength: 60 },
+    kind: { type: "string", enum: ["styled", "canvas"] },
+    design: DESIGN,
+  },
+  additionalProperties: false,
+} as const;
+
+export const reportCardTemplateUpdateSchema = {
+  type: "object",
+  properties: {
+    name: { type: "string", minLength: 1, maxLength: 60 },
+    design: DESIGN,
+  },
+  additionalProperties: false,
+} as const;
+
+export const reportCardTemplateDefaultSchema = {
+  type: "object",
+  required: ["section", "templateId"],
+  properties: {
+    section: SECTION_ENUM,
+    templateId: { type: "string", minLength: 1, maxLength: 64 },
   },
   additionalProperties: false,
 } as const;
