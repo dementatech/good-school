@@ -70,12 +70,48 @@ export const BLOCK_TYPES = [
   "gradingKey",
   "footerNote",
   "text",
+  "field",
   "line",
   "box",
 ] as const;
 export type BlockType = (typeof BLOCK_TYPES)[number];
 
 export type BlockProps = Record<string, string | number | boolean>;
+
+// The data a "field" block, a text block's {placeholders}, and a show-if
+// condition can use. Mirrored in the frontend's templates.ts (DATA_FIELDS).
+export const DATA_KEYS = [
+  "school.name",
+  "school.address",
+  "school.emis",
+  "learner.name",
+  "learner.id",
+  "learner.class",
+  "learner.stream",
+  "learner.position",
+  "learner.classSize",
+  "learner.average",
+  "learner.grade",
+  "learner.comment",
+  "learner.aggregate",
+  "learner.division",
+  "learner.attendance",
+  "learner.subjects",
+  "exam.name",
+  "exam.term",
+  "report.date",
+] as const;
+export type DataKey = (typeof DATA_KEYS)[number];
+// The ones a show-if condition compares as numbers.
+const NUMERIC_KEYS: DataKey[] = ["learner.position", "learner.classSize", "learner.average", "learner.aggregate", "learner.subjects"];
+
+export const CONDITION_OPS = ["<", "<=", ">", ">=", "=", "!="] as const;
+export interface Condition {
+  field: DataKey;
+  op: (typeof CONDITION_OPS)[number];
+  value: string;
+}
+
 export interface CanvasBlock {
   id: string;
   type: BlockType;
@@ -85,7 +121,40 @@ export interface CanvasBlock {
   w: number;
   h: number;
   props: BlockProps;
+  /** Print this block only when the condition holds for the learner. */
+  showIf?: Condition;
 }
+
+// Report rules: which exams the card shows, and how scores are highlighted.
+export const EXAM_RULE_MODES = ["opened", "term", "codes"] as const;
+export interface ExamRule {
+  /** opened: just the exam the report is printed from. term: every exam in
+   * its term that has started. codes: the term's exams with these codes. */
+  mode: (typeof EXAM_RULE_MODES)[number];
+  codes: string[];
+  /** Combine them into one Final mark instead of showing them side by side. */
+  combine: boolean;
+  /** Combined only: share per exam code ({ BOT: 20, MID: 30, EOT: 50 });
+   * a code left out counts 1 share. */
+  weights: Record<string, number>;
+}
+export const HIGHLIGHT_TARGETS = ["score", "grade"] as const;
+export interface HighlightRule {
+  target: (typeof HIGHLIGHT_TARGETS)[number];
+  op: (typeof CONDITION_OPS)[number];
+  value: string;
+  color: string;
+  fill: string;
+  bold: boolean;
+}
+export interface TemplateRules {
+  exams: ExamRule;
+  highlights: HighlightRule[];
+}
+const DEFAULT_RULES: TemplateRules = {
+  exams: { mode: "opened", codes: [], combine: false, weights: {} },
+  highlights: [],
+};
 
 export interface TemplateDesign {
   /** The built-in this was made from; fills anything missing. */
@@ -94,6 +163,7 @@ export interface TemplateDesign {
   columns: ColumnKey[];
   style: TemplateStyle;
   text: TemplateText;
+  rules: TemplateRules;
   /** Canvas templates only. */
   blocks?: CanvasBlock[];
 }
@@ -173,7 +243,7 @@ interface BuiltIn {
   name: string;
   description: string;
   kind: TemplateKind;
-  design: Omit<TemplateDesign, "base">;
+  design: Omit<TemplateDesign, "base" | "rules"> & { rules?: TemplateRules };
 }
 
 const BUILT_INS: BuiltIn[] = [
@@ -281,6 +351,15 @@ const BLOCK_PROPS: Record<BlockType, Record<string, PropRule>> = {
   issuedDate: { align: ALIGN },
   gradingKey: {},
   footerNote: { align: ALIGN },
+  field: {
+    binding: { kind: "enum", options: DATA_KEYS, fallback: "learner.name" },
+    label: { kind: "text", max: 60, fallback: "" },
+    labelPosition: { kind: "enum", options: ["left", "above", "none"], fallback: "left" },
+    size: SIZE(11),
+    bold: { kind: "bool", fallback: true },
+    align: ALIGN,
+    color: { kind: "color", fallback: "#1F2937" },
+  },
   text: {
     text: { kind: "text", max: 600, fallback: "Text" },
     size: SIZE(11),
@@ -317,6 +396,70 @@ function normalizeProps(type: BlockType, raw: unknown): BlockProps {
   return out;
 }
 
+function normalizeCondition(raw: unknown): Condition | null {
+  if (!isRecord(raw) || !DATA_KEYS.includes(raw.field as DataKey)) return null;
+  const field = raw.field as DataKey;
+  const op = pick(CONDITION_OPS, raw.op, "=");
+  const value = str(raw.value, 60).trim();
+  if (!value) return null;
+  // Order comparisons only make sense for numbers.
+  if (!NUMERIC_KEYS.includes(field) && !["=", "!="].includes(op)) return null;
+  if (NUMERIC_KEYS.includes(field) && !Number.isFinite(Number(value))) return null;
+  return { field, op, value };
+}
+
+const CODE = /^[A-Z0-9]{1,10}$/;
+
+function normalizeRules(raw: unknown, base: TemplateRules): TemplateRules {
+  const input = isRecord(raw) ? raw : {};
+  const e = isRecord(input.exams) ? input.exams : {};
+  const codes = Array.isArray(e.codes)
+    ? [...new Set(e.codes.filter((c): c is string => typeof c === "string").map((c) => c.trim().toUpperCase()))]
+        .filter((c) => CODE.test(c))
+        .slice(0, 8)
+    : base.exams.codes;
+  const weights: Record<string, number> = {};
+  if (isRecord(e.weights)) {
+    for (const [code, w] of Object.entries(e.weights)) {
+      const key = code.trim().toUpperCase();
+      if (CODE.test(key) && typeof w === "number" && Number.isFinite(w) && w >= 0 && w <= 1000) weights[key] = w;
+      if (Object.keys(weights).length >= 8) break;
+    }
+  }
+  let mode = pick(EXAM_RULE_MODES, e.mode, base.exams.mode);
+  if (mode === "codes" && codes.length === 0) mode = "opened";
+  const exams: ExamRule = {
+    mode,
+    codes,
+    combine: mode !== "opened" && (typeof e.combine === "boolean" ? e.combine : base.exams.combine),
+    weights,
+  };
+
+  const highlights: HighlightRule[] = [];
+  if (Array.isArray(input.highlights)) {
+    for (const h of input.highlights.slice(0, 12)) {
+      if (!isRecord(h)) continue;
+      const target = pick(HIGHLIGHT_TARGETS, h.target, "score");
+      const op = pick(CONDITION_OPS, h.op, "<");
+      const value = str(h.value, 20).trim();
+      if (!value) continue;
+      if (target === "score" && !Number.isFinite(Number(value))) continue;
+      if (target === "grade" && !["=", "!="].includes(op)) continue;
+      highlights.push({
+        target,
+        op,
+        value,
+        color: typeof h.color === "string" && HEX.test(h.color) ? h.color : "",
+        fill: typeof h.fill === "string" && HEX.test(h.fill) ? h.fill : "",
+        bold: h.bold === true,
+      });
+    }
+  } else {
+    highlights.push(...base.highlights);
+  }
+  return { exams, highlights };
+}
+
 function normalizeBlocks(raw: unknown, fallback: CanvasBlock[]): CanvasBlock[] {
   if (!Array.isArray(raw)) return fallback;
   if (raw.length > 80) throw new InvalidTemplateError("A page can hold at most 80 blocks.");
@@ -338,6 +481,7 @@ function normalizeBlocks(raw: unknown, fallback: CanvasBlock[]): CanvasBlock[] {
       w: clamp(b.w, 2, PAGE_MM.width - x, 40),
       h: clamp(b.h, 0.5, PAGE_MM.height - y, 10),
       props: normalizeProps(type, b.props),
+      ...(normalizeCondition(b.showIf) ? { showIf: normalizeCondition(b.showIf)! } : {}),
     });
   }
   return out;
@@ -392,7 +536,14 @@ export function normalizeDesign(section: SchoolSection, kind: TemplateKind, raw:
     footerNote: str(t.footerNote, 300, bt.footerNote),
   };
 
-  const design: TemplateDesign = { base: base.key, fields, columns, style, text };
+  const design: TemplateDesign = {
+    base: base.key,
+    fields,
+    columns,
+    style,
+    text,
+    rules: normalizeRules(input.rules, base.design.rules ?? DEFAULT_RULES),
+  };
   if (kind === "canvas") design.blocks = normalizeBlocks(input.blocks, base.design.blocks ?? STARTER_BLOCKS);
   return design;
 }

@@ -4,9 +4,14 @@ import { useLayoutEffect, useRef, useState } from 'react';
 import type { SchoolLevel, SchoolSection, SubjectPhase } from '@/lib/levels';
 import {
   COLUMN_KEYS,
+  DEFAULT_RULES,
   PAGE_MM,
   PX_PER_MM,
+  compare,
   fillPlaceholders,
+  highlightFor,
+  type DataKey,
+  type HighlightRule,
   templateVars,
   type CanvasBlock,
   type ColumnKey,
@@ -333,12 +338,14 @@ export const CLASSIC_DESIGN: TemplateDesign = {
     signatures: ["Class Teacher's Signature", "Parent/Guardian's Signature", "Head Teacher's Signature"],
     footerNote: '',
   },
+  rules: DEFAULT_RULES,
 };
 
 interface TableLook {
   columns: ColumnKey[];
   density: TemplateStyle['density'];
   table: TemplateStyle['table'];
+  highlights?: HighlightRule[];
 }
 const CLASSIC_LOOK: TableLook = { columns: [...COLUMN_KEYS], density: 'comfortable', table: 'bordered' };
 
@@ -378,12 +385,17 @@ function ReportSubjectTable({
   const inline = compared.some((e) => e.isCurrent);
   const nameOf = (s: ReportCardStudentSubject) =>
     fields.shortSubjectNames && s.subjectReportName ? s.subjectReportName : s.subjectName;
+  // A highlight rule ("scores under 40 in red") styles the number itself.
+  const scored = (value: number | null, text: React.ReactNode) => {
+    const style = value !== null ? highlightFor(look.highlights, 'score', round(value)) : undefined;
+    return style ? <span className="px-1 rounded" style={style}>{text}</span> : text;
+  };
   const scoreCell = (s: ReportCardStudentSubject) =>
     s.isAbsent ? (
       <span className="text-text-muted font-normal">Abs</span>
     ) : s.rawScore !== null ? (
       // Out of the subject's own full mark when it isn't 100.
-      s.mark !== null && s.maxMark !== 100 ? `${round(s.mark)}/${s.maxMark}` : round(s.rawScore)
+      scored(s.rawScore, s.mark !== null && s.maxMark !== 100 ? `${round(s.mark)}/${s.maxMark}` : round(s.rawScore))
     ) : (
       '—'
     );
@@ -432,7 +444,7 @@ function ReportSubjectTable({
           cell: (s) => {
             if (exam.isCurrent) return scoreCell(s);
             const past = s.history?.find((h) => h.examId === exam.id);
-            return past?.isAbsent ? 'Abs' : past?.rawScore != null ? round(past.rawScore) : '—';
+            return past?.isAbsent ? 'Abs' : past?.rawScore != null ? scored(past.rawScore, round(past.rawScore)) : '—';
           },
         }));
         if (fields.score && !inline) {
@@ -459,6 +471,7 @@ function ReportSubjectTable({
                   return grade ? (
                     <span
                       className={`inline-flex min-w-6 justify-center px-1.5 py-0.5 rounded-md text-[11px] font-extrabold ${gradeChip(grade)}`}
+                      style={highlightFor(look.highlights, 'grade', grade)}
                     >
                       {grade}
                     </span>
@@ -676,8 +689,12 @@ export interface CardParts {
   issuedDate: (align?: string) => React.ReactNode;
   gradingKey: React.ReactNode;
   footerNote: (align?: string) => React.ReactNode;
-  /** What {student}, {class}, … in a text block become. */
+  /** What {learner.name}, {student}, … in a text block become. */
   placeholders: Record<string, string>;
+  /** Each data item as printed ("68%"), for data-field blocks. */
+  data: Record<DataKey, string>;
+  /** Each data item as compared by show-if conditions (68). */
+  raw: Record<DataKey, string | number | null>;
 }
 
 const ALIGN_CLASS: Record<string, string> = { left: 'text-left', center: 'text-center', right: 'text-right' };
@@ -685,7 +702,12 @@ const ALIGN_CLASS: Record<string, string> = { left: 'text-left', center: 'text-c
 export function buildCardParts(sheet: Sheet, schoolInfo: SchoolInfo | null, bands: CardBands, design: TemplateDesign): CardParts {
   const { student, exam, klass, stream, aggregation, totalInClass, showPositions, fields, nurseryRatings, compared, mode } = sheet;
   const { primaryBands, nurseryBands, oLevelBands, principalBands, subsidiaryBands } = bands;
-  const look: TableLook = { columns: design.columns, density: design.style.density, table: design.style.table };
+  const look: TableLook = {
+    columns: design.columns,
+    density: design.style.density,
+    table: design.style.table,
+    highlights: design.rules?.highlights,
+  };
   const columns = { compared, combined: mode === 'combined', examLabel: exam.label, look };
   const compact = design.style.density === 'compact';
   const gap = compact ? 'space-y-1.5' : 'space-y-2.5';
@@ -899,6 +921,34 @@ export function buildCardParts(sheet: Sheet, schoolInfo: SchoolInfo | null, band
     ) : null;
 
   const overallGrade = isALevel ? student.principalGrade : student.overallGrade;
+  const avg = isALevel ? student.principalAverage : student.average;
+  const raw: Record<DataKey, string | number | null> = {
+    'learner.name': student.studentName,
+    'learner.id': student.systemId,
+    'learner.class': className,
+    'learner.stream': stream?.name ?? student.streamName,
+    'learner.position': showPositions ? student.rank : null,
+    'learner.classSize': totalInClass,
+    'learner.average': avg !== null ? round(avg) : null,
+    'learner.grade': overallGrade,
+    'learner.comment': isALevel ? student.principalComment : student.overallComment,
+    'learner.aggregate': student.aggregate,
+    'learner.division': student.division,
+    'learner.attendance': student.attendance ? `${student.attendance.present} / ${student.attendance.total} days` : null,
+    'learner.subjects': student.subjects.length,
+    'school.name': schoolName,
+    'school.address': subtitle || null,
+    'school.emis': emis ?? null,
+    'exam.name': exam.name,
+    'exam.term': exam.termName,
+    'report.date': issuedOn,
+  };
+  const data = Object.fromEntries(
+    Object.entries(raw).map(([k, v]) => [
+      k,
+      v === null || v === undefined || v === '' ? '—' : k === 'learner.average' ? `${v}%` : k === 'learner.position' ? position : String(v),
+    ]),
+  ) as Record<DataKey, string>;
   return {
     logo,
     photo,
@@ -916,7 +966,10 @@ export function buildCardParts(sheet: Sheet, schoolInfo: SchoolInfo | null, band
     issuedDate,
     gradingKey,
     footerNote,
+    data,
+    raw,
     placeholders: {
+      ...data,
       school: schoolName,
       student: student.studentName,
       class: className,
@@ -969,6 +1022,12 @@ function StyledCard({ parts, design }: { parts: CardParts; design: TemplateDesig
 
 const colorOf = (value: unknown, fallback: string) =>
   value === 'accent' ? 'var(--color-primary-700)' : typeof value === 'string' && value ? value : fallback;
+
+/** Whether a block prints for this learner (its show-if condition, if any). */
+export function blockVisible(block: CanvasBlock, parts: CardParts): boolean {
+  if (!block.showIf) return true;
+  return compare(parts.raw[block.showIf.field], block.showIf.op, block.showIf.value);
+}
 
 /** One page-editor block's content, sized to fill its box. Shared with the editor. */
 export function CanvasBlockContent({ block, parts }: { block: CanvasBlock; parts: CardParts }) {
@@ -1026,6 +1085,30 @@ export function CanvasBlockContent({ block, parts }: { block: CanvasBlock; parts
           {fillPlaceholders(String(p.text ?? ''), parts.placeholders)}
         </p>
       );
+    case 'field': {
+      const key = String(p.binding ?? 'learner.name') as DataKey;
+      const label = String(p.label ?? '');
+      const position = String(p.labelPosition ?? 'left');
+      const valueStyle: React.CSSProperties = {
+        fontSize: `${p.size ?? 11}pt`,
+        fontWeight: p.bold ? 700 : 400,
+        color: colorOf(p.color, '#1F2937'),
+      };
+      return (
+        <div
+          className={`leading-snug ${position === 'above' ? '' : 'flex items-baseline gap-1.5'}`}
+          style={{ textAlign: (align ?? 'left') as 'left' | 'center' | 'right', justifyContent: align === 'center' ? 'center' : align === 'right' ? 'flex-end' : undefined }}
+        >
+          {label && position !== 'none' && (
+            <span className={`text-text-muted ${position === 'above' ? 'block text-[9px] uppercase tracking-wide font-bold' : ''}`} style={position === 'above' ? undefined : { fontSize: `${p.size ?? 11}pt` }}>
+              {label}
+              {position === 'left' ? ':' : ''}
+            </span>
+          )}
+          <span style={valueStyle}>{parts.data[key] ?? '—'}</span>
+        </div>
+      );
+    }
     case 'line': {
       const vertical = block.h > block.w;
       const thickness = `${Number(p.thickness) || 1}px`;
@@ -1059,7 +1142,8 @@ export function CanvasBlockContent({ block, parts }: { block: CanvasBlock; parts
  * grows with the learner's subjects, and whatever sits below it moves down by
  * as much, so a long subject list never covers the summary or signatures. */
 function CanvasCard({ parts, design }: { parts: CardParts; design: TemplateDesign }) {
-  const blocks = design.blocks ?? [];
+  // Blocks whose show-if condition the learner doesn't meet aren't printed.
+  const blocks = (design.blocks ?? []).filter((b) => blockVisible(b, parts));
   const results = blocks.find((b) => b.type === 'results');
   const resultsRef = useRef<HTMLDivElement>(null);
   const [growth, setGrowth] = useState(0);
