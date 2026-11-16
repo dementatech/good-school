@@ -1,4 +1,5 @@
 import { pool } from "../../../shared/db/index.js";
+import { attachDefaultGradingSchemes } from "./grading-schemes.repository.js";
 
 // Which curricula a school runs. A school opts in to UNEB (and later Cambridge
 // etc.); classes/streams can then only reference stages of a curriculum the
@@ -46,6 +47,7 @@ export async function addSchoolCurriculum(
      values ($1, $2) on conflict do nothing`,
     [schoolId, curriculumId],
   );
+  await attachDefaultGradingSchemes(pool, schoolId);
   return true;
 }
 

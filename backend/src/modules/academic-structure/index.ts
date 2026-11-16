@@ -8,15 +8,20 @@ export { getCurrentAcademicYear } from "./domain/academic-years.repository.js";
 export type { TermRecord } from "./domain/terms.repository.js";
 export { getCurrentTerm } from "./domain/terms.repository.js";
 export type { GradeBandRecord } from "./domain/grading-schemes.repository.js";
-export { computeGrade, getActiveSchemeForSubject } from "./domain/grading-schemes.repository.js";
+export {
+  attachDefaultGradingSchemes,
+  computeGrade,
+  getActiveSchemeForSubject,
+} from "./domain/grading-schemes.repository.js";
 export type { AssessmentStyle, ReportCardFields, SectionSettings } from "./domain/section-settings.repository.js";
 export {
   getSectionSettings,
   nurseryAssessmentStyle,
-  reportCardSettingsFor,
   showPositionsFor,
 } from "./domain/section-settings.repository.js";
 
+export type { ResolvedTemplate as ReportCardTemplate } from "./domain/report-card-templates.repository.js";
+export { reportCardSettingsFor } from "./domain/report-card-templates.repository.js";
 export {
   LOWER_SECONDARY_STAGES,
   lowerSecondaryTakesAllSubjects,

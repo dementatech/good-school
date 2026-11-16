@@ -61,7 +61,7 @@ const NAV_BASE = [
     children: [
       { href: '/school-admin/exams', label: 'Manage Exams', icon: ClipboardList, exact: true },
       { href: '/school-admin/report-card-studio', label: 'Report Card Studio', icon: FileBarChart2 },
-      { href: '/school-admin/report-card-layout', label: 'Report Card Layout', icon: LayoutTemplate },
+      { href: '/school-admin/report-card-layout', label: 'Report Card Templates', icon: LayoutTemplate },
       { href: '/school-admin/exam-performance', label: 'Exam Performance', icon: TrendingUp },
       { href: '/school-admin/grading-schemes', label: 'Grading Schemes', icon: Award },
       { href: '/school-admin/kindergarten', label: 'Kindergarten Progress', icon: Baby },

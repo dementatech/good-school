@@ -90,6 +90,7 @@ export const reportCardQuerySchema = {
     // Comma-separated, same order as each other.
     examIds: { type: "string" },
     weights: { type: "string" },
+    templateId: { type: "string", maxLength: 64 },
   },
   additionalProperties: false,
 } as const;

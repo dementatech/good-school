@@ -1,4 +1,5 @@
 import { pool } from "../../../shared/db/index.js";
+import { attachDefaultGradingSchemes } from "../../academic-structure/index.js";
 import type { SchoolCurriculumRef } from "./schools.repository.js";
 
 // Per-school curriculum attach/detach, addressed by school id — for the
@@ -65,6 +66,7 @@ export async function attach(
        on conflict (school_id, curriculum_id) do update set is_primary = excluded.is_primary or school_curriculum.is_primary`,
       [schoolId, curriculumId, primary],
     );
+    await attachDefaultGradingSchemes(client, schoolId);
     await client.query("COMMIT");
     return "ok";
   } catch (err) {

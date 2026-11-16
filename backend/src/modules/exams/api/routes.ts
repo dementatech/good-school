@@ -88,12 +88,13 @@ function slotOf(src: { subjectId: string; classId: string; streamId?: string | n
 }
 
 // Maps a marks-entry domain error to its HTTP status, or rethrows.
-function reportOptionsFrom(query: { mode?: ReportMode; examIds?: string; weights?: string }): ReportOptions {
+function reportOptionsFrom(query: { mode?: ReportMode; examIds?: string; weights?: string; templateId?: string }): ReportOptions {
   const list = (value?: string) => (value ? value.split(",").filter(Boolean) : undefined);
   return {
     mode: query.mode ?? "single",
     examIds: list(query.examIds),
     weights: list(query.weights)?.map(Number),
+    templateId: query.templateId || undefined,
   };
 }
 
@@ -342,7 +343,7 @@ export async function examsRoutes(fastify: FastifyInstance) {
   // rank and grade for one class (or one stream of it) in this exam.
   fastify.get<{
     Params: { id: string };
-    Querystring: { classId: string; streamId?: string; mode?: ReportMode; examIds?: string; weights?: string };
+    Querystring: { classId: string; streamId?: string; mode?: ReportMode; examIds?: string; weights?: string; templateId?: string };
   }>(
     "/:id/report-card",
     { preHandler: SCHOOL, schema: { querystring: reportCardQuerySchema } },
@@ -380,9 +381,10 @@ export async function examsRoutes(fastify: FastifyInstance) {
       mode?: string;
       examIds?: string;
       weights?: string;
+      templateId?: string;
     };
   }>("/:id/report-cards/pdf", { preHandler: SCHOOL_ADMIN_ONLY }, async (request, reply) => {
-    const { classId, streamId, studentId, all, yearId, mode, examIds, weights } = request.query;
+    const { classId, streamId, studentId, all, yearId, mode, examIds, weights, templateId } = request.query;
     if (!classId && all !== "1") {
       return reply.status(400).send(fail("classId (or all=1) is required"));
     }
@@ -395,6 +397,7 @@ export async function examsRoutes(fastify: FastifyInstance) {
     if (mode) qs.set("mode", mode);
     if (examIds) qs.set("examIds", examIds);
     if (weights) qs.set("weights", weights);
+    if (templateId) qs.set("templateId", templateId);
     const path = `/school-admin/exams/${request.params.id}/report-cards?${qs.toString()}`;
     try {
       const pdf = await renderReportCardsPdf(path, request.headers.cookie);

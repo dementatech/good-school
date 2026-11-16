@@ -76,6 +76,8 @@ export function SubjectFormModal({
   // Only the platform catalog carries UNEB codes (a school's proposal never
   // does), and General Paper's S101 is fixed.
   const showUnebCode = phase === 'A_LEVEL' && !isProposal && !initial?.isGeneralPaper;
+  // O-Level: the UCE paper code (553 Biology), typed in — it prints on report cards.
+  const showUceCode = phase === 'O_LEVEL' && !isProposal;
   const unebOptions = UNEB_A_LEVEL_SUBJECTS.filter((u) =>
     form.category === 'subsidiary' ? u.kind === 'subsidiary' : u.kind === 'science' || u.kind === 'arts',
   );
@@ -141,7 +143,7 @@ export function SubjectFormModal({
       isExaminable: form.isExaminable,
       isActive: form.isActive,
       stageIds: form.stageIds,
-      ...(showUnebCode ? { unebCode: form.unebCode || null } : {}),
+      ...(showUnebCode || showUceCode ? { unebCode: form.unebCode.trim() || null } : {}),
       hasVariant,
       variants: hasVariant
         ? variants.map((v) => ({
@@ -288,6 +290,19 @@ export function SubjectFormModal({
               Combination rules use this to recognise the subject (e.g. Principal Mathematics →
               Subsidiary ICT), whatever it&apos;s called here.
             </p>
+          </div>
+        )}
+        {showUceCode && (
+          <div>
+            <Input
+              label="UCE paper code"
+              placeholder="553"
+              inputMode="numeric"
+              maxLength={3}
+              value={form.unebCode}
+              onChange={(e) => setForm({ ...form, unebCode: e.target.value.replace(/\D/g, '') })}
+            />
+            <p className="text-xs text-text-faint mt-1">Printed in the Code column of report cards.</p>
           </div>
         )}
         {initial?.isGeneralPaper && (
