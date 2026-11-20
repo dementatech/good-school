@@ -633,8 +633,8 @@ interface RosterEntry {
   systemId: string | null;
 }
 
-// The students who should appear on a subject's mark sheet: everyone with an
-// active enrollment in the class (and stream, if the slot has one) for the
+// The students who should appear on a subject's mark sheet: every active
+// (not archived) student with an active enrollment in the class (and stream, if the slot has one) for the
 // exam's academic year, INTERSECTED with the subject's registration —
 // student_subject rows with status active/added. Fallback: a student who has no
 // student_subject rows at all for that year (subject selection never done for
@@ -652,7 +652,7 @@ async function roster(db: Db, exam: ExamContext, slot: SlotRef): Promise<RosterE
        join students s on s.user_id = en.student_user_id
        join users u on u.id = en.student_user_id
       where en.school_id = $1 and en.academic_year_id = $2 and en.class_id = $3
-        and en.status = 'active'
+        and en.status = 'active' and s.is_active
         and ($4::uuid is null or en.stream_id = $4::uuid)
         and (
           not exists (
@@ -958,7 +958,7 @@ async function slotsForExam(
               select count(*) from student_enrollment en
                join students s2 on s2.user_id = en.student_user_id
                where en.school_id = $1 and en.academic_year_id = $2
-                 and en.class_id = sta.class_id and en.status = 'active'
+                 and en.class_id = sta.class_id and en.status = 'active' and s2.is_active
                  and (sta.stream_id is null or en.stream_id = sta.stream_id)
                  and (
                    not exists (select 1 from student_subject ss
@@ -976,6 +976,7 @@ async function slotsForExam(
                 select er.student_user_id
                   from exam_result er
                   join student_enrollment en2 on en2.student_user_id = er.student_user_id
+                  join students s3 on s3.user_id = er.student_user_id and s3.is_active
                  where er.school_exam_id = $3 and er.subject_id = sta.subject_id
                    and en2.school_id = $1 and en2.academic_year_id = $2
                    and en2.class_id = sta.class_id and en2.status = 'active'
@@ -1455,7 +1456,7 @@ export async function getExamReportCard(
          left join streams st on st.id = en.stream_id
         where en.school_id = $1 and en.academic_year_id = $2 and en.class_id = $3
           and ($4::uuid is null or en.stream_id = $4::uuid)
-          and (en.status = 'active' or exists (
+          and ((en.status = 'active' and s.is_active) or exists (
                 select 1 from exam_result er
                  where er.school_exam_id = any($5::uuid[]) and er.student_user_id = en.student_user_id
                    and (er.raw_score is not null or er.is_absent)))

@@ -121,6 +121,7 @@ export async function listKindergartenClasses(
             coalesce((select json_agg(json_build_object('id', st.id, 'name', st.name) order by st.name)
                         from streams st where st.class_id = c.id and st.is_active), '[]'::json) as streams,
             (select count(*) from student_enrollment en
+               join students s on s.user_id = en.student_user_id and s.is_active
               where en.class_id = c.id and en.status = 'active')::text as pupil_count
        from classes c
        join curriculum_stage cs on cs.id = c.curriculum_stage_id
@@ -241,6 +242,9 @@ export async function getAssessmentSheet(
       where en.school_id = $1 and en.class_id = $2 and en.status = 'active'
         and ($4::uuid is null or en.stream_id = $4::uuid)
         and ($5::uuid is null or en.student_user_id = $5::uuid)
+        -- Archived pupils drop off the class sheet; a direct lookup of one
+        -- pupil still finds them so their past report stays reachable.
+        and (s.is_active or $5::uuid is not null)
       order by s.last_name, s.first_name`,
     [schoolId, classId, termId, streamId, opts.studentUserId ?? null],
   );
