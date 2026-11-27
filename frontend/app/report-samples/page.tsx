@@ -22,9 +22,9 @@ const SCHOOL = {
 
 const LEARNER = {
   name: 'MIREMBE PROMISE',
-  payCode: '1000000001',
+  payCode: '1008775774',
   className: 'S2 N',
-  studentNo: '10001',
+  studentNo: '13900',
 };
 
 // [subject, first 15% assessment, second 15% assessment, 70% exam, teacher initials]
