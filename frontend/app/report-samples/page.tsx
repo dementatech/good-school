@@ -21,7 +21,7 @@ const SCHOOL = {
 };
 
 const LEARNER = {
-  name: 'NAMATOVU GRACE',
+  name: 'MIREMBE PROMISE',
   payCode: '1000000001',
   className: 'S2 N',
   studentNo: '10001',
@@ -222,7 +222,7 @@ export default function ReportSamplesPage() {
             </tr>
             <tr>
               <td className={`${cell} py-2 font-bold`}>Headteacher</td>
-              <td className={`${cell} py-2`}>A promising performance, Grace should aim at 80% average.</td>
+              <td className={`${cell} py-2`}>A promising performance, Mirembe should aim at 80% average.</td>
               <td className={cell} />
             </tr>
           </tbody>
