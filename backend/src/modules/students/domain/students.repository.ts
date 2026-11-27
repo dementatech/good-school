@@ -536,6 +536,7 @@ export {
   listCombinationHistory,
   selectCombination,
   reassignCombination,
+  marksLostOnReassign,
   bulkAssignCombination,
   InvalidSubsidiaryError,
   NotALevelStudentError,

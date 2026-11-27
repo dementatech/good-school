@@ -1,5 +1,6 @@
 import { pool } from "../../../shared/db/index.js";
 import type { SchoolLevel } from "../../../shared/levels.js";
+import { notDroppedSubject } from "../../../shared/dropped-subjects.js";
 
 const ACTIVITY_LIMIT = 6;
 const TREND_LIMIT = 6;
@@ -153,6 +154,7 @@ export async function getPerformanceTrend(schoolId: string, levels: SchoolLevel[
          left join terms t on t.id = sx.term_id
          join exam_result er on er.school_exam_id = sx.id and er.raw_score is not null and not er.is_absent
         where sx.school_id = $1 and sx.published_at is not null
+          and ${notDroppedSubject("er", "sx.academic_year_id")}
           and ($2::text[] is null or exists (
                 select 1
                   from student_enrollment se
