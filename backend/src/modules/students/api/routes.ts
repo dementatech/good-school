@@ -36,6 +36,7 @@ import {
   listStudentSubjects,
   matchOrCreateGuardian,
   reassignCombination,
+  marksLostOnReassign,
   resetStudentPasswords,
   restoreStudent,
   searchGuardians,
@@ -599,6 +600,29 @@ export async function studentsRoutes(fastify: FastifyInstance) {
       }
     },
   );
+
+  // Which already-marked subjects a reassignment would drop, so the admin is
+  // warned before confirming. Read-only.
+  fastify.get<{
+    Params: { id: string };
+    Querystring: { academicYearId?: string; schoolCombinationId?: string; subsidiarySubjectId?: string };
+  }>("/:id/combination/reassign-preview", { preHandler: ADMIN }, async (request, reply) => {
+    const schoolId = schoolOf(request, reply);
+    if (!schoolId) return;
+    const { academicYearId, schoolCombinationId, subsidiarySubjectId } = request.query;
+    if (!academicYearId || !schoolCombinationId) {
+      return reply.status(400).send(fail("academicYearId and schoolCombinationId are required"));
+    }
+    return ok({
+      marksLost: await marksLostOnReassign(
+        schoolId,
+        request.params.id,
+        academicYearId,
+        schoolCombinationId,
+        subsidiarySubjectId || null,
+      ),
+    });
+  });
 
   fastify.post<{
     Params: { id: string };

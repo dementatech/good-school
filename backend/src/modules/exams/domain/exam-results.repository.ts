@@ -4,6 +4,7 @@ import { fileUrl, type StorageProvider } from "../../../shared/media.js";
 import type { Pool, PoolClient } from "pg";
 import { pool } from "../../../shared/db/index.js";
 import { UCE_REPORT_NAMES } from "../../../shared/uneb.js";
+import { notDroppedSubject } from "../../../shared/dropped-subjects.js";
 
 type Db = Pool | PoolClient;
 
@@ -993,6 +994,7 @@ async function slotsForExam(
                   join student_enrollment en2 on en2.student_user_id = er.student_user_id
                   join students s3 on s3.user_id = er.student_user_id and s3.is_active
                  where er.school_exam_id = $3 and er.subject_id = sta.subject_id
+                   and ${notDroppedSubject("er", "$2")}
                    and en2.school_id = $1 and en2.academic_year_id = $2
                    and en2.class_id = sta.class_id and en2.status = 'active'
                    and (sta.stream_id is null or en2.stream_id = sta.stream_id)
@@ -1209,11 +1211,13 @@ export async function getStudentExamResult(
             er.raw_score, er.max_mark, er.is_absent, er.computed_grade, er.grading_scheme_id,
             gb.comment
        from exam_result er
+       join school_exam sxr on sxr.id = er.school_exam_id
        join subject sub on sub.id = er.subject_id
        left join subject_variant sv on sv.id = er.subject_variant_id
        left join grade_band gb
          on gb.grading_scheme_id = er.grading_scheme_id and gb.label = er.computed_grade
       where er.school_exam_id = $1 and er.student_user_id = $2
+        and ${notDroppedSubject("er", "sxr.academic_year_id")}
       order by sub.name, sv.code`,
     [examId, studentUserId],
   );
@@ -1546,9 +1550,11 @@ export async function getExamReportCard(
             er.raw_score, er.max_mark, er.is_absent, er.computed_grade,
             er.subject_variant_id, sv.name as variant_name, sv.contribution_percent
        from exam_result er
+       join school_exam sxr on sxr.id = er.school_exam_id
        join subject sub on sub.id = er.subject_id
        left join subject_variant sv on sv.id = er.subject_variant_id
-      where er.school_exam_id = any($1::uuid[]) and er.student_user_id = any($2::uuid[])`,
+      where er.school_exam_id = any($1::uuid[]) and er.student_user_id = any($2::uuid[])
+        and ${notDroppedSubject("er", "sxr.academic_year_id")}`,
     [resultExamIds, studentIds],
   );
 

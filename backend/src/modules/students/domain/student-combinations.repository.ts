@@ -548,3 +548,39 @@ export async function bulkAssignCombination(input: BulkAssignInput): Promise<Bul
   }
   return outcomes;
 }
+
+/**
+ * Before a combination change: the subjects the student would lose that
+ * already have marks (or an absence) in an exam this academic year. Their
+ * marks are kept but stop counting once the subject is dropped, so the admin
+ * is warned first. General Paper is never dropped by a reassignment.
+ */
+export async function marksLostOnReassign(
+  schoolId: string,
+  studentUserId: string,
+  academicYearId: string,
+  schoolCombinationId: string,
+  subsidiarySubjectId: string | null,
+): Promise<{ subjectShortName: string; subjectName: string; exams: string[] }[]> {
+  const { rows } = await pool.query<{ short_name: string; name: string; exams: string[] }>(
+    `select sub.short_name, sub.name, array_agg(distinct se.name order by se.name) as exams
+       from exam_result er
+       join school_exam se on se.id = er.school_exam_id
+       join subject sub on sub.id = er.subject_id
+       join users u on u.id = er.student_user_id and u.school_id = $1
+      where er.student_user_id = $2 and se.academic_year_id = $3
+        and (er.raw_score is not null or er.is_absent)
+        and not sub.is_general_paper
+        and exists (select 1 from student_subject ss
+                     where ss.student_user_id = er.student_user_id and ss.subject_id = er.subject_id
+                       and ss.academic_year_id = $3 and ss.status in ('active', 'added'))
+        and er.subject_id not in (
+              select subject_id from school_combination_subject
+               where school_combination_id = $4
+                 and (role <> 'subsidiary' or $5::uuid is null or subject_id = $5::uuid))
+      group by sub.short_name, sub.name
+      order by sub.short_name`,
+    [schoolId, studentUserId, academicYearId, schoolCombinationId, subsidiarySubjectId],
+  );
+  return rows.map((r) => ({ subjectShortName: r.short_name.toUpperCase(), subjectName: r.name, exams: r.exams }));
+}

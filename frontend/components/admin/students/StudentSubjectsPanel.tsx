@@ -6,7 +6,8 @@ import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { Select } from '@/components/ui/Select';
 import { useToast } from '@/components/ui/ToastProvider';
-import { fetchList, submitJson } from '@/lib/api/envelope';
+import { fetchList, fetchOne, submitJson } from '@/lib/api/envelope';
+import { Modal } from '@/components/ui/Modal';
 import { useSchoolLevels } from '@/lib/levels';
 import { subsidiaryRuleFor, unebSubjectName } from '@/lib/uneb';
 import type { SchoolCombination, SubjectOffering } from '../subjects/types';
@@ -309,6 +310,9 @@ export function ALevelCombination({
   const [picking, setPicking] = useState(false);
   const [choice, setChoice] = useState<CombinationChoice>(emptyCombinationChoice);
   const [saving, setSaving] = useState(false);
+  // Subjects a reassignment would drop that already have marks this year —
+  // shown for confirmation before the change is saved.
+  const [marksLost, setMarksLost] = useState<{ subjectShortName: string; subjectName: string; exams: string[] }[] | null>(null);
 
   const load = async () => {
     const curRes = await fetch(
@@ -325,11 +329,29 @@ export function ALevelCombination({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [studentUserId, enrollment.academicYearId]);
 
-  async function submit(reassign: boolean) {
+  async function submit(reassign: boolean, confirmed = false) {
     if (!choice.schoolCombinationId) {
       toast.error('Pick a combination.');
       return;
     }
+    if (reassign && !confirmed) {
+      setSaving(true);
+      const qs = new URLSearchParams({
+        academicYearId: enrollment.academicYearId,
+        schoolCombinationId: choice.schoolCombinationId,
+        ...(choice.subsidiarySubjectId ? { subsidiarySubjectId: choice.subsidiarySubjectId } : {}),
+      });
+      const preview = await fetchOne<{ marksLost: { subjectShortName: string; subjectName: string; exams: string[] }[] }>(
+        `/api/v1/students/${studentUserId}/combination/reassign-preview?${qs.toString()}`,
+        toast.error,
+      );
+      setSaving(false);
+      if (preview && preview.marksLost.length > 0) {
+        setMarksLost(preview.marksLost);
+        return;
+      }
+    }
+    setMarksLost(null);
     setSaving(true);
     const path = reassign ? 'combination/reassign' : 'combination';
     const res = await submitJson<StudentCombination>(`/api/v1/students/${studentUserId}/${path}`, 'POST', {
@@ -393,6 +415,38 @@ export function ALevelCombination({
           </Button>
         </div>
       )}
+
+      <Modal open={marksLost !== null} onClose={() => !saving && setMarksLost(null)} title="These marks will stop counting">
+        {marksLost && (
+          <div className="space-y-4">
+            <div className="flex gap-3 border border-warning bg-warning-bg p-3">
+              <AlertTriangle className="w-5 h-5 shrink-0 text-warning" aria-hidden />
+              <div className="text-sm text-text-primary space-y-2">
+                <p>This student already has marks in subjects the new combination drops:</p>
+                <ul className="space-y-1">
+                  {marksLost.map((m) => (
+                    <li key={m.subjectShortName}>
+                      <span className="font-bold">{m.subjectShortName}</span> ({m.subjectName}): {m.exams.join(', ')}
+                    </li>
+                  ))}
+                </ul>
+                <p>
+                  Those marks are kept but will no longer appear on report cards or count towards averages and
+                  positions. The new subjects need marks entered for these exams.
+                </p>
+              </div>
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setMarksLost(null)} disabled={saving}>
+                Cancel
+              </Button>
+              <Button isLoading={saving} onClick={() => void submit(true, true)}>
+                Reassign anyway
+              </Button>
+            </div>
+          </div>
+        )}
+      </Modal>
     </div>
   );
 }
