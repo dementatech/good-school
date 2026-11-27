@@ -2,19 +2,20 @@ import type { Metadata } from 'next';
 import { DEFAULT_AVATAR } from '@/lib/avatar/default';
 
 export const metadata: Metadata = {
-  title: 'Report card sample — Good School',
-  description: 'A sample summative assessment report card, filled with fictional data.',
+  title: 'Report card sample — Seeta High School',
+  description: 'A sample Seeta High School summative assessment report card, filled with fictional learner data.',
 };
 
 /**
- * Public sample of the summative assessment report card layout. Everything on
- * it is FICTIONAL — the learner, marks, teachers and the demo school — so it
- * can be shown to anyone without exposing a real learner's details.
+ * Public sample of Seeta High School's summative assessment report card,
+ * shown with the school's approval. The school's name, crest and contacts are
+ * real; the learner, marks and teachers are FICTIONAL, so the page never
+ * exposes a real learner's details.
  */
 
 const SCHOOL = {
-  name: 'KASUBI RIDGE SECONDARY SCHOOL',
-  contact: 'P. O. Box 1234, Tel: 0414-000000  KAMPALA',
+  name: 'SEETA HIGH SCHOOL',
+  contact: 'P. O. Box 417,  Tel: 041-471437  KAMPALA',
   title: 'SUMMATIVE ASSESSMENT REPORT',
   exam: 'End of Term 2 Exams - 2026',
 };
@@ -88,14 +89,9 @@ export default function ReportSamplesPage() {
       >
         {/* Header: crest, school details, photo */}
         <div className="flex items-start justify-between" style={{ fontFamily: "'Times New Roman', Times, serif" }}>
-          <div className="flex flex-col items-center" style={{ width: '34mm' }}>
-            <div
-              className="flex items-center justify-center border-2 border-black rotate-45"
-              style={{ width: '17mm', height: '17mm', marginTop: '3mm' }}
-            >
-              <span className="-rotate-45 text-[11px] font-bold">KRSS</span>
-            </div>
-            <div className="mt-2 whitespace-nowrap bg-black text-white text-[6.5px] font-bold px-1.5 py-0.5 tracking-wide">EDUCATION FOR A BRIGHT FUTURE</div>
+          <div className="flex items-start" style={{ width: '34mm' }}>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/images/report-samples/seeta-crest.png" alt="Seeta High School crest" style={{ width: '28mm', height: 'auto' }} />
           </div>
 
           <div className="flex-1 text-center">
