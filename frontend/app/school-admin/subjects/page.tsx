@@ -1,5 +1,7 @@
 'use client';
 
+import Link from 'next/link';
+import { usePortalBase } from '@/lib/portal';
 import { useCallback, useEffect, useState } from 'react';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
@@ -24,7 +26,6 @@ import {
 } from '@/components/admin/curriculum/types';
 import { SUBJECT_PHASES, offersLevel, subjectPhasesOf, useSchoolLevels } from '@/lib/levels';
 import { NurseryAssessmentCard } from '@/components/admin/subjects/NurseryAssessmentCard';
-import { LowerSecondarySubjectsCard } from '@/components/admin/subjects/LowerSecondarySubjectsCard';
 import { SchoolSubjectModal } from '@/components/admin/subjects/SchoolSubjectModal';
 import {
   CATEGORY_LABEL,
@@ -67,6 +68,7 @@ interface OfferingRow {
 }
 
 export default function SchoolAdminSubjectsPage() {
+  const portalBase = usePortalBase();
   const toast = useToast();
   const [loading, setLoading] = useState(true);
   const [years, setYears] = useState<AcademicYear[]>([]);
@@ -322,10 +324,10 @@ export default function SchoolAdminSubjectsPage() {
     {
       key: 'subjects',
       header: 'Subjects',
-      value: (c) => c.subjects.map((s) => s.subjectShortName).join(', '),
+      value: (c) => c.subjects.map((s) => s.subjectShortName.toUpperCase()).join(', '),
       render: (c) => (
         <span className="text-xs text-text-muted">
-          {c.subjects.map((s) => `${s.subjectShortName}${s.role === 'principal' ? '' : ` (${s.role})`}`).join(', ')}
+          {c.subjects.map((s) => `${s.subjectShortName.toUpperCase()}${s.role === 'principal' ? '' : ` (${s.role})`}`).join(', ')}
         </span>
       ),
     },
@@ -409,7 +411,19 @@ export default function SchoolAdminSubjectsPage() {
                     : 'They appear on the timetable and in lesson plans; they’re only marked if you switch Nursery to marks above.'}
                 </p>
               )}
-              {phase === 'O_LEVEL' && <LowerSecondarySubjectsCard />}
+              {phase === 'O_LEVEL' && (
+                <p className="text-xs text-text-muted">
+                  Whether S1 and S2 take every subject is a school-wide setting under{' '}
+                  {portalBase === '/school-admin' ? (
+                    <Link href="/school-admin/school" className="font-semibold text-primary-700 hover:underline">
+                      My School → Advanced settings
+                    </Link>
+                  ) : (
+                    <span className="font-semibold">My School → Advanced settings</span>
+                  )}
+                  {portalBase === '/school-admin' ? '.' : ', which only a school admin can change.'}
+                </p>
+              )}
               {phase === 'PRIMARY' && (
                 <p className="text-xs text-text-muted">
                   English, Mathematics, Integrated Science and Social Studies are examined at PLE and make up

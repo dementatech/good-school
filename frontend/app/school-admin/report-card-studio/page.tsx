@@ -1,5 +1,6 @@
 'use client';
 
+import { DEFAULT_AVATAR } from '@/lib/avatar/default';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { usePortalBase } from '@/lib/portal';
 import { useSchoolLevels, type SchoolLevel, type SchoolSection } from '@/lib/levels';
@@ -18,7 +19,13 @@ import Link from 'next/link';
 import { AlertTriangle, FileText, LayoutTemplate, TrendingUp, Trophy } from 'lucide-react';
 import type { SchoolExam } from '@/components/admin/exams/types';
 import { localIsoDate } from '@/lib/school-admin/dashboard';
+import { byCoreThenName } from '@/lib/subjects/order';
 import type { TemplateListing } from '@/components/admin/report-cards/templates';
+import {
+  bandsFrom,
+  type GradeBand,
+  type SchoolGradingSchemeSelection,
+} from '@/components/admin/report-cards/ReportCardSheet';
 import {
   REPORT_TYPE_LABELS,
   defaultExam,
@@ -113,20 +120,6 @@ interface ExamReportCard {
   needsAttention: ReportCardStudent[];
 }
 
-const GRADE_CHIP: Record<string, string> = {
-  A: 'bg-success-bg text-success',
-  B: 'bg-primary-50 text-primary-700',
-  C: 'bg-accent-light text-accent-dark',
-  D: 'bg-warning-bg text-warning',
-  E: 'bg-warning-bg text-warning',
-  F: 'bg-error-bg text-error',
-  Pass: 'bg-success-bg text-success',
-  Fail: 'bg-error-bg text-error',
-};
-
-function initials(name: string): string {
-  return name.split(' ').map((p) => p[0]).filter(Boolean).slice(0, 2).join('').toUpperCase();
-}
 /** O-Level: one blended average/grade for everything. A-Level: the
  * principal average/grade is what actually ranks and represents a student —
  * subsidiaries (General Paper + the combination's chosen one) are reported
@@ -434,7 +427,7 @@ function ResultsHeatmap({ subjects, students }: { subjects: ReportCardSubject[];
                     className="fill-[var(--color-text-muted)]"
                     fontSize={9.5}
                   >
-                    {s.subjectShortName}
+                    {s.subjectShortName.toUpperCase()}
                   </text>
                 </g>
               );
@@ -656,39 +649,58 @@ function PerformerList({
   );
 }
 
-function SubjectRows({ rows }: { rows: ReportCardStudentSubject[] }) {
+/** One learner's subjects: short form (BIO, CHEM), grade, score; core
+ * subjects first. The grade is the one frozen at publish, else worked out
+ * live from the school's scheme, so an unpublished exam still shows grades. */
+function SubjectRows({
+  rows,
+  shortNames,
+  bands,
+}: {
+  rows: ReportCardStudentSubject[];
+  shortNames: Map<string, string>;
+  bands: GradeBand[];
+}) {
+  const gradeOf = (s: ReportCardStudentSubject): string | null => {
+    if (s.computedGrade ?? s.bandGrade) return s.computedGrade ?? s.bandGrade;
+    if (s.isAbsent || s.rawScore === null) return null;
+    const pct = s.rawScore;
+    return bands.find((b) => pct >= b.minPct && pct <= b.maxPct)?.label ?? null;
+  };
+  const ordered = [...rows].sort(byCoreThenName);
   return (
     <tbody>
-      {rows.map((s) => (
+      {ordered.map((s) => {
+        const grade = gradeOf(s);
+        return (
         <tr key={s.subjectId} className="border-t border-border">
           <td className="py-2">
-            <div>{s.subjectName}</div>
+            <div className="font-semibold" title={s.subjectName}>
+              {(shortNames.get(s.subjectId) ?? s.subjectName).toUpperCase()}
+            </div>
             {s.hasVariant && s.variantScores && (
-              <div className="text-[10.5px] text-text-faint mt-0.5">
+              <div className="text-[10.5px] text-text-primary mt-0.5">
                 {s.variantScores
-                  .map((v) => `${v.name} ${v.isAbsent ? 'Abs' : v.rawScore !== null ? round(v.rawScore) : '—'}`)
+                  .map((v, i) => `P${i + 1} ${v.isAbsent ? 'Abs' : v.rawScore !== null ? round(v.rawScore) : '—'}`)
                   .join(' · ')}
               </div>
             )}
           </td>
           <td className="py-2 text-center">
-            {(s.computedGrade ?? s.bandGrade) ? (
-              <span
-                className={`inline-flex min-w-6 justify-center px-1.5 py-0.5 rounded-md text-[11.5px] font-extrabold ${
-                  GRADE_CHIP[(s.computedGrade ?? s.bandGrade)!] ?? 'bg-bg-muted text-text-muted'
-                }`}
-              >
-                {s.computedGrade ?? s.bandGrade}
+            {grade ? (
+              <span className="inline-flex min-w-6 justify-center text-base leading-none font-black text-text-primary">
+                {grade}
               </span>
             ) : (
-              <span className="text-text-faint">—</span>
+              <span className="text-text-primary">—</span>
             )}
           </td>
           <td className="py-2 text-right tabular-nums font-bold">
-            {s.isAbsent ? <span className="text-text-muted font-normal">Absent</span> : s.rawScore !== null ? round(s.rawScore) : '—'}
+            {s.isAbsent ? <span className="text-text-primary font-normal">Absent</span> : s.rawScore !== null ? round(s.rawScore) : '—'}
           </td>
         </tr>
-      ))}
+        );
+      })}
     </tbody>
   );
 }
@@ -730,6 +742,16 @@ export default function ReportCardStudioPage() {
       setTemplateListings(await fetchList<TemplateListing>('/api/v1/academic/report-card-templates', toast.error));
     })();
   }, []);
+
+  // The school's grading schemes, so grades show before an exam is published.
+  const [gradingSchemes, setGradingSchemes] = useState<SchoolGradingSchemeSelection[]>([]);
+  useEffect(() => {
+    void (async () => {
+      setGradingSchemes(await fetchList<SchoolGradingSchemeSelection>('/api/v1/academic/school-grading-schemes', toast.error));
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  const gradeBands = useMemo(() => bandsFrom(gradingSchemes), [gradingSchemes]);
 
   const levels = useSchoolLevels();
   const levelsLoaded = !!levels;
@@ -796,7 +818,17 @@ export default function ReportCardStudioPage() {
     if (chosenTemplate) qs.set('templateId', chosenTemplate);
     const data = await fetchOne<ExamReportCard>(`/api/v1/exams/${examId}/report-card?${qs.toString()}`, toast.error);
     if (thisLoad !== latestLoad.current) return;
-    setReport(data);
+    // Core subjects first (A-Level: principals), optionals last — the order
+    // every mark sheet uses.
+    const isA = data?.class.phase === 'A_LEVEL';
+    setReport(
+      data && {
+        ...data,
+        subjects: [...data.subjects].sort((a, b) =>
+          byCoreThenName({ ...a, isCore: isA ? a.role === 'principal' : undefined }, { ...b, isCore: isA ? b.role === 'principal' : undefined }),
+        ),
+      },
+    );
     setStudentKey(data?.students[0]?.studentUserId ?? '');
     setLoading(false);
   }, [examId, classId, streamId, reportParams, chosenTemplate]);
@@ -856,6 +888,11 @@ export default function ReportCardStudioPage() {
 
   const principalSubjects = useMemo(() => report?.subjects.filter((s) => s.role === 'principal') ?? [], [report]);
   const subsidiarySubjects = useMemo(() => report?.subjects.filter((s) => s.role === 'subsidiary') ?? [], [report]);
+  // Subject short forms (BIO, CHEM) by id, for the learner panel.
+  const shortNames = useMemo(
+    () => new Map((report?.subjects ?? []).map((s) => [s.subjectId, s.subjectShortName])),
+    [report],
+  );
   const heatmapSubjects = useMemo(
     () => (isALevel ? [...principalSubjects, ...subsidiarySubjects] : report?.subjects ?? []),
     [isALevel, principalSubjects, subsidiarySubjects, report],
@@ -879,12 +916,12 @@ export default function ReportCardStudioPage() {
   function openReportCards(params: Record<string, string>) {
     const query = new URLSearchParams({ ...params, ...(reportParams ?? {}) });
     if (chosenTemplate) query.set('templateId', chosenTemplate);
-    window.open(`${base}/exams/${examId}/report-cards?${query.toString()}`, '_blank');
+    router.push(`${base}/exams/${examId}/report-cards?${query.toString()}`);
   }
 
   function openMarkSheet(blank: boolean) {
     const query = new URLSearchParams({ classId, ...(streamId ? { streamId } : {}), ...(blank ? { blank: '1' } : {}) });
-    window.open(`${base}/exams/${examId}/class-marksheet?${query.toString()}`, '_blank');
+    router.push(`${base}/exams/${examId}/class-marksheet?${query.toString()}`);
   }
 
   const today = localIsoDate(new Date());
@@ -1303,15 +1340,11 @@ export default function ReportCardStudioPage() {
                     <div className="flex items-center justify-between gap-3 flex-wrap">
                       <div className="flex items-center gap-3">
                         <span className="w-11 h-11 rounded-full bg-primary-100 text-primary-900 flex items-center justify-center font-extrabold text-sm shrink-0 overflow-hidden">
-                          {student.photoUrl ? (
-                            // eslint-disable-next-line @next/next/no-img-element
-                            <img src={student.photoUrl} alt="" className="w-full h-full object-cover" />
-                          ) : (
-                            initials(student.studentName)
-                          )}
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img src={student.photoUrl || DEFAULT_AVATAR} alt="" className="w-full h-full object-cover" />
                         </span>
                         <div>
-                          <p className="text-[15px] font-extrabold text-primary-900">{student.studentName}</p>
+                          <p className="text-[15px] font-extrabold text-primary-900 uppercase">{student.studentName}</p>
                           <p className="text-xs text-text-muted">
                             {report.class.name}{student.streamName ? ` ${student.streamName}` : ''} · Rank{' '}
                             {student.rank ?? '—'} / {scoredStudents.length}
@@ -1399,7 +1432,7 @@ export default function ReportCardStudioPage() {
                                 <th className="pb-2 text-right">Score</th>
                               </tr>
                             </thead>
-                            <SubjectRows rows={student.subjects.filter((s) => s.role === 'principal')} />
+                            <SubjectRows rows={student.subjects.filter((s) => s.role === 'principal')} shortNames={shortNames} bands={gradeBands.principalBands} />
                           </table>
                         </div>
                         <div>
@@ -1412,7 +1445,7 @@ export default function ReportCardStudioPage() {
                                 <th className="pb-2 text-right">Score</th>
                               </tr>
                             </thead>
-                            <SubjectRows rows={student.subjects.filter((s) => s.role === 'subsidiary')} />
+                            <SubjectRows rows={student.subjects.filter((s) => s.role === 'subsidiary')} shortNames={shortNames} bands={gradeBands.subsidiaryBands} />
                           </table>
                         </div>
                       </div>
@@ -1425,7 +1458,11 @@ export default function ReportCardStudioPage() {
                             <th className="pb-2 text-right">Score</th>
                           </tr>
                         </thead>
-                        <SubjectRows rows={student.subjects} />
+                        <SubjectRows
+                          rows={student.subjects}
+                          shortNames={shortNames}
+                          bands={report.class.phase === 'PRIMARY' ? gradeBands.primaryBands : gradeBands.oLevelBands}
+                        />
                       </table>
                     )}
 

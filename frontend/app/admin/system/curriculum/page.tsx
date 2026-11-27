@@ -274,7 +274,7 @@ export default function CurriculumPage() {
 
   const subjectCols: DataTableColumn<Subject>[] = [
     { key: 'name', header: 'Subject', value: (s) => s.name, render: (s) => <span className="font-medium">{s.name}</span> },
-    { key: 'shortName', header: 'Short name', value: (s) => s.shortName, hideOnMobile: true },
+    { key: 'shortName', header: 'Short name', value: (s) => s.shortName.toUpperCase(), hideOnMobile: true },
     { key: 'code', header: 'Code', value: (s) => s.code, render: (s) => <Badge variant="muted">{s.code}</Badge> },
     {
       key: 'unebCode',
@@ -337,7 +337,7 @@ export default function CurriculumPage() {
 
   const pendingCols: DataTableColumn<Subject>[] = [
     { key: 'name', header: 'Subject', value: (s) => s.name, render: (s) => <span className="font-medium">{s.name}</span> },
-    { key: 'shortName', header: 'Short name', value: (s) => s.shortName },
+    { key: 'shortName', header: 'Short name', value: (s) => s.shortName.toUpperCase() },
     {
       key: 'category',
       header: 'Category',

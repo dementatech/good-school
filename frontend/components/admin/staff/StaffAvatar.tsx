@@ -1,5 +1,7 @@
 'use client';
 
+import { DEFAULT_AVATAR } from '@/lib/avatar/default';
+
 // A photo when one's on file, an initials avatar otherwise — never a blank
 // space. Restores the fallback the old TERECO staff stub had before the
 // page was rebuilt on the new backend.
@@ -28,13 +30,6 @@ export function StaffAvatar({
   size?: keyof typeof SIZE_CLASSES;
 }) {
   const cls = SIZE_CLASSES[size];
-  if (photoUrl) {
-    // eslint-disable-next-line @next/next/no-img-element
-    return <img src={photoUrl} alt="" className={`${cls} object-cover border border-border shrink-0`} />;
-  }
-  return (
-    <span className={`${cls} bg-bg-subtle text-text-muted font-medium flex items-center justify-center shrink-0`}>
-      {initials(name) || '—'}
-    </span>
-  );
+  // eslint-disable-next-line @next/next/no-img-element
+  return <img src={photoUrl || DEFAULT_AVATAR} alt={name} className={`${cls} object-cover border border-border shrink-0`} />;
 }

@@ -1,5 +1,6 @@
 'use client';
 
+import { DEFAULT_AVATAR } from '@/lib/avatar/default';
 import { useId, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { UserCircle, LogOut, ChevronDown, Camera, Trash2 } from 'lucide-react';
@@ -22,11 +23,6 @@ const ROLE_LABELS: Record<string, string> = {
   admin: 'Super Admin',
   super_admin: 'Super Admin',
 };
-
-function initials(name: string) {
-  const parts = name.trim().split(/\s+/);
-  return ((parts[0]?.[0] ?? '') + (parts[1]?.[0] ?? '')).toUpperCase();
-}
 
 export function AccountMenu({ accountHref, onSignOut }: { accountHref?: string; onSignOut: () => void }) {
   const router = useRouter();
@@ -108,14 +104,8 @@ export function AccountMenu({ accountHref, onSignOut }: { accountHref?: string; 
         items={items}
         trigger={
           <span className="flex items-center gap-2 pl-1 pr-2 py-1 rounded-full bg-white border border-border hover:bg-bg-muted transition-colors">
-            {user?.photoUrl ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={user.photoUrl} alt="" className="w-9 h-9 rounded-full object-cover shrink-0" />
-            ) : (
-              <span className="w-9 h-9 rounded-full bg-primary-100 text-primary-900 flex items-center justify-center text-xs font-bold shrink-0">
-                {user ? initials(user.name) : '—'}
-              </span>
-            )}
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={user?.photoUrl || DEFAULT_AVATAR} alt="" className="w-9 h-9 rounded-full object-cover shrink-0" />
             {user && (
               <span className="hidden lg:block text-left leading-tight">
                 <span className="block text-sm font-semibold text-primary-900">{user.name}</span>

@@ -368,7 +368,7 @@ export function ALevelCombination({
             </Button>
           </div>
           <div className="text-text-faint">
-            {current.members.map((m) => `${m.subjectCode}${m.role === 'principal' ? '' : ` (${m.role})`}`).join(', ')}
+            {current.members.map((m) => `${m.subjectCode.toUpperCase()}${m.role === 'principal' ? '' : ` (${m.role})`}`).join(', ')}
           </div>
           <EligibilityWarnings warnings={current.warnings} />
           {current.eligibilityOverrideReason && (

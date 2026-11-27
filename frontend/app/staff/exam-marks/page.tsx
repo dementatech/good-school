@@ -7,6 +7,7 @@ import { Badge } from '@/components/ui/Badge';
 import { Loader } from '@/components/ui/loader';
 import { useToast } from '@/components/ui/ToastProvider';
 import { fetchList } from '@/lib/api/envelope';
+import { byCoreThenName } from '@/lib/subjects/order';
 import { slotLabel, type AssignedExam, type ExamSlot } from '@/components/exams/types';
 
 const fmt = (d: string) => new Date(d).toLocaleDateString();
@@ -96,7 +97,7 @@ export default function StaffExamMarksPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {exam.slots.map((slot) => (
+                  {[...exam.slots].sort((a, b) => byCoreThenName(a, b) || slotLabel(a).localeCompare(slotLabel(b), undefined, { numeric: true })).map((slot) => (
                     <tr
                       key={`${slot.subjectId}:${slot.classId}:${slot.streamId ?? ''}`}
                       className="border-b border-border/60 cursor-pointer hover:bg-bg-subtle"

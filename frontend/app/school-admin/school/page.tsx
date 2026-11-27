@@ -7,6 +7,7 @@ import { useToast } from '@/components/ui/ToastProvider';
 import { Loader } from '@/components/ui/loader';
 import { STATUS_LABEL, STATUS_VARIANT, type School } from '@/components/admin/schools/types';
 import { SchoolBrandingCard } from '@/components/school-admin/SchoolBrandingCard';
+import { LowerSecondarySubjectsCard } from '@/components/admin/subjects/LowerSecondarySubjectsCard';
 import { SECTION_LABEL, useSchoolSections } from '@/lib/levels';
 
 function Row({ label, value }: { label: string; value: React.ReactNode }) {
@@ -142,6 +143,20 @@ export default function SchoolAdminSchoolPage() {
           </div>
         )}
       </Card>
+
+      {!loading && school?.offersOLevel && (
+        <details className="group border border-border bg-white">
+          <summary className="cursor-pointer select-none px-4 py-3 text-sm font-bold text-primary-900">
+            Advanced settings
+            <span className="ml-2 text-xs font-normal text-text-muted">
+              School-wide changes. Only change these if you know what they do.
+            </span>
+          </summary>
+          <div className="border-t border-border p-4">
+            <LowerSecondarySubjectsCard />
+          </div>
+        </details>
+      )}
     </div>
   );
 }

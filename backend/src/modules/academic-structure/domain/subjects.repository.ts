@@ -481,7 +481,7 @@ export async function createSubject(
         curriculumId,
         input.phase,
         code,
-        input.shortName.trim(),
+        input.shortName.trim().toUpperCase(),
         input.name,
         category,
         input.isExaminable ?? true,
@@ -559,7 +559,7 @@ export async function updateSubject(
        where id = $7
        returning curriculum_id, phase`,
       [
-        input.shortName.trim(),
+        input.shortName.trim().toUpperCase(),
         input.name,
         category,
         input.isExaminable ?? true,
@@ -745,7 +745,7 @@ export async function createSchoolSubject(
         curriculumId,
         input.phase,
         code,
-        input.shortName.trim(),
+        input.shortName.trim().toUpperCase(),
         input.name.trim(),
         category,
         // Nursery marks count toward the Nursery average; an extra at a
@@ -787,7 +787,7 @@ export async function updateSchoolSubject(
       `update subject set name = $3, short_name = $4, updated_at = now()
         where id = $1 and school_id = $2
         returning curriculum_id, phase`,
-      [id, schoolId, input.name.trim(), input.shortName.trim()],
+      [id, schoolId, input.name.trim(), input.shortName.trim().toUpperCase()],
     );
     if (!rows[0]) {
       await client.query("ROLLBACK");

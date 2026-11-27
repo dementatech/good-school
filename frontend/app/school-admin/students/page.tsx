@@ -94,7 +94,7 @@ export default function SchoolAdminStudentsPage() {
       value: (s) => studentFullName(s),
       render: (s) => (
         <span className="flex flex-wrap items-center gap-1.5">
-          <span className="font-medium">{studentFullName(s)}</span>
+          <span className="font-medium uppercase">{studentFullName(s)}</span>
           {s.systemId && <Badge variant="muted">{s.systemId}</Badge>}
           {!s.isActive && <Badge variant="muted">Inactive</Badge>}
         </span>
