@@ -198,6 +198,12 @@ body {
   .report-sheet + .report-sheet {
     break-before: page;
   }
+  /* A report card taller than one page is scaled down to fit it
+     (--rc-fit, measured by ReportCardSheet's useFitOnePage) rather than
+     spilling onto a second sheet. */
+  .report-sheet:not(.report-canvas) {
+    zoom: var(--rc-fit, 1);
+  }
   /* A page-editor template places its blocks in mm from the paper's edge,
      so its pages have no margin of their own. */
   @page canvas {

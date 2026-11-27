@@ -769,37 +769,59 @@ function GradingLegend({
   const shown = groups.filter((g) => g.bands.length > 0);
   if (shown.length === 0) return null;
   const showPoints = !!divisions;
-  const cell = 'border border-border px-1.5 py-0.5';
+  const cell = 'border border-border px-1 py-0.5 text-center';
+  // Laid out across the page — one column per grade — so the key takes three
+  // short rows instead of one row per grade, keeping the card on one page.
   return (
     <div className="mt-2 pt-1.5 border-t border-border">
-      <p className="text-[10px] font-bold uppercase tracking-wide text-text-primary mb-1">Grading key</p>
-      <div className={`grid gap-3 ${shown.length > 1 ? 'grid-cols-2' : 'grid-cols-1'}`}>
-        {shown.map((g, gi) => (
-          <table key={gi} className="w-full border-collapse text-[9.5px] leading-tight text-text-primary">
-            <thead>
-              <tr className="bg-primary-700 text-white">
-                <th className={`${cell} text-center`}>{g.title ? `${g.title} grade` : 'Grade'}</th>
-                <th className={`${cell} text-center`}>Marks</th>
-                <th className={`${cell} text-left`}>Remark</th>
-                {showPoints && <th className={`${cell} text-center`}>Points</th>}
-              </tr>
-            </thead>
-            <tbody>
-              {[...g.bands]
-                .sort((a, b) => b.minPct - a.minPct)
-                .map((b) => (
-                  <tr key={b.label}>
-                    <td className={`${cell} text-center font-bold`}>{b.label}</td>
-                    <td className={`${cell} text-center tabular-nums whitespace-nowrap`}>
+      <div className="flex gap-2">
+        {shown.map((g, gi) => {
+          const bands = [...g.bands].sort((a, b) => b.minPct - a.minPct);
+          return (
+            <table
+              key={gi}
+              className="border-collapse text-[9px] leading-tight text-text-primary"
+              style={{ flex: `${bands.length + 1} 1 0%` }}
+            >
+              <tbody>
+                <tr className="bg-primary-700 text-white">
+                  <th className={`${cell} text-left whitespace-nowrap`}>{g.title ? `${g.title} grade` : 'Grade'}</th>
+                  {bands.map((b) => (
+                    <th key={b.label} className={cell}>
+                      {b.label}
+                    </th>
+                  ))}
+                </tr>
+                <tr>
+                  <th className={`${cell} text-left font-bold`}>Marks</th>
+                  {bands.map((b) => (
+                    <td key={b.label} className={`${cell} tabular-nums whitespace-nowrap`}>
                       {Math.round(b.minPct)}–{Math.floor(b.maxPct)}%
                     </td>
-                    <td className={cell}>{b.comment}</td>
-                    {showPoints && <td className={`${cell} text-center tabular-nums`}>{b.points ?? ''}</td>}
+                  ))}
+                </tr>
+                <tr>
+                  <th className={`${cell} text-left font-bold`}>Remark</th>
+                  {bands.map((b) => (
+                    <td key={b.label} className={cell}>
+                      {b.comment}
+                    </td>
+                  ))}
+                </tr>
+                {showPoints && (
+                  <tr>
+                    <th className={`${cell} text-left font-bold`}>Points</th>
+                    {bands.map((b) => (
+                      <td key={b.label} className={`${cell} tabular-nums`}>
+                        {b.points ?? ''}
+                      </td>
+                    ))}
                   </tr>
-                ))}
-            </tbody>
-          </table>
-        ))}
+                )}
+              </tbody>
+            </table>
+          );
+        })}
       </div>
       {divisions && divisions.length > 0 && (
         <p className="mt-1 text-[9px] leading-tight text-text-primary">
@@ -1201,11 +1223,52 @@ const FRAME_INNER: Record<TemplateStyle['frame'], string> = {
   none: '',
 };
 
+// The printable area of an A4 page: 210 × 297 mm less the 12 mm / 14 mm
+// margins in globals.css @page.
+const PRINT_WIDTH_MM = 186;
+const PRINT_HEIGHT_MM = 269;
+
+/**
+ * How much to scale a card down so it prints on ONE page: lays it out at the
+ * printed width, measures it, and returns height-to-fit (1 when it already
+ * fits). Re-measured whenever the card's content changes size.
+ */
+function useFitOnePage(ref: React.RefObject<HTMLDivElement | null>): number {
+  const [fit, setFit] = useState(1);
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const measure = () => {
+      const width = el.style.width;
+      const maxWidth = el.style.maxWidth;
+      el.style.width = `${PRINT_WIDTH_MM}mm`;
+      el.style.maxWidth = 'none';
+      const height = el.scrollHeight / PX_PER_MM;
+      el.style.width = width;
+      el.style.maxWidth = maxWidth;
+      // A hair under the page so rounding never tips it onto a second sheet.
+      const next = height > PRINT_HEIGHT_MM ? Math.floor(((PRINT_HEIGHT_MM - 2) / height) * 1000) / 1000 : 1;
+      setFit((prev) => (prev === next ? prev : next));
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(el.firstElementChild ?? el);
+    return () => observer.disconnect();
+  }, [ref]);
+  return fit;
+}
+
 /** A flowing card: header, learner, results, summary, remarks, footer. */
 function StyledCard({ parts, design }: { parts: CardParts; design: TemplateDesign }) {
   const compact = design.style.density === 'compact';
+  const ref = useRef<HTMLDivElement>(null);
+  const fit = useFitOnePage(ref);
   return (
-    <div className="report-sheet bg-white p-2 max-w-[800px] mx-auto" style={templateVars(design.style)}>
+    <div
+      ref={ref}
+      className="report-sheet bg-white p-2 max-w-[800px] mx-auto"
+      style={{ ...templateVars(design.style), ['--rc-fit' as string]: fit }}
+    >
       <div className={FRAME_OUTER[design.style.frame]}>
         <div className={`${FRAME_INNER[design.style.frame]} ${compact ? 'p-3' : 'p-4'}`}>
           {parts.header}
