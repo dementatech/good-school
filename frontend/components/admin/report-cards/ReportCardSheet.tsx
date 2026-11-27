@@ -582,7 +582,7 @@ function ReportSubjectTable({
                   const grade = gradeOf(s, bands);
                   return grade ? (
                     <span
-                      className={`inline-flex min-w-6 justify-center px-1.5 py-0.5 rounded-md text-base leading-none font-black ${look.plainGrades ? 'text-text-primary' : gradeChip(grade)}`}
+                      className={`inline-flex min-w-6 justify-center px-1.5 py-0.5 rounded-md text-[13px] leading-none font-black ${look.plainGrades ? 'text-text-primary' : gradeChip(grade)}`}
                       style={highlightFor(look.highlights, 'grade', grade)}
                     >
                       {grade}
@@ -620,7 +620,7 @@ function ReportSubjectTable({
   return (
     <div>
       <p className="text-xs font-bold uppercase tracking-wide text-text-primary mb-1.5">{title}</p>
-      <table className={`w-full ${compact ? 'text-xs' : 'text-sm'} ${look.table === 'minimal' ? '' : 'border border-border'}`}>
+      <table className={`w-full ${compact ? 'text-[11px]' : 'text-xs'} ${look.table === 'minimal' ? '' : 'border border-border'}`}>
         <thead>
           <tr
             className={`text-left text-[10.5px] font-bold uppercase tracking-wide ${
@@ -714,9 +714,9 @@ function StatRow({ items }: { items: ({ label: string; value: string } | false)[
   const shown = items.filter((it): it is { label: string; value: string } => !!it);
   if (shown.length === 0) return null;
   return (
-    <table className="w-full border border-border text-lg">
+    <table className="w-full border border-border text-[15px]">
       <thead>
-        <tr className="bg-primary-700 text-xs font-bold uppercase tracking-wide text-white">
+        <tr className="bg-primary-700 text-[10.5px] font-bold uppercase tracking-wide text-white">
           {shown.map((it) => (
             <th key={it.label} className="py-1 px-2 border-b border-r border-border last:border-r-0 text-center">
               {it.label}
@@ -729,7 +729,7 @@ function StatRow({ items }: { items: ({ label: string; value: string } | false)[
           {shown.map((it) => (
             <td
               key={it.label}
-              className="py-1.5 px-2 border-r border-border last:border-r-0 text-center text-lg font-black text-primary-900"
+              className="py-1 px-2 border-r border-border last:border-r-0 text-center text-[15px] font-black text-primary-900"
             >
               {it.value}
             </td>
@@ -988,7 +988,7 @@ export function buildCardParts(sheet: Sheet, schoolInfo: SchoolInfo | null, band
     </p>
   );
   const learner = (
-    <div className={`space-y-1 ${compact ? 'text-xs' : 'text-sm'} border-t border-b border-border py-1.5`}>
+    <div className={`space-y-1 ${compact ? 'text-xs' : 'text-[13px]'} border-t border-b border-border py-1.5`}>
       <p className="flex items-baseline gap-2">
         <span className="text-text-primary shrink-0">Student Name:</span>
         <span className="flex-1 border-b border-dotted border-border-strong font-semibold text-primary-900 pb-0.5">
@@ -1110,9 +1110,9 @@ export function buildCardParts(sheet: Sheet, schoolInfo: SchoolInfo | null, band
   );
   const commentLines = (label: string, text: string | undefined) => (
     <div>
-      <p className="text-sm font-bold text-text-primary">{label}:</p>
+      <p className="text-xs font-bold text-text-primary">{label}:</p>
       {text ? (
-        <p className="text-sm text-text-primary leading-relaxed border-b border-text-primary pb-1 italic">{text}</p>
+        <p className="text-xs text-text-primary leading-snug border-b border-text-primary pb-1 italic">{text}</p>
       ) : (
         <>
           <div className="h-6 border-b border-text-primary" />
