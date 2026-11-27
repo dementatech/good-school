@@ -1,4 +1,5 @@
 import type { FastifyInstance } from "fastify";
+import { optimiseProfilePhoto } from "../../../shared/image.js";
 import { login } from "../domain/login.js";
 import { resolveIdentifierKind } from "../domain/identifier.js";
 import {
@@ -101,7 +102,10 @@ export async function authRoutes(fastify: FastifyInstance) {
     if (!uploaded) return reply.status(400).send({ error: "No file uploaded" });
     const data = await uploaded.toBuffer();
     try {
-      const photoUrl = await setUserPhoto(request.authUser!.user_id, { mimeType: uploaded.mimetype, data });
+      const photoUrl = await setUserPhoto(
+        request.authUser!.user_id,
+        await optimiseProfilePhoto({ mimeType: uploaded.mimetype, data }),
+      );
       return { photoUrl };
     } catch (err) {
       if (err instanceof UnsupportedFileTypeError) return reply.status(400).send({ error: err.message });

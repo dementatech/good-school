@@ -1,4 +1,5 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
+import { optimiseProfilePhoto } from "../../../shared/image.js";
 import { requireAuth } from "../../auth/index.js";
 import { ok, fail } from "../../../shared/envelope.js";
 import { SECTION_COOKIE, visibleLevelsFor, type SchoolLevel } from "../../../shared/levels.js";
@@ -219,10 +220,11 @@ export async function studentsRoutes(fastify: FastifyInstance) {
     if (!uploaded) return reply.status(400).send(fail("No file uploaded"));
     const data = await uploaded.toBuffer();
     try {
-      const student = await setStudentPhoto(schoolId, request.params.id, {
-        mimeType: uploaded.mimetype,
-        data,
-      });
+      const student = await setStudentPhoto(
+        schoolId,
+        request.params.id,
+        await optimiseProfilePhoto({ mimeType: uploaded.mimetype, data }),
+      );
       return student ? ok(student) : reply.status(404).send(fail("not_found"));
     } catch (err) {
       if (err instanceof UnsupportedFileTypeError) return reply.status(400).send(fail(err.message));
