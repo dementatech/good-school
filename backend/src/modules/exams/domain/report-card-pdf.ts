@@ -21,7 +21,9 @@ async function getBrowser(): Promise<Browser> {
   if (!browserPromise) {
     browserPromise = puppeteer.launch({
       headless: true,
-      args: ["--no-sandbox", "--disable-setuid-sandbox"],
+      // --disable-dev-shm-usage: Docker's /dev/shm is only 64 MB; Chrome uses
+      // /tmp instead so a long class PDF can't run out of shared memory.
+      args: ["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage"],
     });
     browserPromise.catch(() => {
       browserPromise = null; // let the next call retry instead of caching a broken launch
@@ -66,6 +68,27 @@ export async function renderReportCardsPdf(path: string, cookieHeader: string | 
       }))),
       new Promise((resolve) => setTimeout(resolve, 15000)),
     ])`);
+    // Shrink every large picture to print size before printing. Learner
+    // photos can be full-resolution phone shots (several MB, tens of MB once
+    // decoded); a class of them made Chrome's print fail ("Printing failed").
+    // 600 px is far more than a 16 mm photo box needs. A picture that can't be
+    // redrawn (e.g. cross-origin) is left as it is.
+    await page.evaluate(`(async () => {
+      const MAX = 600;
+      for (const img of Array.from(document.images)) {
+        const w = img.naturalWidth, h = img.naturalHeight;
+        if (!w || !h || Math.max(w, h) <= MAX) continue;
+        try {
+          const scale = MAX / Math.max(w, h);
+          const canvas = document.createElement("canvas");
+          canvas.width = Math.round(w * scale);
+          canvas.height = Math.round(h * scale);
+          canvas.getContext("2d").drawImage(img, 0, 0, canvas.width, canvas.height);
+          img.src = canvas.toDataURL("image/jpeg", 0.85);
+          await img.decode().catch(() => {});
+        } catch (e) { /* leave it */ }
+      }
+    })()`);
     const pdf = await page.pdf({ printBackground: true, preferCSSPageSize: true });
     return Buffer.from(pdf);
   } finally {
