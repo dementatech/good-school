@@ -250,9 +250,6 @@ export default function ReportSamplesPage() {
           </div>
         </div>
 
-        <p className="mt-2 text-center text-[8px] text-[#555] print:hidden">
-          Sample report card. All names, marks and school details are fictional.
-        </p>
       </div>
     </div>
   );
