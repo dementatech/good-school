@@ -17,7 +17,7 @@ const SCHOOL = {
   name: 'SEETA HIGH SCHOOL',
   contact: 'P. O. Box 417,  Tel: 041-471437  KAMPALA',
   title: 'SUMMATIVE ASSESSMENT REPORT',
-  exam: 'End of Term 2 Exams - 2026',
+  exam: 'End of Term 2 Exams - 2025',
 };
 
 const LEARNER = {
@@ -231,7 +231,7 @@ export default function ReportSamplesPage() {
         {/* Footer */}
         <div className="mx-auto mt-1 flex items-start justify-between text-[11px]" style={{ width: '228mm' }}>
           <div className="flex-1">
-            <p className="font-bold">Start of Next Term: 20 September 2026</p>
+            <p className="font-bold">Start of Next Term: 20 September 2025</p>
             <div className="mt-0.5 border border-black px-1.5 py-1" style={{ width: '125mm' }}>
               <p className="font-bold">Requirements for next term:</p>
               <p>1 Ream rotatrim and 1 scrubbing brush</p>
@@ -239,13 +239,14 @@ export default function ReportSamplesPage() {
             </div>
           </div>
           <div className="flex flex-col items-end">
-            <p className="italic">Date of Issue: 21 August 2026</p>
-            <div
-              className="mt-1 flex items-center justify-center rounded-[50%] border-2 border-dashed border-[#1d4f91] text-[9px] font-bold text-[#1d4f91]"
-              style={{ width: '40mm', height: '20mm' }}
-            >
-              SCHOOL STAMP
-            </div>
+            <p className="italic">Date of Issue: 22 August 2025</p>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src="/images/report-samples/seeta-stamp.png"
+              alt="Seeta High School stamp"
+              className="mt-1 -rotate-6"
+              style={{ width: '46mm', height: 'auto', opacity: 0.9 }}
+            />
           </div>
         </div>
 
