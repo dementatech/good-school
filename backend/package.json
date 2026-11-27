@@ -7,7 +7,7 @@
     "dev": "tsx watch src/server.ts",
     "build": "tsc -p tsconfig.json",
     "start": "node dist/server.js",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit && tsc -p tsconfig.test.json",
     "lint": "eslint .",
     "migrate": "node-pg-migrate",
     "migrate:up": "node-pg-migrate up --no-single-transaction",
@@ -19,7 +19,9 @@
     "seed-test-school": "tsx scripts/seed-test-school.ts",
     "seed-demo-junior-school": "tsx scripts/seed-demo-junior-school.ts",
     "seed-demo-primary-school": "tsx scripts/seed-demo-primary-school.ts",
-    "seed-demo-secondary-school": "tsx scripts/seed-demo-secondary-school.ts"
+    "seed-demo-secondary-school": "tsx scripts/seed-demo-secondary-school.ts",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
     "@fastify/cookie": "^11.0.2",
@@ -51,10 +53,12 @@
     "@types/ws": "^8.18.1",
     "@typescript-eslint/eslint-plugin": "^8.19.1",
     "@typescript-eslint/parser": "^8.19.1",
+    "embedded-postgres": "16.15.0-beta.19",
     "eslint": "^9.18.0",
     "eslint-import-resolver-typescript": "^4.4.5",
     "eslint-plugin-boundaries": "^5.0.1",
     "pino-pretty": "^13.0.0",
-    "typescript": "^5.7.3"
+    "typescript": "^5.7.3",
+    "vitest": "3.2.4"
   }
 }
