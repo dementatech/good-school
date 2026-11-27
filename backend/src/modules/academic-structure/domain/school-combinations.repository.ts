@@ -222,6 +222,21 @@ async function catalogMembers(
   return rows.map((r) => ({ subjectId: r.subject_id, role: r.role }));
 }
 
+async function codeTaken(
+  client: PoolClient,
+  schoolId: string,
+  academicYearId: string,
+  code: string,
+  exceptId?: string,
+): Promise<boolean> {
+  const { rowCount } = await client.query(
+    `select 1 from school_combination
+     where school_id = $1 and academic_year_id = $2 and code = $3 and ($4::uuid is null or id <> $4)`,
+    [schoolId, academicYearId, code, exceptId ?? null],
+  );
+  return (rowCount ?? 0) > 0;
+}
+
 export async function createSchoolCombination(
   schoolId: string,
   academicYearId: string,
@@ -235,6 +250,10 @@ export async function createSchoolCombination(
     let members = input.subjects ?? [];
     let code = input.code?.trim().toUpperCase();
 
+    if (code && (await codeTaken(client, schoolId, academicYearId, code))) {
+      throw new InvalidSchoolCombinationError(`Your school already has a combination coded ${code} this year.`);
+    }
+
     if (catalogId) {
       const catalog = await client.query<{ code: string }>(
         `select code from subject_combination where id = $1`,
@@ -243,8 +262,22 @@ export async function createSchoolCombination(
       if (catalog.rowCount === 0) {
         throw new InvalidSchoolCombinationError("That catalog combination doesn't exist.");
       }
+      const adopted = await client.query(
+        `select 1 from school_combination
+         where school_id = $1 and academic_year_id = $2 and catalog_combination_id = $3`,
+        [schoolId, academicYearId, catalogId],
+      );
+      if ((adopted.rowCount ?? 0) > 0) {
+        throw new InvalidSchoolCombinationError("That combination is already one of your school's combinations this year.");
+      }
       members = await catalogMembers(client, catalogId);
-      code = code || catalog.rows[0].code;
+      // Catalog codes (C001, ... per curriculum) and a school's own codes
+      // (C001, ... per school+year) come from separate sequences, so the
+      // catalog's code may already be taken here — fall back to the school's
+      // next code rather than failing on the unique index.
+      if (!code && !(await codeTaken(client, schoolId, academicYearId, catalog.rows[0].code))) {
+        code = catalog.rows[0].code;
+      }
     }
 
     if (!code) {
@@ -296,13 +329,17 @@ export async function updateSchoolCombination(
   try {
     await client.query("BEGIN");
 
-    const owns = await client.query(`select 1 from school_combination where id = $1 and school_id = $2`, [
-      id,
-      schoolId,
-    ]);
+    const owns = await client.query<{ academic_year_id: string }>(
+      `select academic_year_id from school_combination where id = $1 and school_id = $2`,
+      [id, schoolId],
+    );
     if (owns.rowCount === 0) {
       await client.query("ROLLBACK");
       return null;
+    }
+    const newCode = input.code?.trim().toUpperCase();
+    if (newCode && (await codeTaken(client, schoolId, owns.rows[0].academic_year_id, newCode, id))) {
+      throw new InvalidSchoolCombinationError(`Your school already has a combination coded ${newCode} this year.`);
     }
 
     if (input.subjects) {

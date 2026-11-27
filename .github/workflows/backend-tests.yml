@@ -1,0 +1,27 @@
+name: Backend tests
+
+# Runs the backend integration tests (a throwaway Postgres 16, every
+# migration, the real API) on every push and pull request. Separate from
+# deploy.yml, which stays manual — run this green before deploying.
+on:
+  push:
+    paths: ["backend/**", ".github/workflows/backend-tests.yml"]
+  pull_request:
+    paths: ["backend/**", ".github/workflows/backend-tests.yml"]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
