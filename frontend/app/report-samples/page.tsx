@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import { DEFAULT_AVATAR } from '@/lib/avatar/default';
+import { DownloadButton } from './DownloadButton';
 
 export const metadata: Metadata = {
   title: 'Report card sample — Seeta High School',
@@ -8,9 +9,7 @@ export const metadata: Metadata = {
 
 /**
  * Public sample of Seeta High School's summative assessment report card,
- * shown with the school's approval. The school's name, crest and contacts are
- * real; the learner, marks and teachers are FICTIONAL, so the page never
- * exposes a real learner's details.
+ * shown with the school's approval (crest, stamp and contacts included).
  */
 
 const SCHOOL = {
@@ -82,6 +81,10 @@ export default function ReportSamplesPage() {
         @page sample { size: A4 landscape; margin: 8mm; }
         @media print { .report-sample { page: sample; box-shadow: none !important; } }
       `}</style>
+
+      <div className="mx-auto mb-3 flex justify-end print:hidden" style={{ width: '281mm', maxWidth: '100%' }}>
+        <DownloadButton fileName={`Seeta High School report - ${LEARNER.name}`} />
+      </div>
 
       <div
         className="report-sample mx-auto bg-white shadow-lg text-black"
