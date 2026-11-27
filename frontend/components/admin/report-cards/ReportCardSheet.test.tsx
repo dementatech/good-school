@@ -26,7 +26,7 @@ const tpl = (kind: 'styled' | 'canvas', extra = {}): ReportCardTemplate => ({ id
 describe('report card render', () => {
   it('styled', () => {
     const html = renderToStaticMarkup(<StudentReportCardSheet sheet={sheet(tpl('styled', { columns: ['subjectCode','subject','scores','grade','subjectRemarks','teacherInitials','rowNumbers','points'], style: { ...CLASSIC_DESIGN.style, frame: 'none', table: 'striped' }, text: { title: 'Progress', signatures: ['A','B'], footerNote: 'Next term 2 Feb' } }))} schoolInfo={{ name: 'Central College', district: null, address: null, logoUrl: null }} {...bands} />);
-    expect(html).toContain('553'); expect(html).toContain('>Bio<'); expect(html).toContain('BOT'); expect(html).toContain('Abs');
+    expect(html).toContain('553'); expect(html).toContain('>BIO<'); expect(html).toContain('BOT'); expect(html).toContain('Abs');
     expect(html).toContain('Next term 2 Feb'); expect(html).toContain('Progress'); expect(html.indexOf('>Code<')).toBeLessThan(html.indexOf('>#<'));
   });
   it('canvas', () => {
@@ -59,5 +59,27 @@ describe('report card render', () => {
     expect(html).toContain('Kiseeka Aksam is 79 of 94');
     // Biology's 31 is under 40: highlighted.
     expect(html).toMatch(/color:#C0392B;font-weight:800">31</);
+  });
+  it('combined report: one row per paper, marks per exam, final mark merged', () => {
+    const base = sheet(null);
+    const mtc = {
+      ...subj('Mathematics', 'MTC', 'P458', 61.75), mark: null, hasVariant: false, variantScores: [],
+      history: [
+        { examId: 'mid', rawScore: 67, isAbsent: false, variantScores: [{ name: 'Practical', rawScore: 78, isAbsent: false }, { name: 'Theory', rawScore: 56, isAbsent: false }] },
+        { examId: 'eot', rawScore: 56.5, isAbsent: false, variantScores: [{ name: 'Theory', rawScore: 65, isAbsent: false }, { name: 'Practical', rawScore: 48, isAbsent: false }] },
+      ],
+    };
+    const html = renderToStaticMarkup(<StudentReportCardSheet sheet={{ ...base, mode: 'combined',
+      compared: [{ id: 'mid', label: 'MID', name: 'Mid', weightPercent: 50 }, { id: 'eot', label: 'EOT', name: 'End', weightPercent: 50 }],
+      student: { ...base.student, subjects: [mtc] } }} schoolInfo={null} {...bands} />);
+    const rows = [...html.matchAll(/<tr[^>]*>(.*?)<\/tr>/g)].map((m) => m[1].replace(/<[^>]+>/g, '|').replace(/\|+/g, '|'));
+    const p1 = rows.find((r) => r.includes('|P1|'))!;
+    const p2 = rows.find((r) => r.includes('|P2|'))!;
+    // Theory is P1 in both exams even though MID listed Practical first.
+    expect(p1).toMatch(/MTC\|.*P1\|56\|65\|62\|/);
+    expect(p2).toBe('|P2|78|48|');
+    expect(html).toContain('rowSpan="2"');
+    expect(html).toContain('>Papers<');
+    expect(html).not.toContain('Theory');
   });
 });

@@ -208,7 +208,7 @@ export function SubjectFormModal({
             label="Short name"
             placeholder={phase === 'A_LEVEL' ? 'Phy' : 'Maths'}
             value={form.shortName}
-            onChange={(e) => setForm({ ...form, shortName: e.target.value })}
+            onChange={(e) => setForm({ ...form, shortName: e.target.value.toUpperCase() })}
             required
           />
         </div>

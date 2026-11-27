@@ -114,6 +114,12 @@
   :where([data-slot]) {
     border-color: var(--color-border);
   }
+  /* Every table heading in the app is in capitals — including sort buttons
+     inside headings, which browsers otherwise reset to normal case. */
+  thead th,
+  thead th button {
+    text-transform: uppercase;
+  }
 }
 
 /*

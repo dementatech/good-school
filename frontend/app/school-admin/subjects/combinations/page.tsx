@@ -86,7 +86,7 @@ export default function ManageCombinationsPage() {
             <Badge variant="default">{r.combination.combinationCode}</Badge>
             <span className="text-xs text-text-muted">
               {r.combination.members
-                .map((m) => `${m.subjectCode}${m.role === 'principal' ? '' : ` (${m.role})`}`)
+                .map((m) => `${m.subjectCode.toUpperCase()}${m.role === 'principal' ? '' : ` (${m.role})`}`)
                 .join(', ')}
             </span>
             {r.combination.warnings.length > 0 && <Badge variant="accent">check eligibility</Badge>}

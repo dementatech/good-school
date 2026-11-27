@@ -202,7 +202,14 @@ export interface ReportCardStudentSubject {
   /** This learner's score in each of the report's `compared` exams, in the
    * same order (on a side-by-side report that includes the opened exam
    * itself). Empty on a single-exam report. */
-  history: { examId: string; rawScore: number | null; isAbsent: boolean }[];
+  history: {
+    examId: string;
+    rawScore: number | null;
+    isAbsent: boolean;
+    /** That exam's paper marks for a multi-paper subject (empty otherwise), so
+     * a side-by-side or combined report can print P1/P2 per exam. */
+    variantScores: { name: string; rawScore: number | null; isAbsent: boolean }[];
+  }[];
 }
 
 export interface ReportCardStudent {
@@ -325,7 +332,15 @@ export interface ExamReportCard {
   /** The exams shown as extra columns, oldest first. */
   compared: ComparedExam[];
   /** Every subject taught in this class in this exam, for any stream. */
-  classSubjects: { subjectId: string; subjectName: string; subjectShortName: string; role: ReportSubjectRole }[];
+  /** Core subjects first (catalog 'core', compulsory here, or an A-Level
+   * principal), then optionals; alphabetical within each group. */
+  classSubjects: {
+    subjectId: string;
+    subjectName: string;
+    subjectShortName: string;
+    role: ReportSubjectRole;
+    isCore: boolean;
+  }[];
   exam: { id: string; name: string; label: string; termId: string; termName: string; publishedAt: string | null };
   /** Whether printed report cards show each pupil's position — the school's
    * choice per section (Nursery defaults to off). */
@@ -1845,7 +1860,12 @@ export async function getExamReportCard(
           teacherInitials: initialsFor(s.subjectId, r.stream_id),
           history: compared.map((c) => {
             const score = scoresByExam.get(c.id)?.get(r.student_user_id)?.get(s.subjectId);
-            return { examId: c.id, rawScore: score?.rawScore ?? null, isAbsent: score?.isAbsent ?? false };
+            return {
+              examId: c.id,
+              rawScore: score?.rawScore ?? null,
+              isAbsent: score?.isAbsent ?? false,
+              variantScores: score?.hasVariant ? (score.variantScores ?? []) : [],
+            };
           }),
         }))
         .sort((a, b) => a.subjectName.localeCompare(b.subjectName)),
@@ -1974,18 +1994,31 @@ export async function getExamReportCard(
       subjectName: slot.subjectName,
       subjectShortName: slot.subjectCode,
       role: "principal",
+      isCore: false,
     });
   }
-  const { rows: classSubjectRows } = await pool.query<{ id: string; category: string; short_name: string }>(
-    `select id, category, short_name from subject where id = any($1::uuid[])`,
-    [[...classSubjectsById.keys()]],
+  const { rows: classSubjectRows } = await pool.query<{
+    id: string;
+    category: string;
+    short_name: string;
+    is_compulsory: boolean | null;
+  }>(
+    `select s.id, s.category, s.short_name, o.is_compulsory
+       from subject s
+       left join subject_offering o
+         on o.subject_id = s.id and o.school_id = $2 and o.academic_year_id = $3
+      where s.id = any($1::uuid[])`,
+    [[...classSubjectsById.keys()], schoolId, exam.academicYearId],
   );
   for (const row of classSubjectRows) {
     const subject = classSubjectsById.get(row.id)!;
     subject.subjectShortName = row.short_name;
     subject.role = roleOf(row.category);
+    subject.isCore = isALevel ? subject.role === "principal" : row.category === "core" || row.is_compulsory === true;
   }
-  const classSubjects = [...classSubjectsById.values()].sort((a, b) => a.subjectName.localeCompare(b.subjectName));
+  const classSubjects = [...classSubjectsById.values()].sort(
+    (a, b) => Number(b.isCore) - Number(a.isCore) || a.subjectName.localeCompare(b.subjectName),
+  );
 
   // Split by role: A-Level's principal scheme (A-E) and subsidiary scheme
   // (Pass/Fail) use unrelated grade vocabularies — counting them together

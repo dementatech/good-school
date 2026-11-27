@@ -1,32 +1,18 @@
 'use client';
 
+import { DEFAULT_AVATAR } from '@/lib/avatar/default';
 import { LifeBuoy, Megaphone, School, Users, UsersRound } from 'lucide-react';
-import { initials } from '@/lib/communications/format';
 import type { RoomKind } from '@/lib/communications/types';
 
 const SIZES = { sm: 'size-8 text-xs', md: 'size-11 text-sm', lg: 'size-16 text-lg' } as const;
 
-// A small fixed palette so the same person keeps the same colour everywhere.
-const TONES = [
-  'bg-primary-100 text-primary-900',
-  'bg-accent-light text-accent-dark',
-  'bg-success-bg text-success',
-  'bg-warning-bg text-warning',
-  'bg-primary-200 text-primary-900',
-];
-
-function toneFor(seed: string): string {
-  let h = 0;
-  for (let i = 0; i < seed.length; i++) h = (h * 31 + seed.charCodeAt(i)) | 0;
-  return TONES[Math.abs(h) % TONES.length];
-}
-
+// A person without a photo shows the default silhouette (DEFAULT_AVATAR).
+// `seed` is kept for callers; it no longer picks a colour.
 export function PersonAvatar({
   name,
   photoUrl,
   online,
   size = 'md',
-  seed,
 }: {
   name: string;
   photoUrl?: string | null;
@@ -36,17 +22,8 @@ export function PersonAvatar({
 }) {
   return (
     <span className={`relative inline-flex shrink-0 ${SIZES[size]}`}>
-      {photoUrl ? (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img src={photoUrl} alt="" className="size-full rounded-full object-cover bg-bg-muted" />
-      ) : (
-        <span
-          aria-hidden
-          className={`size-full rounded-full inline-flex items-center justify-center font-semibold ${toneFor(seed ?? name)}`}
-        >
-          {initials(name)}
-        </span>
-      )}
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img src={photoUrl || DEFAULT_AVATAR} alt={name} className="size-full rounded-full object-cover bg-bg-muted" />
       {online && (
         <span
           className="absolute bottom-0 right-0 size-3 rounded-full bg-success ring-2 ring-white"

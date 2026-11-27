@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { Baby, FileText, MessageSquareText, Plus, Save, Trash2 } from 'lucide-react';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
@@ -47,6 +48,7 @@ function nextRating(r: DevelopmentalRating | null): DevelopmentalRating | null {
  * the learning-area list or writes the head teacher's remark.
  */
 export function KindergartenProgress({ portal }: { portal: 'school-admin' | 'staff' }) {
+  const router = useRouter();
   const toast = useToast();
   const isAdmin = portal === 'school-admin';
   const [tab, setTab] = useState<'assess' | 'areas'>('assess');
@@ -152,7 +154,7 @@ export function KindergartenProgress({ portal }: { portal: 'school-admin' | 'sta
   function openReports(studentUserId?: string) {
     const qs = new URLSearchParams({ classId, termId });
     if (studentUserId) qs.set('studentId', studentUserId);
-    window.open(`/${portal}/kindergarten/report?${qs.toString()}`, '_blank');
+    router.push(`/${portal}/kindergarten/report?${qs.toString()}`);
   }
 
   if (loading) {

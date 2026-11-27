@@ -10,6 +10,7 @@ import { fetchOne, submitJson } from '@/lib/api/envelope';
 import { ArrowLeft, Check, Lock } from 'lucide-react';
 import type { MarkSheet as MarkSheetData, SlotKey } from './types';
 import { slotLabel } from './types';
+import { SortHeader, useTableSort } from '@/components/ui/SortHeader';
 
 /** A plain (non-variant) subject is modelled as one column keyed by this
  * sentinel, so the whole grid — draft, dirty-check, save — is written once
@@ -106,6 +107,13 @@ export function MarkSheet({
 
   const slotBody = { subjectId: slot.subjectId, classId: slot.classId, streamId: slot.streamId };
   const columns = useMemo(() => (sheet ? columnsFor(sheet) : []), [sheet]);
+  // Click a heading to sort: by name, or by a mark column (as typed so far).
+  // Rows only reorder on a click, never while a mark is being typed.
+  const { sorted: rows, sort, toggle } = useTableSort(sheet?.rows ?? [], (r, key) => {
+    if (key === 'name') return r.studentName;
+    const cell = cellOf(draft, r.studentUserId, key);
+    return cell.absent || cell.score.trim() === '' ? null : Number(cell.score);
+  }, { key: 'name', direction: 'asc' });
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -306,7 +314,7 @@ export function MarkSheet({
       </div>
 
       {readOnly && (
-        <p className="text-sm rounded-lg bg-bg-muted px-3 py-2 text-text-muted flex items-center gap-1.5">
+        <p className="text-sm bg-bg-muted px-3 py-2 text-text-muted flex items-center gap-1.5">
           <Lock className="w-4 h-4 shrink-0" aria-hidden />
           {sheet.submitted
             ? `This sheet has been submitted. ${
@@ -316,16 +324,28 @@ export function MarkSheet({
         </p>
       )}
 
-      <div className="overflow-x-auto rounded-lg border border-border">
+      <div className="overflow-x-auto border border-border">
         <table className="w-full text-sm">
           <thead>
             <tr className="text-left text-xs text-text-muted bg-bg-subtle border-b border-border">
               <th className="py-2.5 px-4 w-10">#</th>
-              <th className="py-2.5 px-2">Student</th>
+              <th className="py-2.5 px-2">
+                <SortHeader label="Student" sortKey="name" sort={sort} onSort={toggle} />
+              </th>
               {columns.map((c) => (
                 <th key={c.key} className="py-2.5 px-2 w-28">
-                  {c.label}
-                  {c.sublabel && <span className="text-text-faint font-normal"> ({c.sublabel})</span>}
+                  <SortHeader
+                    label={
+                      <>
+                        {c.label}
+                        {c.sublabel && <span className="text-text-faint font-normal"> ({c.sublabel})</span>}
+                      </>
+                    }
+                    sortKey={c.key}
+                    sort={sort}
+                    onSort={toggle}
+                    numeric
+                  />
                 </th>
               ))}
               {hasVariant && <th className="py-2.5 px-2 w-24">Final</th>}
@@ -343,11 +363,11 @@ export function MarkSheet({
                 </td>
               </tr>
             )}
-            {sheet.rows.map((r, i) => (
+            {rows.map((r, i) => (
               <tr key={r.studentUserId} className="border-b border-border/60 last:border-0">
                 <td className="py-1.5 px-4 text-text-muted tabular-nums">{i + 1}</td>
                 <td className="py-1.5 px-2">
-                  <span className="font-medium text-primary-900">{r.studentName}</span>
+                  <span className="font-medium text-primary-900 uppercase">{r.studentName}</span>
                   {r.systemId && <span className="text-text-muted"> · {r.systemId}</span>}
                 </td>
                 {columns.map((c) => {
@@ -361,7 +381,7 @@ export function MarkSheet({
                           max={hasVariant ? 100 : sheet.subject.maxMark}
                           inputMode="decimal"
                           aria-label={`${r.studentName} — ${c.label}`}
-                          className="w-16 rounded-lg border-2 border-border bg-white px-2 py-1.5 text-sm focus:border-primary-700 focus:outline-none disabled:bg-bg-muted disabled:text-text-muted"
+                          className="w-16 border-2 border-border bg-white px-2 py-1.5 text-sm focus:border-primary-700 focus:outline-none disabled:bg-bg-muted disabled:text-text-muted"
                           value={cell.absent ? '' : cell.score}
                           disabled={readOnly || cell.absent}
                           onChange={(e) => setCell(r.studentUserId, c.key, { score: e.target.value })}

@@ -80,7 +80,7 @@ export default function ManageOptionsPage() {
           <span className="flex flex-wrap gap-1">
             {active.map((s) => (
               <Badge key={s.subjectId} variant="muted">
-                {s.subjectCode}
+                {s.subjectCode.toUpperCase()}
               </Badge>
             ))}
           </span>

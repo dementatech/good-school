@@ -1,5 +1,6 @@
 'use client';
 
+import { DEFAULT_AVATAR } from '@/lib/avatar/default';
 import { useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { ArrowLeft, Check, Printer } from 'lucide-react';
@@ -81,10 +82,8 @@ function ProgressReportSheet({
               </span>
             </div>
             <div className="w-12 h-14 border border-border shrink-0 overflow-hidden">
-              {pupil.photoUrl && (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img src={pupil.photoUrl} alt="" className="w-full h-full object-cover" />
-              )}
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={pupil.photoUrl || DEFAULT_AVATAR} alt="" className="w-full h-full object-cover" />
             </div>
           </div>
 

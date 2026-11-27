@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/Button';
 import { Loader } from '@/components/ui/loader';
 import { useToast } from '@/components/ui/ToastProvider';
 import { fetchOne } from '@/lib/api/envelope';
+import { byCoreThenName } from '@/lib/subjects/order';
 import { ArrowLeft } from 'lucide-react';
 import {
   slotLabel,
@@ -86,7 +87,9 @@ export default function SchoolAdminExamDetailPage() {
     );
   }
 
-  const { exam, slots } = data;
+  const { exam } = data;
+  // Core subjects first, optionals last; each subject's classes stay together.
+  const slots = [...data.slots].sort((a, b) => byCoreThenName(a, b) || slotLabel(a).localeCompare(slotLabel(b), undefined, { numeric: true }));
   const totalEntered = slots.reduce((n, s) => n + s.enteredCount, 0);
   const totalRoster = slots.reduce((n, s) => n + s.rosterCount, 0);
   const submittedCount = slots.filter((s) => s.submitted).length;

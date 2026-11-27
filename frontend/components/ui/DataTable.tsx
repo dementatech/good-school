@@ -178,7 +178,11 @@ export function DataTable<T>({
   numbered = false,
 }: DataTableProps<T>) {
   const [search, setSearch] = useState('');
-  const [sort, setSort] = useState(initialSort ?? null);
+  // Layered sorting: the newest clicked column first, earlier ones (up to
+  // three in all) break its ties — e.g. Name, then Class, gives each class
+  // in A–Z order.
+  const [sorts, setSorts] = useState<{ key: string; direction: 'asc' | 'desc' }[]>(initialSort ? [initialSort] : []);
+  const sort = sorts[0] ?? null;
   const [active, setActive] = useState<Record<string, string>>({});
   const [page, setPage] = useState(0);
   // Seeded from the `pageSize` prop, but from here on the user's own choice —
@@ -224,11 +228,13 @@ export function DataTable<T>({
       return columns.some((column) => asSearchText(defaultValue(row, column)).includes(needle));
     });
 
-    if (sort) {
-      const column = columns.find((c) => c.key === sort.key);
-      if (column) {
-        const direction = sort.direction === 'asc' ? 1 : -1;
-        result = [...result].sort((a, b) => {
+    const layers = sorts.flatMap((s) => {
+      const column = columns.find((c) => c.key === s.key);
+      return column ? [{ column, direction: s.direction === 'asc' ? 1 : -1 }] : [];
+    });
+    if (layers.length > 0) {
+      result = [...result].sort((a, b) => {
+        for (const { column, direction } of layers) {
           const av = defaultValue(a, column);
           const bv = defaultValue(b, column);
           // Blanks sort last regardless of direction — an empty cell is not
@@ -236,17 +242,18 @@ export function DataTable<T>({
           // meaningful.
           const aEmpty = av === null || av === undefined || av === '';
           const bEmpty = bv === null || bv === undefined || bv === '';
-          if (aEmpty && bEmpty) return 0;
-          if (aEmpty) return 1;
-          if (bEmpty) return -1;
-          if (typeof av === 'number' && typeof bv === 'number') return (av - bv) * direction;
-          return String(av).localeCompare(String(bv), undefined, { sensitivity: 'base' }) * direction;
-        });
-      }
+          let diff = 0;
+          if (aEmpty || bEmpty) diff = aEmpty === bEmpty ? 0 : aEmpty ? 1 : -1;
+          else if (typeof av === 'number' && typeof bv === 'number') diff = (av - bv) * direction;
+          else diff = String(av).localeCompare(String(bv), undefined, { sensitivity: 'base', numeric: true }) * direction;
+          if (diff !== 0) return diff;
+        }
+        return 0;
+      });
     }
 
     return result;
-  }, [rows, columns, filters, active, deferredSearch, sort]);
+  }, [rows, columns, filters, active, deferredSearch, sorts]);
 
   const pageCount = Math.max(1, Math.ceil(processed.length / pageSize));
   const safePage = Math.min(page, pageCount - 1);
@@ -256,10 +263,10 @@ export function DataTable<T>({
   function toggleSort(column: DataTableColumn<T>) {
     if (column.sortable === false) return;
     setPage(0);
-    setSort((current) =>
-      current?.key === column.key
-        ? { key: column.key, direction: current.direction === 'asc' ? 'desc' : 'asc' }
-        : { key: column.key, direction: 'asc' }
+    setSorts((current) =>
+      current[0]?.key === column.key
+        ? [{ key: column.key, direction: current[0].direction === 'asc' ? 'desc' : 'asc' }, ...current.slice(1)]
+        : [{ key: column.key, direction: 'asc' as const }, ...current.filter((s) => s.key !== column.key)].slice(0, 3)
     );
   }
 

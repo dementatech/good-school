@@ -1,5 +1,8 @@
 'use client';
 
+import { DEFAULT_AVATAR } from '@/lib/avatar/default';
+import { reportComments } from '@/lib/reports/comments';
+import { byCoreThenName } from '@/lib/subjects/order';
 import { useLayoutEffect, useRef, useState } from 'react';
 import type { SchoolLevel, SchoolSection, SubjectPhase } from '@/lib/levels';
 import {
@@ -51,7 +54,14 @@ export interface ReportCardStudentSubject {
   /** The subject teacher's initials ("J.O."), or null if nobody is assigned. */
   teacherInitials?: string | null;
   /** Scores in the report's `compared` exams, same order. */
-  history?: { examId: string; rawScore: number | null; isAbsent: boolean }[];
+  history?: {
+    examId: string;
+    rawScore: number | null;
+    isAbsent: boolean;
+    /** That exam's paper marks (multi-paper subjects). Missing from older
+     * backends, which only sent the subject mark. */
+    variantScores?: { name: string; rawScore: number | null; isAbsent: boolean }[];
+  }[];
 }
 export interface ReportCardStudent {
   studentUserId: string;
@@ -94,7 +104,14 @@ export interface ExamReportCard {
   /** Extra columns on the report, oldest exam first. */
   compared?: ComparedExam[];
   /** Every subject taught in this class in this exam, for any stream. */
-  classSubjects?: { subjectId: string; subjectName: string; subjectShortName: string; role: 'principal' | 'subsidiary' }[];
+  classSubjects?: {
+    subjectId: string;
+    subjectName: string;
+    subjectShortName: string;
+    role: 'principal' | 'subsidiary';
+    /** Core (compulsory / principal) subjects come first. Missing from older backends. */
+    isCore?: boolean;
+  }[];
   exam: { id: string; name: string; label?: string; termId: string; termName: string; publishedAt: string | null };
   /** The school's choice, per section, whether report cards show positions. */
   showPositions: boolean;
@@ -278,7 +295,7 @@ const GRADE_CHIP: Record<string, string> = {
 };
 
 function gradeChip(grade: string): string {
-  return GRADE_CHIP[grade] ?? PLE_CHIP[grade[0]] ?? 'bg-bg-muted text-text-muted';
+  return GRADE_CHIP[grade] ?? PLE_CHIP[grade[0]] ?? 'bg-bg-muted text-text-primary';
 }
 const PLE_CHIP: Record<string, string> = {
   D: 'bg-success-bg text-success',
@@ -292,6 +309,25 @@ function gradeOf(s: ReportCardStudentSubject, bands: GradeBand[]): string | null
   if (s.computedGrade) return s.computedGrade;
   if (s.isAbsent || s.rawScore === null) return null;
   return bands.find((b) => s.rawScore! >= b.minPct && s.rawScore! <= b.maxPct)?.label ?? null;
+}
+
+/** A-Level total points: each graded subject's band points (principal A–E,
+ * subsidiary Pass/Fail), summed. Null when no subject has a grade yet. */
+function totalPointsOf(
+  groups: { subjects: ReportCardStudentSubject[]; bands: GradeBand[] }[],
+): number | null {
+  let total = 0;
+  let graded = 0;
+  for (const { subjects, bands } of groups) {
+    for (const s of subjects) {
+      const grade = gradeOf(s, bands);
+      const points = grade ? bands.find((b) => b.label === grade)?.points : null;
+      if (points === null || points === undefined) continue;
+      total += points;
+      graded++;
+    }
+  }
+  return graded ? total : null;
 }
 
 function round(n: number): number {
@@ -346,6 +382,8 @@ interface TableLook {
   density: TemplateStyle['density'];
   table: TemplateStyle['table'];
   highlights?: HighlightRule[];
+  /** Secondary report cards print grades as plain text, with no coloured chip. */
+  plainGrades?: boolean;
 }
 const CLASSIC_LOOK: TableLook = { columns: [...COLUMN_KEYS], density: 'comfortable', table: 'bordered' };
 
@@ -379,12 +417,11 @@ function ReportSubjectTable({
   // Bordered: a grid. Striped: shaded rows, no inner verticals. Minimal: hairlines only.
   const vline = look.table === 'bordered' ? 'border-r border-border last:border-r-0' : '';
   const th = `${pad} ${vline} border-b ${look.table === 'minimal' ? 'border-primary-700' : 'border-border'}`;
-  const td = `${pad} ${vline}`;
   // Side by side, the opened exam sits among the others in date order, so it
   // has no separate score column.
   const inline = compared.some((e) => e.isCurrent);
   const nameOf = (s: ReportCardStudentSubject) =>
-    fields.shortSubjectNames && s.subjectReportName ? s.subjectReportName : s.subjectName;
+    fields.shortSubjectNames && s.subjectReportName ? s.subjectReportName.toUpperCase() : s.subjectName;
   // A highlight rule ("scores under 40 in red") styles the number itself.
   const scored = (value: number | null, text: React.ReactNode) => {
     const style = value !== null ? highlightFor(look.highlights, 'score', round(value)) : undefined;
@@ -392,7 +429,7 @@ function ReportSubjectTable({
   };
   const scoreCell = (s: ReportCardStudentSubject) =>
     s.isAbsent ? (
-      <span className="text-text-muted font-normal">Abs</span>
+      <span className="text-text-primary font-normal">Abs</span>
     ) : s.rawScore !== null ? (
       // Out of the subject's own full mark when it isn't 100.
       scored(s.rawScore, s.mark !== null && s.maxMark !== 100 ? `${round(s.mark)}/${s.maxMark}` : round(s.rawScore))
@@ -400,16 +437,85 @@ function ReportSubjectTable({
       '—'
     );
 
-  type Column = { key: string; head: React.ReactNode; headClass?: string; cell: (s: ReportCardStudentSubject, i: number) => React.ReactNode; cellClass?: string };
+  // Multi-paper subjects: one row per paper (P1 | 30, P2 | 40) beside the
+  // subject's own mark in a merged cell, as UNEB-style report cards print it.
+  // Papers print as P1, P2, … in order, whatever the school named them
+  // ("Theory", "Practical"), so the card reads the same for every subject.
+  // Theory always comes before Practical (so Theory = P1, Practical = P2);
+  // other papers keep the order they came in.
+  const paperRank = (name: string) => (/theory/i.test(name) ? 0 : /practical/i.test(name) ? 2 : 1);
+  const byPaperOrder = <T extends { name: string }>(list: T[]) =>
+    [...list].sort((a, b) => paperRank(a.name) - paperRank(b.name));
+  const papersOf = (s: ReportCardStudentSubject) =>
+    !multiExam && fields.paperBreakdown && s.hasVariant && s.variantScores && s.variantScores.length > 0
+      ? byPaperOrder(s.variantScores)
+      : null;
+  // Side-by-side and combined reports: the subject spans one row per paper,
+  // and each exam's column shows that paper's mark in that exam; the final
+  // mark, grade, remark and initials are merged across the paper rows.
+  const multiExam = compared.length > 0;
+  const paperRowsOf = (s: ReportCardStudentSubject): string[] | null => {
+    if (!multiExam || !fields.paperBreakdown) return null;
+    const lists = [
+      ...(s.history ?? []).map((h) => h.variantScores ?? []),
+      ...(compared.some((e) => e.isCurrent) && s.hasVariant ? [s.variantScores ?? []] : []),
+    ];
+    const names = byPaperOrder(
+      lists.flat().filter((v, i, all) => all.findIndex((x) => x.name === v.name) === i),
+    ).map((v) => v.name);
+    return names.length > 1 ? names : null;
+  };
+  const paperMarkIn = (examId: string | null, s: ReportCardStudentSubject, name: string) => {
+    const list = examId === null ? s.variantScores : s.history?.find((h) => h.examId === examId)?.variantScores;
+    const v = list?.find((x) => x.name === name);
+    return !v ? '—' : v.isAbsent ? 'Abs' : v.rawScore !== null ? scored(v.rawScore, round(v.rawScore)) : '—';
+  };
+  const showPapersColumn = subjects.some((s) => paperRowsOf(s));
+  const paperGrid = (s: ReportCardStudentSubject) => {
+    const papers = papersOf(s)!;
+    const line = 'border-border';
+    return (
+      <table className="w-full h-full border-collapse">
+        <tbody>
+          {papers.map((v, i) => (
+            <tr key={v.name} className={i < papers.length - 1 ? `border-b ${line}` : ''}>
+              <td className={`${pad} border-r ${line} font-bold text-left whitespace-nowrap`}>{`P${i + 1}`}</td>
+              <td className={`${pad} border-r ${line} text-center font-normal`}>
+                {v.isAbsent ? 'Abs' : v.rawScore !== null ? scored(v.rawScore, round(v.rawScore)) : '—'}
+              </td>
+              {i === 0 && (
+                <td rowSpan={papers.length} className={`${pad} text-center font-bold`}>
+                  {scoreCell(s)}
+                </td>
+              )}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    );
+  };
+  const currentScoreCell = (s: ReportCardStudentSubject) => (papersOf(s) ? paperGrid(s) : scoreCell(s));
+
+  type Column = {
+    key: string;
+    head: React.ReactNode;
+    headClass?: string;
+    cell: (s: ReportCardStudentSubject, i: number) => React.ReactNode;
+    cellClass?: string;
+    /** This row's cell draws its own inner grid edge to edge, so no padding. */
+    flush?: (s: ReportCardStudentSubject) => boolean;
+    /** One cell per paper row (multi-exam reports); other columns span them. */
+    perPaper?: (s: ReportCardStudentSubject, paper: string, index: number) => React.ReactNode;
+  };
   const columnsFor = (key: ColumnKey): Column[] => {
     switch (key) {
       case 'rowNumbers':
         return fields.rowNumbers
-          ? [{ key, head: '#', headClass: 'w-8 text-center', cell: (_s, i) => i + 1, cellClass: 'text-center text-text-faint tabular-nums' }]
+          ? [{ key, head: '#', headClass: 'w-8 text-center', cell: (_s, i) => i + 1, cellClass: 'text-center text-text-primary tabular-nums' }]
           : [];
       case 'subjectCode':
         return fields.subjectCode
-          ? [{ key, head: 'Code', headClass: 'w-14', cell: (s) => s.paperCode ?? '', cellClass: 'tabular-nums text-text-secondary' }]
+          ? [{ key, head: 'Code', headClass: 'w-14', cell: (s) => s.paperCode ?? '', cellClass: 'tabular-nums text-text-primary' }]
           : [];
       case 'subject':
         return [
@@ -417,18 +523,21 @@ function ReportSubjectTable({
             key,
             head: 'Subject',
             cell: (s) => (
-              <span title={s.subjectName}>
-                {nameOf(s)}
-                {fields.paperBreakdown && s.hasVariant && s.variantScores && (
-                  <span className="block text-[10px] text-text-faint">
-                    {s.variantScores
-                      .map((v) => `${v.name} ${v.isAbsent ? 'Abs' : v.rawScore !== null ? round(v.rawScore) : '—'}`)
-                      .join(' · ')}
-                  </span>
-                )}
-              </span>
+              <span title={s.subjectName}>{nameOf(s)}</span>
             ),
           },
+          ...(showPapersColumn
+            ? [
+                {
+                  key: 'papers',
+                  head: 'Papers',
+                  headClass: 'w-14',
+                  cellClass: 'font-bold',
+                  cell: () => ' ',
+                  perPaper: (_s: ReportCardStudentSubject, _paper: string, index: number) => `P${index + 1}`,
+                },
+              ]
+            : []),
         ];
       case 'scores': {
         const cols: Column[] = compared.map((exam) => ({
@@ -439,10 +548,12 @@ function ReportSubjectTable({
               {exam.weightPercent !== null && ` (${exam.weightPercent}%)`}
             </span>
           ),
-          headClass: 'text-right whitespace-nowrap',
-          cellClass: `text-right tabular-nums ${exam.isCurrent ? 'font-semibold' : ''}`,
+          headClass: 'text-center whitespace-nowrap',
+          cellClass: `text-center tabular-nums ${exam.isCurrent ? 'font-semibold' : ''}`,
+          flush: (s) => !!exam.isCurrent && !!papersOf(s),
+          perPaper: (s, paper) => paperMarkIn(exam.isCurrent ? null : exam.id, s, paper),
           cell: (s) => {
-            if (exam.isCurrent) return scoreCell(s);
+            if (exam.isCurrent) return currentScoreCell(s);
             const past = s.history?.find((h) => h.examId === exam.id);
             return past?.isAbsent ? 'Abs' : past?.rawScore != null ? scored(past.rawScore, round(past.rawScore)) : '—';
           },
@@ -451,9 +562,10 @@ function ReportSubjectTable({
           cols.push({
             key: 'score',
             head: combined ? 'Final' : examLabel || (compared.length > 0 ? 'This exam' : 'Score'),
-            headClass: 'text-right',
-            cellClass: 'text-right tabular-nums font-semibold',
-            cell: scoreCell,
+            headClass: 'text-center',
+            cellClass: 'text-center tabular-nums font-semibold',
+            flush: (s) => !!papersOf(s),
+            cell: currentScoreCell,
           });
         }
         return cols;
@@ -470,13 +582,13 @@ function ReportSubjectTable({
                   const grade = gradeOf(s, bands);
                   return grade ? (
                     <span
-                      className={`inline-flex min-w-6 justify-center px-1.5 py-0.5 rounded-md text-[11px] font-extrabold ${gradeChip(grade)}`}
+                      className={`inline-flex min-w-6 justify-center px-1.5 py-0.5 rounded-md text-base leading-none font-black ${look.plainGrades ? 'text-text-primary' : gradeChip(grade)}`}
                       style={highlightFor(look.highlights, 'grade', grade)}
                     >
                       {grade}
                     </span>
                   ) : (
-                    <span className="text-text-faint">—</span>
+                    <span className="text-text-primary">—</span>
                   );
                 },
               },
@@ -492,14 +604,14 @@ function ReportSubjectTable({
               {
                 key,
                 head: 'Remarks',
-                cellClass: 'text-text-secondary',
+                cellClass: 'text-text-primary',
                 cell: (s) => bands.find((b) => b.label === gradeOf(s, bands))?.comment ?? ' ',
               },
             ]
           : [];
       case 'teacherInitials':
         return fields.teacherInitials
-          ? [{ key, head: 'Initials', headClass: 'w-14 text-center', cellClass: 'text-center font-semibold text-text-secondary', cell: (s) => s.teacherInitials ?? ' ' }]
+          ? [{ key, head: 'Initials', headClass: 'w-14 text-center', cellClass: 'text-center font-semibold text-text-primary', cell: (s) => s.teacherInitials ?? ' ' }]
           : [];
     }
   };
@@ -507,12 +619,12 @@ function ReportSubjectTable({
 
   return (
     <div>
-      <p className="text-xs font-bold uppercase tracking-wide text-text-faint mb-1.5">{title}</p>
+      <p className="text-xs font-bold uppercase tracking-wide text-text-primary mb-1.5">{title}</p>
       <table className={`w-full ${compact ? 'text-xs' : 'text-sm'} ${look.table === 'minimal' ? '' : 'border border-border'}`}>
         <thead>
           <tr
             className={`text-left text-[10.5px] font-bold uppercase tracking-wide ${
-              look.table === 'minimal' ? 'text-primary-700' : 'bg-primary-50 text-text-faint'
+              look.table === 'minimal' ? 'text-primary-700' : 'bg-primary-700 text-white'
             }`}
           >
             {columns.map((c) => (
@@ -523,18 +635,42 @@ function ReportSubjectTable({
           </tr>
         </thead>
         <tbody>
-          {subjects.map((s, i) => (
-            <tr
-              key={s.subjectId}
-              className={`border-b border-border last:border-0 ${look.table === 'striped' && i % 2 === 1 ? 'bg-bg-subtle' : ''}`}
-            >
-              {columns.map((c) => (
-                <td key={c.key} className={`${td} ${c.cellClass ?? ''}`}>
-                  {c.cell(s, i)}
-                </td>
-              ))}
-            </tr>
-          ))}
+          {subjects.flatMap((s, i) => {
+            const papers = paperRowsOf(s);
+            const rows = papers ?? [null];
+            const stripe = look.table === 'striped' && i % 2 === 1 ? 'bg-bg-subtle' : '';
+            // Paper rows leave out the spanned cells, so `last:` no longer
+            // means the last column: draw each cell's right edge explicitly.
+            const edge = (ci: number) =>
+              look.table === 'bordered' && ci < columns.length - 1 ? 'border-r border-border' : '';
+            return rows.map((paper, k) => (
+              <tr
+                key={`${s.subjectId}-${k}`}
+                className={`${k === rows.length - 1 ? 'border-b border-border last:border-0' : 'border-b border-border'} ${stripe}`}
+              >
+                {columns.map((c, ci) => {
+                  if (paper !== null && c.perPaper) {
+                    return (
+                      <td key={c.key} className={`${pad} ${edge(ci)} ${c.cellClass ?? ''}`}>
+                        {c.perPaper(s, paper, k)}
+                      </td>
+                    );
+                  }
+                  if (k > 0) return null;
+                  const span = papers ? papers.length : undefined;
+                  return (
+                    <td
+                      key={c.key}
+                      rowSpan={span}
+                      className={`${c.flush?.(s) ? `p-0 h-px ${c.cellClass ?? ''}` : `${pad} ${c.cellClass ?? ''}`} ${edge(ci)} ${span ? 'align-middle' : ''}`}
+                    >
+                      {c.cell(s, i)}
+                    </td>
+                  );
+                })}
+              </tr>
+            ));
+          })}
         </tbody>
       </table>
     </div>
@@ -551,10 +687,10 @@ function NurseryRatingsTable({ data }: { data: NurseryRatings }) {
   if (data.areas.length === 0) return null;
   return (
     <div>
-      <p className="text-xs font-bold uppercase tracking-wide text-text-faint mb-1.5">Progress Ratings</p>
+      <p className="text-xs font-bold uppercase tracking-wide text-text-primary mb-1.5">Progress Ratings</p>
       <table className="w-full text-sm border border-border">
         <thead>
-          <tr className="bg-bg-subtle text-left text-[10.5px] font-bold uppercase tracking-wide text-text-faint">
+          <tr className="bg-primary-700 text-left text-[10.5px] font-bold uppercase tracking-wide text-white">
             <th className="py-1 px-2 border-b border-r border-border">Learning Area</th>
             <th className="py-1 px-2 border-b border-border w-32">Rating</th>
           </tr>
@@ -578,9 +714,9 @@ function StatRow({ items }: { items: ({ label: string; value: string } | false)[
   const shown = items.filter((it): it is { label: string; value: string } => !!it);
   if (shown.length === 0) return null;
   return (
-    <table className="w-full border border-border text-sm">
+    <table className="w-full border border-border text-lg">
       <thead>
-        <tr className="bg-bg-subtle text-[10.5px] font-bold uppercase tracking-wide text-text-faint">
+        <tr className="bg-primary-700 text-xs font-bold uppercase tracking-wide text-white">
           {shown.map((it) => (
             <th key={it.label} className="py-1 px-2 border-b border-r border-border last:border-r-0 text-center">
               {it.label}
@@ -593,7 +729,7 @@ function StatRow({ items }: { items: ({ label: string; value: string } | false)[
           {shown.map((it) => (
             <td
               key={it.label}
-              className="py-1.5 px-2 border-r border-border last:border-r-0 text-center font-extrabold text-primary-900"
+              className="py-1.5 px-2 border-r border-border last:border-r-0 text-center text-lg font-black text-primary-900"
             >
               {it.value}
             </td>
@@ -608,12 +744,12 @@ function RemarksBox({ lines }: { lines: { label: string; text: string | null }[]
   const content = lines.filter((l) => l.text);
   return (
     <div className="border border-border p-2 min-h-[2.5rem]">
-      <p className="text-[10px] font-bold uppercase tracking-wide text-text-faint mb-0.5">Remarks</p>
+      <p className="text-[10px] font-bold uppercase tracking-wide text-text-primary mb-0.5">Remarks</p>
       {content.length === 0 ? (
-        <p className="text-xs text-text-faint">—</p>
+        <p className="text-xs text-text-primary">—</p>
       ) : (
         content.map((l) => (
-          <p key={l.label} className="text-xs text-text-secondary">
+          <p key={l.label} className="text-xs text-text-primary">
             <span className="font-semibold">{l.label}: </span>
             <span className="italic">&ldquo;{l.text}&rdquo;</span>
           </p>
@@ -623,25 +759,51 @@ function RemarksBox({ lines }: { lines: { label: string; text: string | null }[]
   );
 }
 
-function GradingLegend({ bands, divisions }: { bands: GradeBand[]; divisions?: GradeDivision[] }) {
-  if (bands.length === 0) return null;
-  const sorted = [...bands].sort((a, b) => b.minPct - a.minPct);
+function GradingLegend({
+  groups,
+  divisions,
+}: {
+  groups: { title?: string; bands: GradeBand[] }[];
+  divisions?: GradeDivision[];
+}) {
+  const shown = groups.filter((g) => g.bands.length > 0);
+  if (shown.length === 0) return null;
+  const showPoints = !!divisions;
+  const cell = 'border border-border px-1.5 py-0.5';
   return (
     <div className="mt-2 pt-1.5 border-t border-border">
-      <div className="grid grid-cols-2 gap-x-6 gap-y-0 text-[9px] leading-tight text-text-secondary">
-        {sorted.map((b) => (
-          <p key={b.label}>
-            <span className="font-semibold text-text-muted">
-              {round(b.minPct)}%–{round(b.maxPct)}%:
-            </span>{' '}
-            {b.label} Grade — {b.comment}
-            {divisions && b.points !== null ? ` (${b.points} pt${b.points === 1 ? '' : 's'})` : ''}
-          </p>
+      <p className="text-[10px] font-bold uppercase tracking-wide text-text-primary mb-1">Grading key</p>
+      <div className={`grid gap-3 ${shown.length > 1 ? 'grid-cols-2' : 'grid-cols-1'}`}>
+        {shown.map((g, gi) => (
+          <table key={gi} className="w-full border-collapse text-[9.5px] leading-tight text-text-primary">
+            <thead>
+              <tr className="bg-primary-700 text-white">
+                <th className={`${cell} text-center`}>{g.title ? `${g.title} grade` : 'Grade'}</th>
+                <th className={`${cell} text-center`}>Marks</th>
+                <th className={`${cell} text-left`}>Remark</th>
+                {showPoints && <th className={`${cell} text-center`}>Points</th>}
+              </tr>
+            </thead>
+            <tbody>
+              {[...g.bands]
+                .sort((a, b) => b.minPct - a.minPct)
+                .map((b) => (
+                  <tr key={b.label}>
+                    <td className={`${cell} text-center font-bold`}>{b.label}</td>
+                    <td className={`${cell} text-center tabular-nums whitespace-nowrap`}>
+                      {Math.round(b.minPct)}–{Math.floor(b.maxPct)}%
+                    </td>
+                    <td className={cell}>{b.comment}</td>
+                    {showPoints && <td className={`${cell} text-center tabular-nums`}>{b.points ?? ''}</td>}
+                  </tr>
+                ))}
+            </tbody>
+          </table>
         ))}
       </div>
       {divisions && divisions.length > 0 && (
-        <p className="mt-1 text-[9px] leading-tight text-text-secondary">
-          <span className="font-semibold text-text-muted">Aggregates: </span>
+        <p className="mt-1 text-[9px] leading-tight text-text-primary">
+          <span className="font-semibold text-text-primary">Aggregates: </span>
           {divisions.map((d) => `${d.label} ${d.minAggregate}–${d.maxAggregate}`).join(' · ')}
         </p>
       )}
@@ -649,16 +811,12 @@ function GradingLegend({ bands, divisions }: { bands: GradeBand[]; divisions?: G
   );
 }
 
-/** The photo box: the learner's photo, or their initials until one is added. */
+/** The photo box: the learner's photo, or the default silhouette until one is added. */
 function LearnerPhoto({ student }: { student: ReportCardStudent }) {
   return (
     <div className="w-16 h-20 border border-border-strong shrink-0 overflow-hidden bg-bg-subtle flex items-center justify-center">
-      {student.photoUrl ? (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img src={student.photoUrl} alt={student.studentName} className="w-full h-full object-cover" />
-      ) : (
-        <span className="text-lg font-extrabold text-text-faint uppercase">{initialsOf(student.studentName)}</span>
-      )}
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img src={student.photoUrl || DEFAULT_AVATAR} alt={student.studentName} className="w-full h-full object-cover" />
     </div>
   );
 }
@@ -685,6 +843,8 @@ export interface CardParts {
   summary: React.ReactNode;
   ratings: React.ReactNode;
   remarks: React.ReactNode;
+  /** Ruled lines for the class teacher's and head teacher's handwritten comments. */
+  comments: React.ReactNode;
   signatures: React.ReactNode;
   issuedDate: (align?: string) => React.ReactNode;
   gradingKey: React.ReactNode;
@@ -707,6 +867,7 @@ export function buildCardParts(sheet: Sheet, schoolInfo: SchoolInfo | null, band
     density: design.style.density,
     table: design.style.table,
     highlights: design.rules?.highlights,
+    plainGrades: klass.phase === 'O_LEVEL' || klass.phase === 'A_LEVEL',
   };
   const columns = { compared, combined: mode === 'combined', examLabel: exam.label, look };
   const compact = design.style.density === 'compact';
@@ -729,6 +890,11 @@ export function buildCardParts(sheet: Sheet, schoolInfo: SchoolInfo | null, band
     month: 'long',
     year: 'numeric',
   });
+  // "Term_3" → "Term 3". A combined report covers the whole term, so it's
+  // titled for the term, not with the backend's weights summary
+  // ("Combined report: MID 50%, EOT 50%").
+  const termLabel = exam.termName.replace(/_/g, ' ');
+  const examName = mode === 'combined' ? `${termLabel} Report` : exam.name;
   const className = `${klass.name}${(stream?.name ?? student.streamName) ? ` ${stream?.name ?? student.streamName}` : ''}`;
   const position = student.rank ? `${student.rank} of ${totalInClass}` : '—';
   const attendance = fields.attendance && {
@@ -759,19 +925,19 @@ export function buildCardParts(sheet: Sheet, schoolInfo: SchoolInfo | null, band
   const schoolDetails = (align = 'center') => (
     <div className={ALIGN_CLASS[align]}>
       {fields.schoolAddress && subtitle && (
-        <p className="text-[10px] font-semibold text-text-muted uppercase tracking-wide">{subtitle}</p>
+        <p className="text-[10px] font-semibold text-text-primary uppercase tracking-wide">{subtitle}</p>
       )}
-      {fields.emisNumber && emis && <p className="text-[10px] font-semibold text-text-muted tracking-wide">EMIS No. {emis}</p>}
+      {fields.emisNumber && emis && <p className="text-[10px] font-semibold text-text-primary tracking-wide">EMIS No. {emis}</p>}
     </div>
   );
   const examTitle = (align = 'center') => (
     <p className={`${ALIGN_CLASS[align]} text-[11px] font-bold text-primary-700 uppercase tracking-wide`}>
-      {exam.name} &middot; {exam.termName}
+      {mode === 'combined' ? examName : `${examName} · ${termLabel}`}
     </p>
   );
   const badge = design.text.title ? (
     <span
-      className="inline-block px-3 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-widest text-white"
+      className="inline-block px-3 py-0.5 rounded-none text-[10px] font-extrabold uppercase tracking-widest text-white"
       style={{ background: 'var(--rc-highlight, #FF8E2B)' }}
     >
       {design.text.title}
@@ -795,14 +961,14 @@ export function buildCardParts(sheet: Sheet, schoolInfo: SchoolInfo | null, band
 
   const field = (label: string, value: string) => (
     <p className="flex items-baseline gap-2">
-      <span className="text-text-muted">{label}:</span>
+      <span className="text-text-primary">{label}:</span>
       <span className="font-semibold text-primary-900 border-b border-dotted border-border-strong px-2 min-w-16 inline-block">{value}</span>
     </p>
   );
   const learner = (
     <div className={`space-y-1 ${compact ? 'text-xs' : 'text-sm'} border-t border-b border-border py-1.5`}>
       <p className="flex items-baseline gap-2">
-        <span className="text-text-muted shrink-0">Student Name:</span>
+        <span className="text-text-primary shrink-0">Student Name:</span>
         <span className="flex-1 border-b border-dotted border-border-strong font-semibold text-primary-900 pb-0.5">
           {student.studentName}
         </span>
@@ -836,24 +1002,24 @@ export function buildCardParts(sheet: Sheet, schoolInfo: SchoolInfo | null, band
           />
           <StatRow
             items={[
-              fields.average && { label: 'Subsidiary Avg', value: average(student.subsidiaryAverage) },
-              fields.overallGrade && { label: 'Subsidiary Grade', value: student.subsidiaryGrade ?? '—' },
+              (fields.average || fields.overallGrade) && {
+                label: 'Total Points',
+                value: String(
+                  totalPointsOf([
+                    { subjects: principalSubjects, bands: principalBands },
+                    { subjects: subsidiarySubjects, bands: subsidiaryBands },
+                  ]) ?? '—',
+                ),
+              },
             ]}
           />
         </div>
         <StatRow items={[attendance]} />
       </div>
     );
-    if (fields.remarks) {
-      remarks = (
-        <RemarksBox
-          lines={[
-            { label: 'Principal', text: student.principalComment },
-            { label: 'Subsidiary', text: student.subsidiaryComment },
-          ]}
-        />
-      );
-    }
+    // No remarks box on secondary cards: the band comments ("Weak",
+    // "Subsidiary Fail") repeat the grades, and the teachers' comment lines
+    // above the signatures take its place.
   } else if (isPrimary) {
     results = (
       <div className={gap}>
@@ -877,7 +1043,13 @@ export function buildCardParts(sheet: Sheet, schoolInfo: SchoolInfo | null, band
     if (fields.remarks) remarks = <RemarksBox lines={[{ label: 'Overall', text: student.overallComment }]} />;
   } else {
     results = (
-      <ReportSubjectTable title="Subjects" subjects={student.subjects} fields={fields} bands={isNursery ? nurseryBands : oLevelBands} {...columns} />
+      <ReportSubjectTable
+        title="Subjects"
+        subjects={isNursery ? student.subjects : [...student.subjects].sort(byCoreThenName)}
+        fields={fields}
+        bands={isNursery ? nurseryBands : oLevelBands}
+        {...columns}
+      />
     );
     summary = (
       <StatRow
@@ -888,7 +1060,7 @@ export function buildCardParts(sheet: Sheet, schoolInfo: SchoolInfo | null, band
         ]}
       />
     );
-    if (fields.remarks) remarks = <RemarksBox lines={[{ label: 'Overall', text: student.overallComment }]} />;
+    if (fields.remarks && isNursery) remarks = <RemarksBox lines={[{ label: 'Overall', text: student.overallComment }]} />;
   }
   const ratings = fields.progressRatings && nurseryRatings ? <NurseryRatingsTable data={nurseryRatings} /> : null;
 
@@ -896,7 +1068,7 @@ export function buildCardParts(sheet: Sheet, schoolInfo: SchoolInfo | null, band
   const signatures =
     fields.signatures && signatureLabels.length > 0 ? (
       <div
-        className="grid gap-6 text-xs text-text-muted text-center"
+        className="grid gap-6 text-xs text-text-primary text-center"
         style={{ gridTemplateColumns: `repeat(${signatureLabels.length}, minmax(0, 1fr))` }}
       >
         {signatureLabels.map((label, i) => (
@@ -907,17 +1079,50 @@ export function buildCardParts(sheet: Sheet, schoolInfo: SchoolInfo | null, band
         ))}
       </div>
     ) : null;
+  // Written from the learner's average (A-Level: principal average). With no
+  // average yet, the lines stay blank for a handwritten comment.
+  const generated = reportComments(
+    isALevel ? student.principalAverage : student.average,
+    student.studentName,
+    student.studentUserId,
+  );
+  const commentLines = (label: string, text: string | undefined) => (
+    <div>
+      <p className="text-sm font-bold text-text-primary">{label}:</p>
+      {text ? (
+        <p className="text-sm text-text-primary leading-relaxed border-b border-text-primary pb-1 italic">{text}</p>
+      ) : (
+        <>
+          <div className="h-6 border-b border-text-primary" />
+          <div className="h-6 border-b border-text-primary" />
+        </>
+      )}
+    </div>
+  );
+  const comments = fields.signatures ? (
+    <div className="border border-border px-3 pt-1.5 pb-3 space-y-2">
+      {commentLines("Class Teacher's Comment", generated?.classTeacher)}
+      {commentLines("Head Teacher's Comment", generated?.headTeacher)}
+    </div>
+  ) : null;
   const issuedDate = (align = 'left') =>
-    fields.issuedDate ? <p className={`${ALIGN_CLASS[align]} text-[10px] text-text-faint`}>Issued on {issuedOn}</p> : null;
+    fields.issuedDate ? <p className={`${ALIGN_CLASS[align]} text-[10px] text-text-primary`}>Issued on {issuedOn}</p> : null;
   const gradingKey = fields.gradingKey ? (
     <GradingLegend
-      bands={isALevel ? [...principalBands, ...subsidiaryBands] : isPrimary ? primaryBands : isNursery ? nurseryBands : oLevelBands}
+      groups={
+        isALevel
+          ? [
+              { title: 'Principal', bands: principalBands },
+              { title: 'Subsidiary', bands: subsidiaryBands },
+            ]
+          : [{ bands: isPrimary ? primaryBands : isNursery ? nurseryBands : oLevelBands }]
+      }
       divisions={isPrimary ? aggregation?.divisions : undefined}
     />
   ) : null;
   const footerNote = (align = 'center') =>
     design.text.footerNote.trim() ? (
-      <p className={`${ALIGN_CLASS[align]} text-[10px] text-text-secondary whitespace-pre-line`}>{design.text.footerNote}</p>
+      <p className={`${ALIGN_CLASS[align]} text-[10px] text-text-primary whitespace-pre-line`}>{design.text.footerNote}</p>
     ) : null;
 
   const overallGrade = isALevel ? student.principalGrade : student.overallGrade;
@@ -939,8 +1144,8 @@ export function buildCardParts(sheet: Sheet, schoolInfo: SchoolInfo | null, band
     'school.name': schoolName,
     'school.address': subtitle || null,
     'school.emis': emis ?? null,
-    'exam.name': exam.name,
-    'exam.term': exam.termName,
+    'exam.name': examName,
+    'exam.term': termLabel,
     'report.date': issuedOn,
   };
   const data = Object.fromEntries(
@@ -962,6 +1167,7 @@ export function buildCardParts(sheet: Sheet, schoolInfo: SchoolInfo | null, band
     summary,
     ratings,
     remarks,
+    comments,
     signatures,
     issuedDate,
     gradingKey,
@@ -977,8 +1183,8 @@ export function buildCardParts(sheet: Sheet, schoolInfo: SchoolInfo | null, band
       position: showPositions ? position : '',
       average: average(isALevel ? student.principalAverage : student.average),
       grade: overallGrade ?? '—',
-      exam: exam.name,
-      term: exam.termName,
+      exam: examName,
+      term: termLabel,
       date: issuedOn,
     },
   };
@@ -1010,6 +1216,7 @@ function StyledCard({ parts, design }: { parts: CardParts; design: TemplateDesig
             {parts.ratings}
             {parts.remarks}
           </div>
+          {parts.comments && <div className={compact ? 'mt-3' : 'mt-4'}>{parts.comments}</div>}
           {parts.signatures && <div className={compact ? 'mt-3' : 'mt-4'}>{parts.signatures}</div>}
           {parts.issuedDate() && <div className="mt-2">{parts.issuedDate()}</div>}
           {parts.footerNote() && <div className="mt-2">{parts.footerNote()}</div>}
@@ -1100,7 +1307,7 @@ export function CanvasBlockContent({ block, parts }: { block: CanvasBlock; parts
           style={{ textAlign: (align ?? 'left') as 'left' | 'center' | 'right', justifyContent: align === 'center' ? 'center' : align === 'right' ? 'flex-end' : undefined }}
         >
           {label && position !== 'none' && (
-            <span className={`text-text-muted ${position === 'above' ? 'block text-[9px] uppercase tracking-wide font-bold' : ''}`} style={position === 'above' ? undefined : { fontSize: `${p.size ?? 11}pt` }}>
+            <span className={`text-text-primary ${position === 'above' ? 'block text-[9px] uppercase tracking-wide font-bold' : ''}`} style={position === 'above' ? undefined : { fontSize: `${p.size ?? 11}pt` }}>
               {label}
               {position === 'left' ? ':' : ''}
             </span>

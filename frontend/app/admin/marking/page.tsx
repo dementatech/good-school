@@ -286,7 +286,7 @@ export default function MarkingPage() {
         value: (r) => r.studentName,
         render: (r) => (
           <span className="min-w-0">
-            <span className="font-medium block truncate">{r.studentName}</span>
+            <span className="font-medium block truncate uppercase">{r.studentName}</span>
             <span className="text-xs text-text-muted">{r.studentSystemId ?? '—'}</span>
           </span>
         ),
@@ -665,7 +665,7 @@ export default function MarkingPage() {
           searchPlaceholder="Search by student, ID or class…"
           emptyMessage="Nobody has sat this assessment yet."
           exportFileName={`${selected}-results`}
-          mobileTitle={(r) => r.studentName}
+          mobileTitle={(r) => <span className="uppercase">{r.studentName}</span>}
           onRowClick={(r) => void openPaper(r)}
           filters={[
             {

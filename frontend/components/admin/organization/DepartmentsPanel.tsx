@@ -217,7 +217,7 @@ export function DepartmentsPanel({
       header: 'Subject(s)',
       value: (d) => d.subjects.map((s) => s.subjectName).join(', '),
       hideOnMobile: true,
-      render: (d) => (d.subjects.length > 0 ? d.subjects.map((s) => s.subjectCode).join(', ') : <span className="text-text-faint">—</span>),
+      render: (d) => (d.subjects.length > 0 ? d.subjects.map((s) => s.subjectCode.toUpperCase()).join(', ') : <span className="text-text-faint">—</span>),
     },
     {
       key: 'head',

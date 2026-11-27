@@ -214,30 +214,20 @@ export const PAGE_MM = { width: 210, height: 297 } as const;
 /** CSS px per mm at 96dpi — what the browser (and the PDF) prints at. */
 export const PX_PER_MM = 96 / 25.4;
 
-export const FONT_LABEL: Record<TemplateStyle['font'], string> = {
-  rounded: 'Rounded (Quicksand)',
-  plain: 'Plain (Arial)',
-  serif: 'Serif (Georgia)',
-};
-const FONT_FAMILY: Record<TemplateStyle['font'], string> = {
-  rounded: "var(--font-sans), 'Quicksand', sans-serif",
-  plain: "Arial, 'Helvetica Neue', Helvetica, sans-serif",
-  serif: "Georgia, 'Times New Roman', serif",
-};
+/** Every report card prints in Times New Roman, whatever font a saved
+ * template still carries in `style.font`. */
+const REPORT_FONT = "'Times New Roman', Times, serif";
 
 export const ACCENT_SWATCHES = ['#2E77AE', '#1E3A5F', '#0F766E', '#15803D', '#7A1F2B', '#B45309', '#6D28D9', '#111827'];
 
-/** The card's colours and font. The sheet is built from the app's theme
- * colours, so overriding them here recolours every part of it. */
-export function templateVars(style: TemplateStyle): CSSProperties {
-  const a = style.accent;
+/** The card's font. Its colours are the school's theme colour (set by
+ * SchoolThemeApplier on the page), never the template's own `accent` /
+ * `highlight`, so every report follows the colour the school chose. */
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+export function templateVars(_style: TemplateStyle): CSSProperties {
   return {
-    '--color-primary-700': a,
-    '--color-primary-800': `color-mix(in srgb, ${a} 85%, black)`,
-    '--color-primary-900': `color-mix(in srgb, ${a} 55%, black)`,
-    '--color-primary-50': `color-mix(in srgb, ${a} 8%, white)`,
-    '--rc-highlight': style.highlight,
-    fontFamily: FONT_FAMILY[style.font],
+    '--rc-highlight': 'var(--color-primary-700)',
+    fontFamily: REPORT_FONT,
   } as CSSProperties;
 }
 

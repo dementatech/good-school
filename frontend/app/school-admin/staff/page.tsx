@@ -148,7 +148,7 @@ export default function SchoolAdminStaffPage() {
             hideOnMobile: true,
             render: (s: Staff) =>
               s.specializations.length > 0 ? (
-                <span className="text-xs text-text-muted">{s.specializations.map((sp) => sp.subjectCode).join(', ')}</span>
+                <span className="text-xs text-text-muted">{s.specializations.map((sp) => sp.subjectCode.toUpperCase()).join(', ')}</span>
               ) : (
                 <span className="text-text-faint">—</span>
               ),

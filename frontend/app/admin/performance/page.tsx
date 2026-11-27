@@ -137,7 +137,7 @@ function SchoolBenchmarkChart({ data, isPhone }: { data: SchoolBenchmarkEntry[];
 // figure stays on screen and in CSV/Excel.
 const performanceColumns: DataTableColumn<LeaderboardEntry>[] = [
   { key: 'rank', header: 'Rank', value: (e) => e.rank, sortable: true, className: 'w-14' },
-  { key: 'studentName', header: 'Student', value: (e) => e.studentName, sortable: true },
+  { key: 'studentName', header: 'Student', value: (e) => e.studentName, sortable: true, className: 'uppercase' },
   {
     key: 'assessmentScore',
     header: 'Assessment',
@@ -471,10 +471,10 @@ export default function AdminPerformancePage() {
             columns={performanceColumns}
             rowKey={(e) => e.studentId}
             loading={drillDownLoading}
-            initialSort={{ key: 'rank', direction: 'asc' }}
+            initialSort={{ key: 'studentName', direction: 'asc' }}
             searchPlaceholder="Search by student name…"
             emptyMessage="No marked assessments yet for this school."
-            mobileTitle={(e) => e.studentName}
+            mobileTitle={(e) => <span className="uppercase">{e.studentName}</span>}
             numbered
             exportFileName="school-performance"
           />

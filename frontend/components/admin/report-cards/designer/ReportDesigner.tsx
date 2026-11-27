@@ -76,7 +76,6 @@ import {
 import {
   BLOCK_INFO,
   DATA_FIELDS,
-  FONT_LABEL,
   PAGE_MM,
   PX_PER_MM,
   newBlockId,
@@ -674,7 +673,7 @@ export function ReportDesigner({ templateId }: { templateId: string }) {
               <button
                 key={t.id}
                 type="button"
-                title={`Use ${t.name}'s colours, font and table`}
+                title={`Use ${t.name}'s frame, header and table`}
                 onClick={() =>
                   setStyle({
                     accent: t.design.style.accent,
@@ -687,30 +686,13 @@ export function ReportDesigner({ templateId }: { templateId: string }) {
                 }
                 className="flex flex-col items-center gap-0.5 rounded-md border border-border px-2 py-1 hover:border-primary-400 hover:bg-primary-50"
               >
-                <span className="flex">
-                  <span className="w-4 h-4 rounded-l" style={{ background: t.design.style.accent }} />
-                  <span className="w-4 h-4 rounded-r" style={{ background: t.design.style.highlight }} />
-                </span>
                 <span className="text-[10px] text-primary-900">{t.name}</span>
               </button>
             ))}
           </div>
         </RibbonGroup>
-        <RibbonGroup label="Colours">
-          <RibbonColumn>
-            <RibbonColor label="Main colour" value={design.style.accent} onChange={(accent) => setStyle({ accent })} />
-            <RibbonColor label="Badge colour" value={design.style.highlight} onChange={(highlight) => setStyle({ highlight })} />
-          </RibbonColumn>
-        </RibbonGroup>
         <RibbonGroup label="Text & table">
           <RibbonColumn>
-            <RibbonSelect
-              label="Font"
-              value={design.style.font}
-              options={(Object.keys(FONT_LABEL) as TemplateStyle['font'][]).map((f) => ({ value: f, label: FONT_LABEL[f] }))}
-              onChange={(font) => setStyle({ font })}
-              width="w-36"
-            />
             <RibbonSelect
               label="Spacing"
               value={design.style.density}
