@@ -3,7 +3,7 @@ import { DEFAULT_AVATAR } from '@/lib/avatar/default';
 
 export const metadata: Metadata = {
   title: 'Report card sample — Seeta High School',
-  description: 'A sample Seeta High School summative assessment report card, filled with fictional learner data.',
+  description: 'A sample Seeta High School summative assessment report card.',
 };
 
 /**
